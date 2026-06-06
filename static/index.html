@@ -393,6 +393,112 @@
     ::-webkit-scrollbar { width: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #2d3748; border-radius: 3px; }
+
+    /* ── Pricing panel ── */
+    #pricing-panel { padding: 24px 20px; overflow-y: auto; gap: 20px; }
+    .pricing-header { text-align: center; margin-bottom: 8px; }
+    .pricing-header h2 { font-size: 1.3rem; color: #e2e8f0; font-weight: 700; }
+    .pricing-header p  { font-size: 0.85rem; color: #718096; margin-top: 4px; }
+
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+    }
+
+    .tier-card {
+      background: #1a202c;
+      border: 1px solid #2d3748;
+      border-radius: 16px;
+      padding: 24px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      position: relative;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .tier-card:hover { transform: translateY(-2px); }
+
+    /* Tier colour accents */
+    .tier-1 { border-top: 3px solid #4299e1; }
+    .tier-2 { border-top: 3px solid #9f7aea; }
+    .tier-3 { border-top: 3px solid #f6ad55; }
+    .tier-1:hover { border-color: #4299e1; }
+    .tier-2:hover { border-color: #9f7aea; }
+    .tier-3:hover { border-color: #f6ad55; }
+
+    .tier-badge {
+      display: inline-block;
+      font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.1em; padding: 3px 10px; border-radius: 999px;
+      width: fit-content;
+    }
+    .tier-1 .tier-badge { background: #1a365d; color: #63b3ed; }
+    .tier-2 .tier-badge { background: #322659; color: #b794f4; }
+    .tier-3 .tier-badge { background: #744210; color: #f6ad55; }
+
+    .popular-pill {
+      position: absolute; top: -12px; right: 16px;
+      background: #9f7aea; color: #fff;
+      font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
+      padding: 3px 10px; border-radius: 999px; letter-spacing: 0.08em;
+    }
+
+    .tier-name  { font-size: 1.1rem; font-weight: 700; color: #e2e8f0; }
+    .tier-price {
+      display: flex; align-items: baseline; gap: 4px;
+      font-size: 2rem; font-weight: 800; color: #e2e8f0;
+      line-height: 1;
+    }
+    .tier-price .currency { font-size: 1.1rem; font-weight: 600; color: #718096; }
+    .tier-price .period   { font-size: 0.78rem; font-weight: 400; color: #718096; }
+    .tier-desc { font-size: 0.8rem; color: #718096; line-height: 1.5; }
+
+    .tier-features { list-style: none; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+    .tier-features li {
+      display: flex; align-items: flex-start; gap: 8px;
+      font-size: 0.84rem; color: #a0aec0; line-height: 1.4;
+    }
+    .tier-features li .feat-icon { flex-shrink: 0; font-size: 0.9rem; margin-top: 1px; }
+
+    .tier-cta {
+      width: 100%; padding: 10px; border-radius: 10px;
+      font-size: 0.9rem; font-weight: 700; cursor: pointer;
+      border: none; transition: opacity 0.15s, transform 0.1s;
+      letter-spacing: 0.02em;
+    }
+    .tier-cta:hover:not(:disabled) { opacity: 0.88; transform: scale(0.99); }
+    .tier-1 .tier-cta { background: #2b6cb0; color: #fff; }
+    .tier-2 .tier-cta { background: #6b46c1; color: #fff; }
+    .tier-3 .tier-cta { background: #c05621; color: #fff; }
+    .tier-cta.coming-soon {
+      background: #2d3748; color: #4a5568;
+      cursor: default; border: 1px solid #4a5568;
+    }
+
+    .tier-note {
+      text-align: center; font-size: 0.75rem; color: #4a5568;
+      padding-top: 4px;
+    }
+
+    .free-banner {
+      background: #1a202c; border: 1px solid #2d3748;
+      border-radius: 12px; padding: 14px 18px;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; flex-wrap: wrap;
+    }
+    .free-banner .free-text { font-size: 0.88rem; color: #a0aec0; }
+    .free-banner .free-text strong { color: #68d391; }
+    .free-banner .free-pill {
+      background: #276749; color: #68d391;
+      font-size: 0.75rem; font-weight: 700; padding: 3px 12px;
+      border-radius: 999px; white-space: nowrap;
+    }
+
+    .coming-soon-overlay {
+      text-align: center; padding: 6px 0 2px;
+      font-size: 0.72rem; color: #4a5568; letter-spacing: 0.04em;
+    }
   </style>
 </head>
 <body>
@@ -409,6 +515,7 @@
         <button class="nav-tab" data-panel="courses">📚 Courses</button>
         <button class="nav-tab" data-panel="quiz">🏆 Quiz</button>
         <button class="nav-tab" data-panel="progress">📊 Progress</button>
+        <button class="nav-tab" data-panel="pricing">💎 Plans</button>
       </div>
       <select id="level-select" title="Your level" aria-label="Select your level">
         <option value="beginner">🟢 Beginner</option>
@@ -532,6 +639,110 @@
           <div id="topic-progress-list"><span style="font-size:0.82rem;color:#4a5568">Start chatting to track topics.</span></div>
         </div>
       </div>
+
+      <!-- ── PRICING PANEL ── -->
+      <div id="pricing-panel" class="panel">
+
+        <div class="pricing-header">
+          <h2>💎 Choose Your Learning Plan</h2>
+          <p>Start free. Upgrade when you're ready to go further.</p>
+        </div>
+
+        <!-- Free tier banner -->
+        <div class="free-banner">
+          <div class="free-text">
+            You're currently on the <strong>Free Plan</strong> — full chat, courses, quizzes and progress tracking included.
+          </div>
+          <span class="free-pill">✓ Active</span>
+        </div>
+
+        <!-- Paid tier cards -->
+        <div class="pricing-grid">
+
+          <!-- Tier 1 -->
+          <div class="tier-card tier-1">
+            <span class="tier-badge">Tier 1</span>
+            <div>
+              <div class="tier-name">Pro Learner</div>
+              <div class="tier-price">
+                <span class="currency">$</span>9<span class="period">/month</span>
+              </div>
+              <div class="tier-desc" style="margin-top:6px">
+                A personalised learning experience built around your goals and pace.
+              </div>
+            </div>
+            <ul class="tier-features">
+              <li><span class="feat-icon">🗺️</span> Personalised curriculum tailored to your skill gaps</li>
+              <li><span class="feat-icon">📊</span> Advanced progress tracking with detailed analytics</li>
+              <li><span class="feat-icon">🚀</span> Project-based learning paths with real-world tasks</li>
+              <li><span class="feat-icon">🔁</span> Unlimited course resets and retakes</li>
+              <li><span class="feat-icon">🤖</span> Priority AI responses</li>
+            </ul>
+            <div>
+              <button class="tier-cta coming-soon" disabled>Coming Soon</button>
+              <div class="coming-soon-overlay">Launching Q3 2025</div>
+            </div>
+          </div>
+
+          <!-- Tier 2 -->
+          <div class="tier-card tier-2" style="position:relative">
+            <div class="popular-pill">Most Popular</div>
+            <span class="tier-badge">Tier 2</span>
+            <div>
+              <div class="tier-name">Career Builder</div>
+              <div class="tier-price">
+                <span class="currency">$</span>19<span class="period">/month</span>
+              </div>
+              <div class="tier-desc" style="margin-top:6px">
+                Everything in Pro, plus the credentials and portfolio to land your first Python role.
+              </div>
+            </div>
+            <ul class="tier-features">
+              <li><span class="feat-icon">🏅</span> Verified course certificates (shareable PDF)</li>
+              <li><span class="feat-icon">💼</span> Auto-generated portfolio from your projects</li>
+              <li><span class="feat-icon">🗓️</span> Job-readiness roadmap with milestone tracking</li>
+              <li><span class="feat-icon">🔗</span> LinkedIn-ready profile export</li>
+              <li><span class="feat-icon">✅</span> Everything in Tier 1</li>
+            </ul>
+            <div>
+              <button class="tier-cta coming-soon" disabled>Coming Soon</button>
+              <div class="coming-soon-overlay">Launching Q3 2025</div>
+            </div>
+          </div>
+
+          <!-- Tier 3 -->
+          <div class="tier-card tier-3">
+            <span class="tier-badge">Tier 3</span>
+            <div>
+              <div class="tier-name">Elite</div>
+              <div class="tier-price">
+                <span class="currency">$</span>39<span class="period">/month</span>
+              </div>
+              <div class="tier-desc" style="margin-top:6px">
+                The full package — human connection, expert mentorship, and live learning.
+              </div>
+            </div>
+            <ul class="tier-features">
+              <li><span class="feat-icon">🌐</span> Access to the MyPy Tutor community forum</li>
+              <li><span class="feat-icon">👨‍💻</span> 1-on-1 mentorship sessions with Python engineers</li>
+              <li><span class="feat-icon">🎙️</span> Weekly live coding sessions and Q&A</li>
+              <li><span class="feat-icon">⚡</span> Early access to new features</li>
+              <li><span class="feat-icon">✅</span> Everything in Tier 1 & 2</li>
+            </ul>
+            <div>
+              <button class="tier-cta coming-soon" disabled>Coming Soon</button>
+              <div class="coming-soon-overlay">Launching Q4 2025</div>
+            </div>
+          </div>
+
+        </div><!-- /pricing-grid -->
+
+        <div class="tier-note" style="padding: 8px 0 4px">
+          All prices in USD. Cancel anytime. No hidden fees.<br/>
+          Early access waitlist opens soon — keep learning to earn a founding member discount.
+        </div>
+
+      </div><!-- /pricing-panel -->
 
     </div><!-- /panels -->
   </div><!-- /main-layout -->
