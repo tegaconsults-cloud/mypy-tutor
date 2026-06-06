@@ -8,6 +8,30 @@ from typing import Literal
 
 
 # ---------------------------------------------------------------------------
+# Auth / user models
+# ---------------------------------------------------------------------------
+
+class UserAccount(BaseModel):
+    learner_id: str          # "g_<google_sub>"
+    email:      str
+    name:       str
+    picture:    str = ""
+    google_sub: str
+
+
+class GoogleAuthRequest(BaseModel):
+    credential: str = Field(..., min_length=10, max_length=4096)
+
+
+class AuthResponse(BaseModel):
+    token:      str           # session token for Authorization: Bearer
+    learner_id: str
+    name:       str
+    email:      str
+    picture:    str
+
+
+# ---------------------------------------------------------------------------
 # Chat models
 # ---------------------------------------------------------------------------
 

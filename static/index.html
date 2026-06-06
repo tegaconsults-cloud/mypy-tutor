@@ -19,6 +19,8 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <!-- Google Identity Services — loaded only when GOOGLE_CLIENT_ID is set -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
 
   <style>
     /* ── Reset & base ── */
@@ -517,6 +519,95 @@
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #2d3748; border-radius: 3px; }
 
+    /* ── Auth button & user chip ── */
+    #auth-btn {
+      display: flex; align-items: center; gap: 7px;
+      background: #fff; color: #1a202c;
+      border: none; border-radius: 8px;
+      padding: 0 12px; height: 36px;
+      font-size: 0.82rem; font-weight: 600;
+      cursor: pointer; white-space: nowrap;
+      transition: opacity 0.15s, box-shadow 0.15s;
+      flex-shrink: 0;
+    }
+    #auth-btn:hover { opacity: 0.9; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
+    #auth-btn svg { flex-shrink: 0; }
+
+    #user-chip {
+      display: none; align-items: center; gap: 7px;
+      background: #1a202c; border: 1px solid #2d3748;
+      border-radius: 999px; padding: 3px 12px 3px 4px;
+      cursor: pointer; transition: border-color 0.15s;
+      flex-shrink: 0; position: relative;
+    }
+    #user-chip:hover { border-color: #4299e1; }
+    #user-avatar {
+      width: 28px; height: 28px; border-radius: 50%;
+      object-fit: cover; flex-shrink: 0;
+      background: #2d3748;
+    }
+    #user-name { font-size: 0.78rem; color: #e2e8f0; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* User dropdown */
+    #user-dropdown {
+      display: none; position: absolute; top: calc(100% + 8px); right: 0;
+      background: #1a202c; border: 1px solid #2d3748; border-radius: 10px;
+      min-width: 180px; padding: 6px; z-index: 500;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    #user-dropdown.open { display: block; }
+    .dropdown-item {
+      display: flex; align-items: center; gap: 8px;
+      padding: 9px 12px; border-radius: 7px; font-size: 0.84rem;
+      color: #a0aec0; cursor: pointer; transition: background 0.12s;
+      border: none; background: transparent; width: 100%; text-align: left;
+    }
+    .dropdown-item:hover { background: #2d3748; color: #e2e8f0; }
+    .dropdown-divider { border: none; border-top: 1px solid #2d3748; margin: 4px 0; }
+    .dropdown-item.danger { color: #fc8181; }
+    .dropdown-item.danger:hover { background: #3b1a1a; }
+
+    /* Auth modal */
+    #auth-modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7); z-index: 1000;
+      align-items: center; justify-content: center; padding: 20px;
+    }
+    #auth-modal-overlay.open { display: flex; }
+    #auth-modal {
+      background: #1a202c; border: 1px solid #2d3748; border-radius: 18px;
+      padding: 32px 28px; width: 100%; max-width: 380px;
+      display: flex; flex-direction: column; align-items: center; gap: 20px;
+      position: relative;
+    }
+    #auth-modal-close {
+      position: absolute; top: 14px; right: 16px;
+      background: transparent; border: none; color: #718096;
+      font-size: 1.2rem; cursor: pointer; padding: 4px;
+    }
+    .auth-modal-logo { font-size: 2.2rem; }
+    .auth-modal-title { font-size: 1.1rem; font-weight: 700; color: #e2e8f0; text-align: center; }
+    .auth-modal-sub   { font-size: 0.82rem; color: #718096; text-align: center; line-height: 1.5; }
+    #google-signin-btn {
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      width: 100%; background: #fff; color: #1a202c;
+      border: none; border-radius: 10px; padding: 13px 20px;
+      font-size: 0.95rem; font-weight: 600; cursor: pointer;
+      transition: box-shadow 0.15s, opacity 0.15s;
+      min-height: 48px;
+    }
+    #google-signin-btn:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.3); opacity: 0.95; }
+    #google-signin-btn:disabled { opacity: 0.5; cursor: default; }
+    .auth-modal-note { font-size: 0.73rem; color: #4a5568; text-align: center; line-height: 1.5; }
+    #auth-modal-error { font-size: 0.82rem; color: #fc8181; text-align: center; display: none; }
+
+    /* Coming-soon badge on sign-in button when no client ID */
+    .auth-coming-soon {
+      display: inline-block; background: #744210; color: #f6ad55;
+      font-size: 0.62rem; font-weight: 700; text-transform: uppercase;
+      padding: 2px 6px; border-radius: 999px; margin-left: 4px; letter-spacing: 0.05em;
+    }
+
     /* ── Responsive breakpoints ── */
 
     /* Mobile: < 640px — show bottom nav, hide desktop nav, hide sidebar by default */
@@ -581,6 +672,27 @@
         <option value="intermediate">🟡 Mid</option>
         <option value="advanced">🔴 Advanced</option>
       </select>
+      <!-- Auth: sign-in button (logged out) -->
+      <button id="auth-btn" aria-label="Sign in with Google" onclick="openAuthModal()">
+        <svg width="16" height="16" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4"/>
+          <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
+          <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+          <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+        </svg>
+        Sign In
+      </button>
+      <!-- Auth: user chip (logged in) -->
+      <div id="user-chip" aria-label="Account menu" onclick="toggleUserDropdown()">
+        <img id="user-avatar" src="" alt="Avatar" />
+        <span id="user-name"></span>
+        <div id="user-dropdown">
+          <button class="dropdown-item" onclick="switchPanel('progress'); closeUserDropdown()">📊 My Progress</button>
+          <button class="dropdown-item" onclick="switchPanel('pricing'); closeUserDropdown()">💎 Upgrade Plan</button>
+          <hr class="dropdown-divider"/>
+          <button class="dropdown-item danger" onclick="signOut()">🚪 Sign Out</button>
+        </div>
+      </div>
       <button id="clear-btn" title="Clear chat">✕ Clear</button>
     </div>
   </header>
@@ -964,7 +1076,7 @@
     // ── Refresh sidebar ───────────────────────────────────────────────────────
     async function refreshSidebar() {
       try {
-        const res = await fetch(`/progress/${LEARNER_ID}`);
+        const res = await fetch(`/progress/${getLearnerId()}`);
         if (!res.ok) return;
         const p = await res.json();
         updateXPBar(p.xp, p.level, p.badges);
@@ -1001,7 +1113,7 @@
     // ── Progress panel ────────────────────────────────────────────────────────
     async function refreshProgress() {
       try {
-        const res = await fetch(`/progress/${LEARNER_ID}`);
+        const res = await fetch(`/progress/${getLearnerId()}`);
         if (!res.ok) return;
         const p = await res.json();
         document.getElementById('stat-xp').textContent = p.xp;
@@ -1035,7 +1147,7 @@
     // ── Courses panel ─────────────────────────────────────────────────────────
     async function refreshCourses() {
       try {
-        const profile = await fetch(`/progress/${LEARNER_ID}`).then(r => r.json());
+        const profile = await fetch(`/progress/${getLearnerId()}`).then(r => r.json());
         const level   = profile.level || getLevel();
         const res     = await fetch(`/courses?level=${level}`);
         const data    = await res.json();
@@ -1076,7 +1188,7 @@
       switchPanel('chat');
       const loadEl = showLoading();
       try {
-        const res = await fetch(`/course/start?learner_id=${LEARNER_ID}&course_name=${encodeURIComponent(name)}`, { method: 'POST' });
+        const res = await fetch(`/course/start?learner_id=${getLearnerId()}&course_name=${encodeURIComponent(name)}`, { method: 'POST' });
         loadEl.remove();
         if (!res.ok) { appendMessage('error', 'Could not start course.'); return; }
         const data = await res.json();
@@ -1093,7 +1205,7 @@
       switchPanel('chat');
       const loadEl = showLoading();
       try {
-        const res = await fetch(`/course/next?learner_id=${LEARNER_ID}`, { method: 'POST' });
+        const res = await fetch(`/course/next?learner_id=${getLearnerId()}`, { method: 'POST' });
         loadEl.remove();
         if (!res.ok) { appendMessage('error', 'Could not advance course.'); return; }
         const data = await res.json();
@@ -1123,7 +1235,7 @@
       try {
         const res  = await fetch('/quiz/generate', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ learner_id: LEARNER_ID, topic, level: getLevel() }),
+          body: JSON.stringify({ learner_id: getLearnerId(), topic, level: getLevel() }),
         });
         const data = await res.json();
         currentQuiz = { topic, question: data.question, options: data.options };
@@ -1149,7 +1261,7 @@
       try {
         const res  = await fetch('/quiz/answer', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ learner_id: LEARNER_ID, topic: currentQuiz.topic, level: getLevel(), question: currentQuiz.question, answer }),
+          body: JSON.stringify({ learner_id: getLearnerId(), topic: currentQuiz.topic, level: getLevel(), question: currentQuiz.question, answer }),
         });
         const data = await res.json();
         document.querySelectorAll('.quiz-option').forEach(btn => {
@@ -1270,7 +1382,7 @@
           body: JSON.stringify({
             message: text,
             history: history.slice(0, -1).map(m => ({ role: m.role, content: m.content.slice(0, 10000) })),
-            learner_id: LEARNER_ID,
+            learner_id: getLearnerId(),
             level: getLevel(),
           }),
         });
@@ -1319,10 +1431,133 @@
       messageInput.style.height = Math.min(messageInput.scrollHeight, 140) + 'px';
     });
 
+    // ── Auth ──────────────────────────────────────────────────────────────────
+    // Google Client ID — set GOOGLE_CLIENT_ID env var on Render when ready
+    // The button always shows; sign-in is active only when the ID is configured
+    const GOOGLE_CLIENT_ID = '';  // replaced at runtime via /auth/config if available
+
+    let currentUser = null;
+    const SESSION_KEY = 'mypy_tutor_session';
+
+    function openAuthModal() {
+      document.getElementById('auth-modal-overlay').classList.add('open');
+      document.getElementById('auth-modal-error').style.display = 'none';
+      document.getElementById('auth-modal-error').textContent = '';
+    }
+    function closeAuthModal() {
+      document.getElementById('auth-modal-overlay').classList.remove('open');
+    }
+    function handleModalOverlayClick(e) {
+      if (e.target === document.getElementById('auth-modal-overlay')) closeAuthModal();
+    }
+    function toggleUserDropdown() {
+      document.getElementById('user-dropdown').classList.toggle('open');
+    }
+    function closeUserDropdown() {
+      document.getElementById('user-dropdown').classList.remove('open');
+    }
+    // Close dropdown when clicking elsewhere
+    document.addEventListener('click', e => {
+      const chip = document.getElementById('user-chip');
+      if (chip && !chip.contains(e.target)) closeUserDropdown();
+    });
+
+    async function handleGoogleSignIn() {
+      const btn = document.getElementById('google-signin-btn');
+      const errEl = document.getElementById('auth-modal-error');
+      errEl.style.display = 'none';
+
+      // If Google Identity Services isn't loaded yet, show coming-soon message
+      if (typeof google === 'undefined' || !google.accounts) {
+        errEl.textContent = 'Google Sign-In is coming soon. Your progress is being saved locally in the meantime.';
+        errEl.style.display = 'block';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Opening Google…';
+
+      // Use GSI One Tap / popup flow
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: async (response) => {
+          try {
+            const res = await fetch('/auth/google', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ credential: response.credential }),
+            });
+            if (!res.ok) {
+              const d = await res.json();
+              throw new Error(d.error || 'Sign-in failed');
+            }
+            const data = await res.json();
+            localStorage.setItem(SESSION_KEY, data.token);
+            setLoggedIn(data);
+            closeAuthModal();
+          } catch (err) {
+            errEl.textContent = err.message;
+            errEl.style.display = 'block';
+          } finally {
+            btn.disabled = false;
+            btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 18 18" fill="none"><path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908C16.658 14.013 17.64 11.706 17.64 9.2z" fill="#4285F4"/><path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/><path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/><path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/></svg> Continue with Google`;
+          }
+        },
+      });
+      google.accounts.id.prompt();
+    }
+
+    function setLoggedIn(data) {
+      currentUser = data;
+      // Show user chip, hide sign-in button
+      document.getElementById('auth-btn').style.display = 'none';
+      const chip = document.getElementById('user-chip');
+      chip.style.display = 'flex';
+      document.getElementById('user-name').textContent = data.name.split(' ')[0];
+      const avatar = document.getElementById('user-avatar');
+      if (data.picture) { avatar.src = data.picture; avatar.style.display = 'block'; }
+      else { avatar.style.display = 'none'; }
+      // Update LEARNER_ID for all API calls using the authenticated ID
+      window._learnerId = data.learner_id;
+      refreshSidebar();
+    }
+
+    function signOut() {
+      localStorage.removeItem(SESSION_KEY);
+      currentUser = null;
+      window._learnerId = 'default';
+      document.getElementById('auth-btn').style.display = 'flex';
+      document.getElementById('user-chip').style.display = 'none';
+      closeUserDropdown();
+      if (typeof google !== 'undefined' && google.accounts) {
+        google.accounts.id.disableAutoSelect();
+      }
+      refreshSidebar();
+    }
+
+    // Restore session on load
+    async function restoreSession() {
+      const token = localStorage.getItem(SESSION_KEY);
+      if (!token) return;
+      try {
+        const res = await fetch('/auth/me', {
+          headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!res.ok) { localStorage.removeItem(SESSION_KEY); return; }
+        const data = await res.json();
+        setLoggedIn(data);
+      } catch (_) { localStorage.removeItem(SESSION_KEY); }
+    }
+
+    // Override LEARNER_ID to use auth'd user when signed in
+    const _origLearnerId = LEARNER_ID;
+    function getLearnerId() { return window._learnerId || _origLearnerId; }
+
     // ── Init ──────────────────────────────────────────────────────────────────
     loadTopics();
     loadHistory();
     refreshSidebar();
+    restoreSession();
     messageInput.focus();
 
     // ── Service Worker (PWA) ──────────────────────────────────────────────────
@@ -1352,6 +1587,30 @@
       document.getElementById('install-banner').style.display = 'none';
     });
   </script>
+
+  <!-- ── Auth Modal ── -->
+  <div id="auth-modal-overlay" onclick="handleModalOverlayClick(event)">
+    <div id="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title">
+      <button id="auth-modal-close" onclick="closeAuthModal()" aria-label="Close">✕</button>
+      <div class="auth-modal-logo">🐍</div>
+      <div class="auth-modal-title" id="auth-modal-title">Welcome to MyPy Tutor</div>
+      <div class="auth-modal-sub">Sign in to save your progress, earn badges, and unlock your learning journey.</div>
+      <button id="google-signin-btn" onclick="handleGoogleSignIn()">
+        <svg width="20" height="20" viewBox="0 0 18 18" fill="none">
+          <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908C16.658 14.013 17.64 11.706 17.64 9.2z" fill="#4285F4"/>
+          <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
+          <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+          <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+        </svg>
+        Continue with Google
+      </button>
+      <div id="auth-modal-error"></div>
+      <div class="auth-modal-note">
+        By signing in you agree to our Terms of Service.<br/>
+        Your progress is saved securely to your account.
+      </div>
+    </div>
+  </div>
 
   <!-- PWA install banner -->
   <div id="install-banner" style="

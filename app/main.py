@@ -21,6 +21,7 @@ from app.models import (
     QuizRequest, QuizResponse,
     QuizAnswerRequest, QuizAnswerResponse,
     ProgressResponse,
+    GoogleAuthRequest, AuthResponse,
 )
 from app.prompts import build_system_prompt
 from app.topics import get_topics
@@ -34,6 +35,10 @@ from app.security import (
     validate_learner_id, validate_level,
     validate_course_name, validate_topic,
     validate_chat_request,
+)
+from app.auth import (
+    verify_google_token, get_or_create_user,
+    create_session_token, get_current_user, require_user,
 )
 
 logger = logging.getLogger(__name__)
@@ -149,6 +154,41 @@ async def topics() -> dict:
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# Auth routes — Google OAuth
+# ---------------------------------------------------------------------------
+
+from fastapi import Depends  # noqa: E402 — import here to avoid circular
+
+
+@app.post("/auth/google", response_model=AuthResponse)
+async def auth_google(request: GoogleAuthRequest) -> AuthResponse:
+    """Verify Google id_token, create/update user, return session token."""
+    payload = verify_google_token(request.credential)
+    user    = get_or_create_user(payload)
+    token   = create_session_token(user.learner_id)
+    return AuthResponse(
+        token=token,
+        learner_id=user.learner_id,
+        name=user.name,
+        email=user.email,
+        picture=user.picture,
+    )
+
+
+@app.get("/auth/me", response_model=AuthResponse)
+async def auth_me(user=Depends(require_user)) -> AuthResponse:
+    """Return the currently authenticated user (validates session token)."""
+    token = create_session_token(user.learner_id)   # refreshed token
+    return AuthResponse(
+        token=token,
+        learner_id=user.learner_id,
+        name=user.name,
+        email=user.email,
+        picture=user.picture,
+    )
 
 
 # ---------------------------------------------------------------------------
