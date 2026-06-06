@@ -135,6 +135,16 @@ _AMBIGUOUS_PROMPT = """You are a helpful Python tutor. The user's message is not
 
 Do not attempt to answer the question yet — just ask for clarification."""
 
+_GENERAL_PROMPT = """You are a friendly, expert Python tutor. The user has sent you a message that may be a greeting, a general question, or a Python topic they want to explore.
+
+Your job:
+1. If the message contains a Python topic or concept (even implied), explain it helpfully and thoroughly using the concept structure: definition → explanation → code example → breakdown → common mistakes → practice exercise.
+2. If the message is a greeting or very general ("hi", "hello", "help"), warmly introduce yourself and ask what Python topic they'd like to explore today. Suggest 3–4 topics based on what beginners commonly find useful.
+3. If the message is unclear but Python-related, make a reasonable assumption about what they want to learn and answer it — then ask if that's what they meant.
+4. Never refuse to engage. Always provide value in every response.
+
+You are a tutor, not a gatekeeper."""
+
 
 # ---------------------------------------------------------------------------
 # Public builder — level-aware, gap-aware
@@ -169,10 +179,11 @@ def build_system_prompt(
         "quiz_eval": _QUIZ_EVAL_PROMPT,
         "course":    _COURSE_PROMPT,
         "ambiguous": _AMBIGUOUS_PROMPT,
+        "general":   _GENERAL_PROMPT,
     }
 
     # Use gap remediation prompt when topic is a known weak spot
-    base = _GAP_PROMPT if is_gap_topic else prompts.get(intent, _AMBIGUOUS_PROMPT)
+    base = _GAP_PROMPT if is_gap_topic else prompts.get(intent, _GENERAL_PROMPT)
 
     # Prepend level instruction
     level_prefix = _LEVEL_PREFIX.get(level, _LEVEL_PREFIX["beginner"])
