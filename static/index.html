@@ -2,19 +2,18 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>MyPy Tutor</title>
 
   <!-- PWA -->
   <link rel="manifest" href="/manifest.json" />
-  <meta name="theme-color" content="#3182ce" />
+  <meta name="theme-color" content="#0f1117" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="MyPy Tutor" />
   <link rel="apple-touch-icon" href="/icons/icon-192.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
-  <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png" />
 
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
@@ -22,186 +21,199 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
 
   <style>
+    /* ── Reset & base ── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
+    html { height: 100%; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       background: #0f1117;
       color: #e2e8f0;
-      height: 100vh;
+      height: 100%;
       display: flex;
       flex-direction: column;
-      align-items: center;
+      /* Safe area for iPhone notch / home bar */
+      padding-bottom: env(safe-area-inset-bottom);
       overflow: hidden;
     }
 
     /* ── Header ── */
     header {
       width: 100%;
-      max-width: 1100px;
-      padding: 10px 20px;
+      background: #0f1117;
       border-bottom: 1px solid #2d3748;
       display: flex;
       align-items: center;
       justify-content: space-between;
+      padding: 10px 16px;
       gap: 10px;
       flex-shrink: 0;
+      z-index: 100;
     }
-    header .logo { font-size: 1.3rem; font-weight: 700; color: #63b3ed; }
-    header .subtitle { font-size: 0.78rem; color: #718096; }
-
-    .header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-
-    /* Level selector */
+    .header-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    #menu-btn {
+      background: transparent; border: 1px solid #2d3748; color: #718096;
+      border-radius: 8px; width: 36px; height: 36px; font-size: 1.1rem;
+      cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    #menu-btn:hover { border-color: #4299e1; color: #90cdf4; }
+    .logo { font-size: 1.15rem; font-weight: 700; color: #63b3ed; white-space: nowrap; }
+    .header-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
     #level-select {
       background: #1a202c; border: 1px solid #2d3748; color: #e2e8f0;
-      border-radius: 8px; padding: 5px 10px; font-size: 0.8rem; cursor: pointer; outline: none;
+      border-radius: 8px; padding: 6px 8px; font-size: 0.8rem; cursor: pointer; outline: none;
+      height: 36px;
     }
     #level-select:focus { border-color: #4299e1; }
-
-    /* Topic selector */
-    #topic-select {
-      background: #1a202c; border: 1px solid #2d3748; color: #e2e8f0;
-      border-radius: 8px; padding: 5px 10px; font-size: 0.8rem; cursor: pointer;
-      outline: none; max-width: 160px;
-    }
-    #topic-select:focus { border-color: #4299e1; }
-
-    /* Nav tabs */
-    .nav-tabs { display: flex; gap: 4px; }
-    .nav-tab {
-      background: transparent; border: 1px solid #2d3748; color: #718096;
-      border-radius: 8px; padding: 5px 12px; font-size: 0.8rem; cursor: pointer;
-      transition: all 0.15s; white-space: nowrap;
-    }
-    .nav-tab:hover { border-color: #4299e1; color: #90cdf4; }
-    .nav-tab.active { background: #2c5282; border-color: #4299e1; color: #90cdf4; }
-
     #clear-btn {
       background: transparent; border: 1px solid #2d3748; color: #718096;
-      border-radius: 8px; padding: 5px 10px; font-size: 0.8rem; cursor: pointer;
-      transition: border-color 0.15s, color 0.15s; white-space: nowrap;
+      border-radius: 8px; padding: 0 10px; font-size: 0.8rem; cursor: pointer;
+      height: 36px; white-space: nowrap;
+      transition: border-color 0.15s, color 0.15s;
     }
     #clear-btn:hover { border-color: #fc8181; color: #fc8181; }
 
     /* ── XP bar ── */
     #xp-bar-wrap {
-      width: 100%; max-width: 1100px; padding: 4px 20px;
-      display: flex; align-items: center; gap: 10px; flex-shrink: 0;
-      border-bottom: 1px solid #1a202c;
+      width: 100%; padding: 4px 16px;
+      display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+      border-bottom: 1px solid #1a202c; background: #0f1117;
     }
-    #xp-label { font-size: 0.75rem; color: #718096; white-space: nowrap; min-width: 120px; }
-    #xp-bar-bg {
-      flex: 1; height: 6px; background: #2d3748; border-radius: 99px; overflow: hidden;
-    }
+    #xp-label { font-size: 0.72rem; color: #718096; white-space: nowrap; min-width: 100px; }
+    #xp-bar-bg { flex: 1; height: 5px; background: #2d3748; border-radius: 99px; overflow: hidden; }
     #xp-bar-fill {
       height: 100%; background: linear-gradient(90deg, #3182ce, #63b3ed);
-      border-radius: 99px; transition: width 0.6s ease;
+      border-radius: 99px; transition: width 0.6s ease; width: 0%;
     }
-    #badge-row { font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px; }
-
-    /* ── Main layout ── */
-    #main-layout {
-      flex: 1; width: 100%; max-width: 1100px;
-      display: flex; gap: 0; overflow: hidden;
+    #badge-row {
+      font-size: 0.82rem; white-space: nowrap; overflow: hidden;
+      text-overflow: ellipsis; max-width: 140px;
     }
 
-    /* ── Sidebar ── */
+    /* ── App body (sidebar + panels) ── */
+    #app-body {
+      flex: 1; display: flex; overflow: hidden; position: relative;
+    }
+
+    /* ── Sidebar drawer ── */
+    #sidebar-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6); z-index: 200;
+    }
+    #sidebar-overlay.open { display: block; }
     #sidebar {
-      width: 220px; flex-shrink: 0; border-right: 1px solid #2d3748;
-      display: flex; flex-direction: column; overflow-y: auto; padding: 12px;
-      gap: 16px;
+      position: fixed; top: 0; left: 0; bottom: 0;
+      width: 260px; max-width: 80vw;
+      background: #0f1117; border-right: 1px solid #2d3748;
+      display: flex; flex-direction: column; overflow-y: auto; padding: 16px 12px;
+      gap: 16px; z-index: 300;
+      transform: translateX(-100%);
+      transition: transform 0.25s ease;
+    }
+    #sidebar.open { transform: translateX(0); }
+    .sidebar-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-bottom: 12px; border-bottom: 1px solid #2d3748;
+    }
+    .sidebar-header .logo { font-size: 1.1rem; }
+    #sidebar-close {
+      background: transparent; border: none; color: #718096;
+      font-size: 1.2rem; cursor: pointer; padding: 4px;
     }
     .sidebar-section h4 {
-      font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em;
+      font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em;
       color: #4a5568; margin-bottom: 8px;
     }
     .sidebar-btn {
-      display: block; width: 100%; background: transparent;
+      display: flex; align-items: center; gap: 8px;
+      width: 100%; background: transparent;
       border: 1px solid #2d3748; color: #a0aec0;
-      border-radius: 8px; padding: 7px 10px; font-size: 0.82rem;
+      border-radius: 8px; padding: 9px 12px; font-size: 0.84rem;
       cursor: pointer; text-align: left; transition: all 0.15s; margin-bottom: 4px;
+      min-height: 44px;
     }
-    .sidebar-btn:hover { background: #1a202c; border-color: #4299e1; color: #90cdf4; }
-    .sidebar-btn.active-course { border-color: #68d391; color: #68d391; }
-
+    .sidebar-btn:hover, .sidebar-btn:active { background: #1a202c; border-color: #4299e1; color: #90cdf4; }
     .gap-tag {
       display: inline-block; background: #3b1a1a; border: 1px solid #742a2a;
-      color: #fc8181; border-radius: 6px; padding: 3px 8px;
-      font-size: 0.75rem; margin: 2px;
+      color: #fc8181; border-radius: 6px; padding: 4px 10px;
+      font-size: 0.78rem; margin: 2px; cursor: pointer;
     }
 
-    /* ── Panels ── */
+    /* ── Panels container ── */
     #panels { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-
-    .panel { display: none; flex-direction: column; height: 100%; }
+    .panel { display: none; flex-direction: column; height: 100%; overflow: hidden; }
     .panel.active { display: flex; }
 
-    /* Chat panel */
+    /* ── Chat panel ── */
     #chat-container {
-      flex: 1; overflow-y: auto; padding: 16px 20px;
-      display: flex; flex-direction: column; gap: 14px; scroll-behavior: smooth;
+      flex: 1; overflow-y: auto; padding: 12px 14px;
+      display: flex; flex-direction: column; gap: 12px; scroll-behavior: smooth;
+      -webkit-overflow-scrolling: touch;
     }
-    .welcome { text-align: center; padding: 30px 20px; color: #718096; }
-    .welcome h2 { font-size: 1.1rem; color: #a0aec0; margin-bottom: 8px; }
-    .welcome p { font-size: 0.88rem; line-height: 1.7; }
+    .welcome { text-align: center; padding: 24px 16px; color: #718096; }
+    .welcome h2 { font-size: 1.05rem; color: #a0aec0; margin-bottom: 8px; }
+    .welcome p { font-size: 0.85rem; line-height: 1.7; }
 
     /* Messages */
-    .message { display: flex; flex-direction: column; max-width: 82%; }
+    .message { display: flex; flex-direction: column; max-width: 88%; }
     .message.user { align-self: flex-end; align-items: flex-end; }
     .message.assistant { align-self: flex-start; align-items: flex-start; }
     .message .label {
-      font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
-      letter-spacing: 0.05em; margin-bottom: 4px; color: #718096;
+      font-size: 0.68rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.05em; margin-bottom: 3px; color: #718096;
     }
     .message.user .label { color: #63b3ed; }
     .message.assistant .label { color: #68d391; }
     .bubble {
-      padding: 11px 15px; border-radius: 12px;
-      line-height: 1.65; font-size: 0.93rem; word-break: break-word;
+      padding: 10px 14px; border-radius: 14px;
+      line-height: 1.65; font-size: 0.92rem; word-break: break-word;
     }
-    .message.user .bubble { background: #2b4a7a; color: #e2e8f0; border-bottom-right-radius: 4px; }
+    .message.user .bubble {
+      background: #2b4a7a; color: #e2e8f0; border-bottom-right-radius: 4px;
+    }
     .message.assistant .bubble {
       background: #1a202c; border: 1px solid #2d3748;
       color: #e2e8f0; border-bottom-left-radius: 4px; max-width: 100%;
     }
     .message.error .bubble { background: #3b1a1a; border: 1px solid #742a2a; color: #fc8181; }
 
-    /* Markdown */
-    .bubble h1,.bubble h2,.bubble h3,.bubble h4 { margin: 12px 0 6px; color: #90cdf4; }
-    .bubble h1{font-size:1.15rem}.bubble h2{font-size:1.05rem}.bubble h3{font-size:0.97rem}
+    /* Markdown inside bubbles */
+    .bubble h1,.bubble h2,.bubble h3,.bubble h4 { margin: 10px 0 5px; color: #90cdf4; }
+    .bubble h1{font-size:1.1rem}.bubble h2{font-size:1rem}.bubble h3{font-size:0.95rem}
     .bubble p { margin: 5px 0; }
-    .bubble ul,.bubble ol { margin: 5px 0 5px 18px; }
+    .bubble ul,.bubble ol { margin: 5px 0 5px 16px; }
     .bubble li { margin: 3px 0; }
     .bubble strong { color: #fbd38d; }
     .bubble em { color: #b794f4; }
     .bubble code:not(pre code) {
       background: #2d3748; color: #f6ad55; padding: 2px 5px;
-      border-radius: 4px; font-family: "Fira Code", Consolas, monospace; font-size: 0.87em;
+      border-radius: 4px; font-family: "Fira Code", Consolas, monospace; font-size: 0.86em;
     }
     .bubble pre { margin: 8px 0; border-radius: 8px; overflow: hidden; }
     .bubble pre code {
-      font-family: "Fira Code", Consolas, monospace; font-size: 0.86em;
+      font-family: "Fira Code", Consolas, monospace; font-size: 0.83em;
       display: block; padding: 12px 14px; overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
     }
     .bubble blockquote { border-left: 3px solid #4a5568; padding-left: 10px; color: #a0aec0; margin: 7px 0; }
     .bubble hr { border: none; border-top: 1px solid #2d3748; margin: 8px 0; }
 
-    /* Copy btn */
+    /* Copy button */
     .code-wrapper { position: relative; margin: 8px 0; }
     .copy-btn {
       position: absolute; top: 7px; right: 7px;
       background: #2d3748; color: #a0aec0; border: none;
-      border-radius: 5px; padding: 3px 7px; font-size: 0.72rem;
-      cursor: pointer; opacity: 0; transition: opacity 0.15s, background 0.15s; z-index: 1;
+      border-radius: 5px; padding: 4px 9px; font-size: 0.72rem;
+      cursor: pointer; opacity: 1; /* always visible on mobile */
+      transition: background 0.15s; z-index: 1;
     }
-    .code-wrapper:hover .copy-btn { opacity: 1; }
+    @media (hover: hover) { .copy-btn { opacity: 0; } .code-wrapper:hover .copy-btn { opacity: 1; } }
     .copy-btn:hover { background: #4a5568; color: #e2e8f0; }
-    .copy-btn.copied { background: #276749; color: #68d391; opacity: 1; }
+    .copy-btn.copied { background: #276749; color: #68d391; }
 
     /* Intent badge */
     .intent-badge {
-      display: inline-block; font-size: 0.68rem; font-weight: 600;
+      display: inline-block; font-size: 0.65rem; font-weight: 600;
       text-transform: uppercase; letter-spacing: 0.06em;
       padding: 2px 7px; border-radius: 999px; margin-bottom: 4px;
     }
@@ -213,18 +225,18 @@
     .intent-quiz      { background: #744210; color: #f6ad55; }
     .intent-course    { background: #1a365d; color: #63b3ed; }
 
-    /* XP toast */
+    /* XP toast on message */
     .xp-toast {
       display: inline-block; background: #276749; color: #68d391;
-      border-radius: 999px; padding: 2px 8px; font-size: 0.72rem;
+      border-radius: 999px; padding: 2px 8px; font-size: 0.7rem;
       font-weight: 600; margin-top: 4px;
     }
 
     /* Loading dots */
     .loading-dots {
-      display: flex; gap: 5px; padding: 12px 14px;
+      display: flex; gap: 5px; padding: 11px 14px;
       background: #1a202c; border: 1px solid #2d3748;
-      border-radius: 12px; border-bottom-left-radius: 4px; width: fit-content;
+      border-radius: 14px; border-bottom-left-radius: 4px; width: fit-content;
     }
     .loading-dots span {
       width: 7px; height: 7px; background: #4a5568;
@@ -239,133 +251,181 @@
 
     /* ── Input area ── */
     #input-area {
-      width: 100%; padding: 8px 16px 12px;
+      width: 100%; padding: 8px 12px 10px;
       border-top: 1px solid #2d3748;
       display: flex; flex-direction: column; gap: 6px; flex-shrink: 0;
+      background: #0f1117;
     }
     #editor-toggle { display: flex; align-items: center; gap: 8px; }
     #editor-toggle label { font-size: 0.78rem; color: #718096; cursor: pointer; user-select: none; }
     #code-editor-toggle {
-      appearance: none; width: 32px; height: 17px;
+      appearance: none; width: 32px; height: 18px;
       background: #2d3748; border-radius: 999px; cursor: pointer;
       position: relative; transition: background 0.2s; flex-shrink: 0;
     }
     #code-editor-toggle:checked { background: #3182ce; }
     #code-editor-toggle::after {
       content:''; position: absolute; top: 2px; left: 2px;
-      width: 13px; height: 13px; background: #e2e8f0;
+      width: 14px; height: 14px; background: #e2e8f0;
       border-radius: 50%; transition: left 0.2s;
     }
-    #code-editor-toggle:checked::after { left: 17px; }
+    #code-editor-toggle:checked::after { left: 16px; }
     #code-editor-panel { display: none; flex-direction: column; gap: 5px; }
     #code-editor-panel.visible { display: flex; }
     #code-editor-panel label { font-size: 0.78rem; color: #718096; }
     #code-input {
       background: #0d1117; border: 1px solid #2d3748; border-radius: 8px;
       color: #e2e8f0; font-family: "Fira Code", Consolas, monospace;
-      font-size: 0.86rem; padding: 9px 12px; resize: vertical;
-      min-height: 100px; max-height: 260px; outline: none;
+      font-size: 0.85rem; padding: 9px 12px; resize: vertical;
+      min-height: 90px; max-height: 200px; outline: none;
       tab-size: 4; transition: border-color 0.15s;
+      -webkit-text-size-adjust: 100%; /* prevent iOS zoom on focus */
     }
     #code-input:focus { border-color: #4299e1; }
     #code-input::placeholder { color: #4a5568; }
     #message-row { display: flex; gap: 8px; align-items: flex-end; }
     #message-input {
       flex: 1; background: #1a202c; border: 1px solid #2d3748;
-      border-radius: 10px; color: #e2e8f0; font-size: 0.93rem;
-      padding: 9px 13px; resize: none; min-height: 42px; max-height: 150px;
+      border-radius: 12px; color: #e2e8f0; font-size: 1rem; /* 16px prevents iOS zoom */
+      padding: 10px 14px; resize: none; min-height: 44px; max-height: 140px;
       line-height: 1.5; outline: none; transition: border-color 0.15s; font-family: inherit;
+      -webkit-text-size-adjust: 100%;
     }
     #message-input:focus { border-color: #4299e1; }
     #message-input::placeholder { color: #4a5568; }
     #send-btn {
-      background: #3182ce; color: #fff; border: none; border-radius: 10px;
-      padding: 9px 16px; font-size: 0.93rem; font-weight: 600;
+      background: #3182ce; color: #fff; border: none; border-radius: 12px;
+      padding: 0 18px; font-size: 0.93rem; font-weight: 600;
       cursor: pointer; transition: background 0.15s, opacity 0.15s;
-      white-space: nowrap; height: 42px;
+      white-space: nowrap; min-width: 64px; height: 44px; flex-shrink: 0;
     }
     #send-btn:hover:not(:disabled) { background: #2b6cb0; }
+    #send-btn:active:not(:disabled) { background: #2c5282; }
     #send-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
-    /* ── Progress panel ── */
-    #progress-panel { padding: 20px; overflow-y: auto; gap: 20px; }
-    .progress-card {
-      background: #1a202c; border: 1px solid #2d3748; border-radius: 12px; padding: 16px;
+    /* ── Bottom navigation (mobile) ── */
+    #bottom-nav {
+      display: none; /* shown on mobile only */
+      width: 100%; background: #0f1117;
+      border-top: 1px solid #2d3748; flex-shrink: 0;
+      padding-bottom: env(safe-area-inset-bottom);
     }
-    .progress-card h3 { color: #90cdf4; font-size: 0.95rem; margin-bottom: 12px; }
-    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .stat-box {
-      background: #0f1117; border: 1px solid #2d3748; border-radius: 8px;
-      padding: 10px 14px;
+    .bottom-nav-inner {
+      display: flex; justify-content: space-around; padding: 4px 0;
     }
-    .stat-box .val { font-size: 1.4rem; font-weight: 700; color: #63b3ed; }
-    .stat-box .key { font-size: 0.72rem; color: #718096; margin-top: 2px; }
+    .bnav-btn {
+      display: flex; flex-direction: column; align-items: center; gap: 2px;
+      background: transparent; border: none; color: #4a5568;
+      font-size: 0.6rem; cursor: pointer; padding: 6px 10px; border-radius: 8px;
+      min-width: 48px; transition: color 0.15s;
+    }
+    .bnav-btn .bnav-icon { font-size: 1.3rem; line-height: 1; }
+    .bnav-btn.active { color: #63b3ed; }
+    .bnav-btn:active { opacity: 0.7; }
+
+    /* ── Desktop nav tabs (hidden on mobile) ── */
+    #desktop-nav {
+      display: flex; gap: 4px; align-items: center;
+    }
+    .nav-tab {
+      background: transparent; border: 1px solid #2d3748; color: #718096;
+      border-radius: 8px; padding: 5px 12px; font-size: 0.8rem; cursor: pointer;
+      transition: all 0.15s; white-space: nowrap; height: 34px;
+    }
+    .nav-tab:hover { border-color: #4299e1; color: #90cdf4; }
+    .nav-tab.active { background: #2c5282; border-color: #4299e1; color: #90cdf4; }
+
+    /* ── Topic select (header) ── */
+    #topic-select {
+      background: #1a202c; border: 1px solid #2d3748; color: #e2e8f0;
+      border-radius: 8px; padding: 6px 8px; font-size: 0.8rem; cursor: pointer;
+      outline: none; max-width: 130px; height: 36px;
+    }
+    #topic-select:focus { border-color: #4299e1; }
+
+    /* ── Scrollable panels ── */
+    #courses-panel, #quiz-panel, #progress-panel, #pricing-panel {
+      overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 16px;
+      display: none; flex-direction: column; gap: 14px;
+    }
+    #courses-panel.active, #quiz-panel.active,
+    #progress-panel.active, #pricing-panel.active { display: flex; }
+    #courses-panel h3, #quiz-panel h3 { color: #90cdf4; font-size: 0.97rem; }
+
+    /* Progress cards */
+    .progress-card { background: #1a202c; border: 1px solid #2d3748; border-radius: 12px; padding: 14px; }
+    .progress-card h3 { color: #90cdf4; font-size: 0.93rem; margin-bottom: 10px; }
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .stat-box { background: #0f1117; border: 1px solid #2d3748; border-radius: 8px; padding: 10px 12px; }
+    .stat-box .val { font-size: 1.35rem; font-weight: 700; color: #63b3ed; }
+    .stat-box .key { font-size: 0.7rem; color: #718096; margin-top: 2px; }
     .topic-row {
       display: flex; justify-content: space-between; align-items: center;
-      padding: 6px 0; border-bottom: 1px solid #2d3748; font-size: 0.85rem;
+      padding: 6px 0; border-bottom: 1px solid #2d3748; font-size: 0.84rem;
+      flex-wrap: wrap; gap: 4px;
     }
     .topic-row:last-child { border-bottom: none; }
     .weak-dot { width: 8px; height: 8px; background: #fc8181; border-radius: 50%; flex-shrink: 0; }
     .ok-dot   { width: 8px; height: 8px; background: #68d391; border-radius: 50%; flex-shrink: 0; }
     .badge-chip {
       display: inline-block; background: #2d3748; border-radius: 999px;
-      padding: 3px 10px; font-size: 0.78rem; margin: 3px;
+      padding: 3px 10px; font-size: 0.76rem; margin: 3px;
     }
 
-    /* ── Quiz panel ── */
-    #quiz-panel { padding: 20px; overflow-y: auto; gap: 14px; }
-    #quiz-panel h3 { color: #90cdf4; font-size: 1rem; }
+    /* Quiz */
     #quiz-topic-select {
       background: #1a202c; border: 1px solid #2d3748; color: #e2e8f0;
-      border-radius: 8px; padding: 7px 12px; font-size: 0.88rem; outline: none; width: 100%;
+      border-radius: 8px; padding: 10px 12px; font-size: 0.9rem; outline: none; width: 100%;
+      height: 44px;
     }
     #quiz-topic-select:focus { border-color: #4299e1; }
     #start-quiz-btn {
       background: #3182ce; color: #fff; border: none; border-radius: 8px;
-      padding: 9px 20px; font-size: 0.9rem; font-weight: 600; cursor: pointer;
-      transition: background 0.15s;
+      padding: 0 20px; font-size: 0.9rem; font-weight: 600; cursor: pointer;
+      height: 44px; transition: background 0.15s;
     }
     #start-quiz-btn:hover { background: #2b6cb0; }
     #quiz-question-box {
-      background: #1a202c; border: 1px solid #2d3748; border-radius: 12px; padding: 18px;
-      display: none; flex-direction: column; gap: 12px;
+      background: #1a202c; border: 1px solid #2d3748; border-radius: 12px; padding: 16px;
+      display: none; flex-direction: column; gap: 10px;
     }
     #quiz-question-box.visible { display: flex; }
-    #quiz-q-text { font-size: 0.95rem; line-height: 1.6; color: #e2e8f0; }
+    #quiz-q-text { font-size: 0.93rem; line-height: 1.6; color: #e2e8f0; }
     .quiz-option {
       background: #0f1117; border: 1px solid #2d3748; color: #e2e8f0;
-      border-radius: 8px; padding: 10px 14px; font-size: 0.88rem;
+      border-radius: 10px; padding: 12px 14px; font-size: 0.88rem;
       cursor: pointer; transition: all 0.15s; text-align: left; width: 100%;
+      min-height: 44px;
     }
     .quiz-option:hover:not(:disabled) { border-color: #4299e1; background: #1a2a3a; }
+    .quiz-option:active:not(:disabled) { background: #1a2a3a; }
     .quiz-option.correct { border-color: #68d391; background: #1a3a26; color: #68d391; }
     .quiz-option.wrong   { border-color: #fc8181; background: #3b1a1a; color: #fc8181; }
     #quiz-result-box {
-      background: #1a202c; border: 1px solid #2d3748; border-radius: 12px; padding: 16px;
+      background: #1a202c; border: 1px solid #2d3748; border-radius: 12px; padding: 14px;
       display: none; font-size: 0.88rem; line-height: 1.65;
     }
     #quiz-result-box.visible { display: block; }
     #next-quiz-btn {
       background: #276749; color: #68d391; border: none; border-radius: 8px;
-      padding: 8px 18px; font-size: 0.88rem; font-weight: 600; cursor: pointer;
-      display: none; transition: background 0.15s;
+      padding: 0 18px; font-size: 0.88rem; font-weight: 600; cursor: pointer;
+      display: none; height: 44px; transition: background 0.15s;
     }
     #next-quiz-btn:hover { background: #2f855a; }
-    #next-quiz-btn.visible { display: inline-block; }
+    #next-quiz-btn.visible { display: inline-flex; align-items: center; }
 
-    /* ── Courses panel ── */
-    #courses-panel { padding: 20px; overflow-y: auto; gap: 14px; }
-    #courses-panel h3 { color: #90cdf4; font-size: 1rem; }
+    /* Courses */
     .course-card {
       background: #1a202c; border: 1px solid #2d3748; border-radius: 12px;
-      padding: 14px 16px; display: flex; justify-content: space-between; align-items: center;
-      gap: 12px;
+      padding: 14px; display: flex; justify-content: space-between;
+      align-items: flex-start; gap: 12px; flex-wrap: wrap;
     }
+    .course-card .course-info { flex: 1; min-width: 0; }
     .course-card .course-info h4 { font-size: 0.9rem; color: #e2e8f0; margin-bottom: 4px; }
     .course-card .course-info p  { font-size: 0.78rem; color: #718096; }
-    .course-card .course-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+    .course-card .course-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; }
     .level-pill {
-      font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+      font-size: 0.68rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
       padding: 2px 8px; border-radius: 999px;
     }
     .level-beginner     { background: #276749; color: #68d391; }
@@ -373,131 +433,127 @@
     .level-advanced     { background: #742a2a; color: #fc8181; }
     .enrol-btn {
       background: #2c5282; color: #90cdf4; border: 1px solid #4299e1;
-      border-radius: 8px; padding: 6px 14px; font-size: 0.8rem; font-weight: 600;
-      cursor: pointer; transition: background 0.15s; white-space: nowrap;
+      border-radius: 8px; padding: 8px 14px; font-size: 0.82rem; font-weight: 600;
+      cursor: pointer; transition: background 0.15s; white-space: nowrap; min-height: 36px;
     }
     .enrol-btn:hover { background: #2a4a7f; }
     #active-course-bar {
       background: #1a365d; border: 1px solid #2c5282; border-radius: 10px;
-      padding: 12px 16px; display: none; gap: 12px; align-items: center;
+      padding: 12px 14px; display: none; gap: 10px; align-items: center; flex-wrap: wrap;
     }
     #active-course-bar.visible { display: flex; }
-    #active-course-bar .course-title { flex: 1; font-size: 0.88rem; color: #90cdf4; }
-    #active-course-bar .step-info { font-size: 0.78rem; color: #718096; }
+    #active-course-bar .course-title { flex: 1; font-size: 0.86rem; color: #90cdf4; min-width: 0; }
+    #active-course-bar .step-info { font-size: 0.76rem; color: #718096; }
     #continue-course-btn {
       background: #3182ce; color: #fff; border: none; border-radius: 8px;
-      padding: 7px 14px; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+      padding: 8px 14px; font-size: 0.82rem; font-weight: 600; cursor: pointer; min-height: 36px;
     }
-
-    /* Scrollbar */
-    ::-webkit-scrollbar { width: 5px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #2d3748; border-radius: 3px; }
 
     /* ── Pricing panel ── */
-    #pricing-panel { padding: 24px 20px; overflow-y: auto; gap: 20px; }
-    .pricing-header { text-align: center; margin-bottom: 8px; }
-    .pricing-header h2 { font-size: 1.3rem; color: #e2e8f0; font-weight: 700; }
-    .pricing-header p  { font-size: 0.85rem; color: #718096; margin-top: 4px; }
-
-    .pricing-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-      gap: 16px;
-    }
-
+    .pricing-header { text-align: center; }
+    .pricing-header h2 { font-size: 1.2rem; color: #e2e8f0; font-weight: 700; }
+    .pricing-header p  { font-size: 0.83rem; color: #718096; margin-top: 4px; }
+    .pricing-grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
     .tier-card {
-      background: #1a202c;
-      border: 1px solid #2d3748;
-      border-radius: 16px;
-      padding: 24px 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-      position: relative;
-      transition: border-color 0.2s, transform 0.2s;
+      background: #1a202c; border: 1px solid #2d3748; border-radius: 14px;
+      padding: 20px 16px; display: flex; flex-direction: column; gap: 14px;
+      position: relative; transition: transform 0.2s;
     }
-    .tier-card:hover { transform: translateY(-2px); }
-
-    /* Tier colour accents */
     .tier-1 { border-top: 3px solid #4299e1; }
     .tier-2 { border-top: 3px solid #9f7aea; }
     .tier-3 { border-top: 3px solid #f6ad55; }
-    .tier-1:hover { border-color: #4299e1; }
-    .tier-2:hover { border-color: #9f7aea; }
-    .tier-3:hover { border-color: #f6ad55; }
-
     .tier-badge {
-      display: inline-block;
-      font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
-      letter-spacing: 0.1em; padding: 3px 10px; border-radius: 999px;
-      width: fit-content;
+      display: inline-block; font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.1em; padding: 3px 10px; border-radius: 999px; width: fit-content;
     }
     .tier-1 .tier-badge { background: #1a365d; color: #63b3ed; }
     .tier-2 .tier-badge { background: #322659; color: #b794f4; }
     .tier-3 .tier-badge { background: #744210; color: #f6ad55; }
-
     .popular-pill {
-      position: absolute; top: -12px; right: 16px;
+      position: absolute; top: -11px; right: 14px;
       background: #9f7aea; color: #fff;
-      font-size: 0.68rem; font-weight: 700; text-transform: uppercase;
-      padding: 3px 10px; border-radius: 999px; letter-spacing: 0.08em;
+      font-size: 0.65rem; font-weight: 700; text-transform: uppercase;
+      padding: 3px 10px; border-radius: 999px;
     }
-
-    .tier-name  { font-size: 1.1rem; font-weight: 700; color: #e2e8f0; }
+    .tier-name  { font-size: 1.05rem; font-weight: 700; color: #e2e8f0; }
     .tier-price {
       display: flex; align-items: baseline; gap: 4px;
-      font-size: 2rem; font-weight: 800; color: #e2e8f0;
-      line-height: 1;
+      font-size: 1.9rem; font-weight: 800; color: #e2e8f0; line-height: 1;
     }
-    .tier-price .currency { font-size: 1.1rem; font-weight: 600; color: #718096; }
-    .tier-price .period   { font-size: 0.78rem; font-weight: 400; color: #718096; }
+    .tier-price .currency { font-size: 1rem; font-weight: 600; color: #718096; }
+    .tier-price .period   { font-size: 0.76rem; font-weight: 400; color: #718096; }
     .tier-desc { font-size: 0.8rem; color: #718096; line-height: 1.5; }
-
     .tier-features { list-style: none; display: flex; flex-direction: column; gap: 8px; flex: 1; }
     .tier-features li {
       display: flex; align-items: flex-start; gap: 8px;
-      font-size: 0.84rem; color: #a0aec0; line-height: 1.4;
+      font-size: 0.83rem; color: #a0aec0; line-height: 1.4;
     }
-    .tier-features li .feat-icon { flex-shrink: 0; font-size: 0.9rem; margin-top: 1px; }
-
+    .tier-features li .feat-icon { flex-shrink: 0; font-size: 0.88rem; margin-top: 1px; }
     .tier-cta {
-      width: 100%; padding: 10px; border-radius: 10px;
+      width: 100%; padding: 12px; border-radius: 10px;
       font-size: 0.9rem; font-weight: 700; cursor: pointer;
-      border: none; transition: opacity 0.15s, transform 0.1s;
-      letter-spacing: 0.02em;
+      border: none; letter-spacing: 0.02em; min-height: 44px;
     }
-    .tier-cta:hover:not(:disabled) { opacity: 0.88; transform: scale(0.99); }
     .tier-1 .tier-cta { background: #2b6cb0; color: #fff; }
     .tier-2 .tier-cta { background: #6b46c1; color: #fff; }
     .tier-3 .tier-cta { background: #c05621; color: #fff; }
-    .tier-cta.coming-soon {
-      background: #2d3748; color: #4a5568;
-      cursor: default; border: 1px solid #4a5568;
-    }
-
-    .tier-note {
-      text-align: center; font-size: 0.75rem; color: #4a5568;
-      padding-top: 4px;
-    }
-
+    .tier-cta.coming-soon { background: #2d3748; color: #4a5568; cursor: default; border: 1px solid #4a5568; }
+    .tier-note { text-align: center; font-size: 0.73rem; color: #4a5568; }
     .free-banner {
-      background: #1a202c; border: 1px solid #2d3748;
-      border-radius: 12px; padding: 14px 18px;
-      display: flex; align-items: center; justify-content: space-between;
-      gap: 12px; flex-wrap: wrap;
+      background: #1a202c; border: 1px solid #2d3748; border-radius: 10px;
+      padding: 12px 14px; display: flex; align-items: center;
+      justify-content: space-between; gap: 10px; flex-wrap: wrap;
     }
-    .free-banner .free-text { font-size: 0.88rem; color: #a0aec0; }
+    .free-banner .free-text { font-size: 0.84rem; color: #a0aec0; }
     .free-banner .free-text strong { color: #68d391; }
     .free-banner .free-pill {
       background: #276749; color: #68d391;
-      font-size: 0.75rem; font-weight: 700; padding: 3px 12px;
-      border-radius: 999px; white-space: nowrap;
+      font-size: 0.73rem; font-weight: 700; padding: 3px 12px; border-radius: 999px;
+    }
+    .coming-soon-overlay { text-align: center; padding: 5px 0 0; font-size: 0.7rem; color: #4a5568; }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2d3748; border-radius: 3px; }
+
+    /* ── Responsive breakpoints ── */
+
+    /* Mobile: < 640px — show bottom nav, hide desktop nav, hide sidebar by default */
+    @media (max-width: 639px) {
+      #desktop-nav { display: none; }
+      #topic-select { display: none; } /* in header; available inside sidebar */
+      #bottom-nav { display: block; }
+      .message { max-width: 94%; }
+      #badge-row { display: none; }
+      .pricing-grid { grid-template-columns: 1fr; }
     }
 
-    .coming-soon-overlay {
-      text-align: center; padding: 6px 0 2px;
-      font-size: 0.72rem; color: #4a5568; letter-spacing: 0.04em;
+    /* Tablet & Desktop: >= 640px — show desktop nav, hide bottom nav */
+    @media (min-width: 640px) {
+      #bottom-nav { display: none; }
+      #desktop-nav { display: flex; }
+      #menu-btn { display: none; } /* sidebar always accessible via tabs on desktop */
+      /* Inline sidebar on desktop */
+      #sidebar-overlay { display: none !important; }
+      #sidebar {
+        position: relative; transform: none !important;
+        width: 220px; flex-shrink: 0; border-right: 1px solid #2d3748;
+        padding: 12px; z-index: auto;
+      }
+      #sidebar-close { display: none; }
+      .sidebar-header { display: none; }
+      #app-body { flex-direction: row; }
+      .pricing-grid { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+      #chat-container { padding: 16px 20px; }
+    }
+
+    /* Large desktop */
+    @media (min-width: 1024px) {
+      header, #xp-bar-wrap, #app-body {
+        max-width: 1100px; align-self: center; width: 100%;
+      }
+      body { align-items: center; }
     }
   </style>
 </head>
@@ -505,42 +561,61 @@
 
   <!-- ── Header ── -->
   <header>
-    <div>
+    <div class="header-left">
+      <button id="menu-btn" aria-label="Open menu">☰</button>
       <div class="logo">🐍 MyPy Tutor</div>
-      <div class="subtitle">Your personalised Python learning companion</div>
-    </div>
-    <div class="header-right">
-      <div class="nav-tabs">
+      <div id="desktop-nav">
         <button class="nav-tab active" data-panel="chat">💬 Chat</button>
         <button class="nav-tab" data-panel="courses">📚 Courses</button>
         <button class="nav-tab" data-panel="quiz">🏆 Quiz</button>
         <button class="nav-tab" data-panel="progress">📊 Progress</button>
         <button class="nav-tab" data-panel="pricing">💎 Plans</button>
       </div>
-      <select id="level-select" title="Your level" aria-label="Select your level">
-        <option value="beginner">🟢 Beginner</option>
-        <option value="intermediate">🟡 Intermediate</option>
-        <option value="advanced">🔴 Advanced</option>
-      </select>
-      <select id="topic-select" aria-label="Select a topic">
+    </div>
+    <div class="header-right">
+      <select id="topic-select" aria-label="Browse topics">
         <option value="">— Topics —</option>
       </select>
-      <button id="clear-btn" title="Clear chat">Clear</button>
+      <select id="level-select" aria-label="Your level">
+        <option value="beginner">🟢 Beginner</option>
+        <option value="intermediate">🟡 Mid</option>
+        <option value="advanced">🔴 Advanced</option>
+      </select>
+      <button id="clear-btn" title="Clear chat">✕ Clear</button>
     </div>
   </header>
 
   <!-- ── XP bar ── -->
   <div id="xp-bar-wrap">
     <span id="xp-label">XP: 0 · Beginner</span>
-    <div id="xp-bar-bg"><div id="xp-bar-fill" style="width:0%"></div></div>
+    <div id="xp-bar-bg"><div id="xp-bar-fill"></div></div>
     <span id="badge-row"></span>
   </div>
 
-  <!-- ── Main layout ── -->
-  <div id="main-layout">
+  <!-- ── App body ── -->
+  <div id="app-body">
 
-    <!-- Sidebar -->
-    <div id="sidebar">
+    <!-- Sidebar overlay (mobile tap-to-close) -->
+    <div id="sidebar-overlay"></div>
+
+    <!-- Sidebar drawer -->
+    <div id="sidebar" role="navigation" aria-label="Quick actions">
+      <div class="sidebar-header">
+        <span class="logo">🐍 MyPy Tutor</span>
+        <button id="sidebar-close" aria-label="Close menu">✕</button>
+      </div>
+
+      <!-- Mobile-only topic select inside sidebar -->
+      <div class="sidebar-section" id="sidebar-topic-section">
+        <h4>Browse Topics</h4>
+        <select id="topic-select-mobile" aria-label="Browse topics" style="
+          width:100%; background:#1a202c; border:1px solid #2d3748; color:#e2e8f0;
+          border-radius:8px; padding:9px 12px; font-size:0.86rem; outline:none; height:44px;
+        ">
+          <option value="">— Pick a topic —</option>
+        </select>
+      </div>
+
       <div class="sidebar-section">
         <h4>Quick Ask</h4>
         <button class="sidebar-btn" data-ask="Explain Python variables for me">📦 Variables</button>
@@ -551,50 +626,50 @@
         <button class="sidebar-btn" data-ask="Explain data structures in Python">📐 Data Structures</button>
         <button class="sidebar-btn" data-ask="Explain algorithms in Python">🔍 Algorithms</button>
       </div>
+
       <div class="sidebar-section">
         <h4>Knowledge Gaps</h4>
         <div id="gap-list"><span style="font-size:0.78rem;color:#4a5568">No gaps detected yet.</span></div>
       </div>
+
       <div class="sidebar-section">
         <h4>Recent Topics</h4>
         <div id="recent-topics"><span style="font-size:0.78rem;color:#4a5568">None yet.</span></div>
       </div>
     </div>
 
-    <!-- Panels -->
+    <!-- ── Panels ── -->
     <div id="panels">
 
-      <!-- ── CHAT PANEL ── -->
+      <!-- CHAT -->
       <div id="chat-panel" class="panel active">
         <div id="chat-container">
           <div class="welcome">
-            <h2>Welcome to MyPy Tutor v2 🐍</h2>
+            <h2>Welcome to MyPy Tutor 🐍</h2>
             <p>
               Ask me to <strong>explain a concept</strong>, <strong>debug your code</strong>,
               <strong>generate a snippet</strong>, or <strong>give you an exercise</strong>.<br/>
-              Use <strong>Courses</strong> for structured learning, <strong>Quiz</strong> to test yourself,
-              and <strong>Progress</strong> to track your journey.<br/>
-              Set your <strong>level</strong> in the top-right for responses tailored to you.
+              Use <strong>Courses</strong> for structured learning and <strong>Quiz</strong> to test yourself.
             </p>
           </div>
         </div>
         <div id="input-area">
           <div id="editor-toggle">
             <input type="checkbox" id="code-editor-toggle" aria-label="Toggle code editor" />
-            <label for="code-editor-toggle">📝 Paste code for debugging</label>
+            <label for="code-editor-toggle">📝 Paste code</label>
           </div>
           <div id="code-editor-panel">
             <label for="code-input">Your Python code:</label>
-            <textarea id="code-input" placeholder="# Paste your Python code here..." spellcheck="false" autocomplete="off"></textarea>
+            <textarea id="code-input" placeholder="# Paste your Python code here..." spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
           </div>
           <div id="message-row">
-            <textarea id="message-input" placeholder="Ask a Python question…" rows="1" aria-label="Message input"></textarea>
-            <button id="send-btn" aria-label="Send message">Send</button>
+            <textarea id="message-input" placeholder="Ask a Python question…" rows="1" aria-label="Message input" autocorrect="off" autocapitalize="sentences"></textarea>
+            <button id="send-btn" aria-label="Send">Send</button>
           </div>
         </div>
       </div>
 
-      <!-- ── COURSES PANEL ── -->
+      <!-- COURSES -->
       <div id="courses-panel" class="panel">
         <h3>📚 Learning Paths</h3>
         <div id="active-course-bar">
@@ -605,10 +680,10 @@
         <div id="course-list"></div>
       </div>
 
-      <!-- ── QUIZ PANEL ── -->
+      <!-- QUIZ -->
       <div id="quiz-panel" class="panel">
         <h3>🏆 Test Your Knowledge</h3>
-        <p style="font-size:0.82rem;color:#718096">Select a topic and take a quiz. Your score tracks your knowledge gaps.</p>
+        <p style="font-size:0.82rem;color:#718096">Pick a topic and take a quiz. Scores track your knowledge gaps.</p>
         <select id="quiz-topic-select" aria-label="Quiz topic"></select>
         <button id="start-quiz-btn">Generate Question</button>
         <div id="quiz-question-box">
@@ -619,14 +694,14 @@
         <button id="next-quiz-btn">Next Question →</button>
       </div>
 
-      <!-- ── PROGRESS PANEL ── -->
+      <!-- PROGRESS -->
       <div id="progress-panel" class="panel">
         <div class="progress-card">
           <h3>📊 Your Stats</h3>
           <div class="stat-grid">
             <div class="stat-box"><div class="val" id="stat-xp">0</div><div class="key">Total XP</div></div>
             <div class="stat-box"><div class="val" id="stat-level">Beginner</div><div class="key">Level</div></div>
-            <div class="stat-box"><div class="val" id="stat-topics">0</div><div class="key">Topics Explored</div></div>
+            <div class="stat-box"><div class="val" id="stat-topics">0</div><div class="key">Topics</div></div>
             <div class="stat-box"><div class="val" id="stat-projects">0</div><div class="key">Courses Done</div></div>
           </div>
         </div>
@@ -640,42 +715,29 @@
         </div>
       </div>
 
-      <!-- ── PRICING PANEL ── -->
+      <!-- PRICING -->
       <div id="pricing-panel" class="panel">
-
         <div class="pricing-header">
-          <h2>💎 Choose Your Learning Plan</h2>
-          <p>Start free. Upgrade when you're ready to go further.</p>
+          <h2>💎 Choose Your Plan</h2>
+          <p>Start free. Upgrade when you're ready.</p>
         </div>
-
-        <!-- Free tier banner -->
         <div class="free-banner">
-          <div class="free-text">
-            You're currently on the <strong>Free Plan</strong> — full chat, courses, quizzes and progress tracking included.
-          </div>
+          <div class="free-text">You're on the <strong>Free Plan</strong> — full chat, courses, quizzes and progress included.</div>
           <span class="free-pill">✓ Active</span>
         </div>
-
-        <!-- Paid tier cards -->
         <div class="pricing-grid">
-
-          <!-- Tier 1 -->
           <div class="tier-card tier-1">
             <span class="tier-badge">Tier 1</span>
             <div>
               <div class="tier-name">Pro Learner</div>
-              <div class="tier-price">
-                <span class="currency">$</span>9<span class="period">/month</span>
-              </div>
-              <div class="tier-desc" style="margin-top:6px">
-                A personalised learning experience built around your goals and pace.
-              </div>
+              <div class="tier-price"><span class="currency">$</span>9<span class="period">/month</span></div>
+              <div class="tier-desc" style="margin-top:6px">Personalised learning built around your goals and pace.</div>
             </div>
             <ul class="tier-features">
-              <li><span class="feat-icon">🗺️</span> Personalised curriculum tailored to your skill gaps</li>
-              <li><span class="feat-icon">📊</span> Advanced progress tracking with detailed analytics</li>
-              <li><span class="feat-icon">🚀</span> Project-based learning paths with real-world tasks</li>
-              <li><span class="feat-icon">🔁</span> Unlimited course resets and retakes</li>
+              <li><span class="feat-icon">🗺️</span> Personalised curriculum</li>
+              <li><span class="feat-icon">📊</span> Advanced progress analytics</li>
+              <li><span class="feat-icon">🚀</span> Project-based learning paths</li>
+              <li><span class="feat-icon">🔁</span> Unlimited course resets</li>
               <li><span class="feat-icon">🤖</span> Priority AI responses</li>
             </ul>
             <div>
@@ -683,25 +745,19 @@
               <div class="coming-soon-overlay">Launching Q3 2025</div>
             </div>
           </div>
-
-          <!-- Tier 2 -->
           <div class="tier-card tier-2" style="position:relative">
             <div class="popular-pill">Most Popular</div>
             <span class="tier-badge">Tier 2</span>
             <div>
               <div class="tier-name">Career Builder</div>
-              <div class="tier-price">
-                <span class="currency">$</span>19<span class="period">/month</span>
-              </div>
-              <div class="tier-desc" style="margin-top:6px">
-                Everything in Pro, plus the credentials and portfolio to land your first Python role.
-              </div>
+              <div class="tier-price"><span class="currency">$</span>19<span class="period">/month</span></div>
+              <div class="tier-desc" style="margin-top:6px">Credentials and portfolio to land your first Python role.</div>
             </div>
             <ul class="tier-features">
-              <li><span class="feat-icon">🏅</span> Verified course certificates (shareable PDF)</li>
-              <li><span class="feat-icon">💼</span> Auto-generated portfolio from your projects</li>
-              <li><span class="feat-icon">🗓️</span> Job-readiness roadmap with milestone tracking</li>
-              <li><span class="feat-icon">🔗</span> LinkedIn-ready profile export</li>
+              <li><span class="feat-icon">🏅</span> Verified certificates (PDF)</li>
+              <li><span class="feat-icon">💼</span> Auto-generated portfolio</li>
+              <li><span class="feat-icon">🗓️</span> Job-readiness roadmap</li>
+              <li><span class="feat-icon">🔗</span> LinkedIn-ready export</li>
               <li><span class="feat-icon">✅</span> Everything in Tier 1</li>
             </ul>
             <div>
@@ -709,24 +765,18 @@
               <div class="coming-soon-overlay">Launching Q3 2025</div>
             </div>
           </div>
-
-          <!-- Tier 3 -->
           <div class="tier-card tier-3">
             <span class="tier-badge">Tier 3</span>
             <div>
               <div class="tier-name">Elite</div>
-              <div class="tier-price">
-                <span class="currency">$</span>39<span class="period">/month</span>
-              </div>
-              <div class="tier-desc" style="margin-top:6px">
-                The full package — human connection, expert mentorship, and live learning.
-              </div>
+              <div class="tier-price"><span class="currency">$</span>39<span class="period">/month</span></div>
+              <div class="tier-desc" style="margin-top:6px">Human connection, mentorship, and live learning.</div>
             </div>
             <ul class="tier-features">
-              <li><span class="feat-icon">🌐</span> Access to the MyPy Tutor community forum</li>
-              <li><span class="feat-icon">👨‍💻</span> 1-on-1 mentorship sessions with Python engineers</li>
-              <li><span class="feat-icon">🎙️</span> Weekly live coding sessions and Q&A</li>
-              <li><span class="feat-icon">⚡</span> Early access to new features</li>
+              <li><span class="feat-icon">🌐</span> Community forum access</li>
+              <li><span class="feat-icon">👨‍💻</span> 1-on-1 mentorship sessions</li>
+              <li><span class="feat-icon">🎙️</span> Weekly live coding sessions</li>
+              <li><span class="feat-icon">⚡</span> Early feature access</li>
               <li><span class="feat-icon">✅</span> Everything in Tier 1 & 2</li>
             </ul>
             <div>
@@ -734,36 +784,35 @@
               <div class="coming-soon-overlay">Launching Q4 2025</div>
             </div>
           </div>
-
-        </div><!-- /pricing-grid -->
-
-        <div class="tier-note" style="padding: 8px 0 4px">
-          All prices in USD. Cancel anytime. No hidden fees.<br/>
-          Early access waitlist opens soon — keep learning to earn a founding member discount.
         </div>
-
-      </div><!-- /pricing-panel -->
+        <div class="tier-note">All prices in USD. Cancel anytime. No hidden fees.</div>
+      </div>
 
     </div><!-- /panels -->
-  </div><!-- /main-layout -->
+  </div><!-- /app-body -->
+
+  <!-- ── Bottom navigation (mobile only) ── -->
+  <nav id="bottom-nav" aria-label="Main navigation">
+    <div class="bottom-nav-inner">
+      <button class="bnav-btn active" data-panel="chat"><span class="bnav-icon">💬</span>Chat</button>
+      <button class="bnav-btn" data-panel="courses"><span class="bnav-icon">📚</span>Courses</button>
+      <button class="bnav-btn" data-panel="quiz"><span class="bnav-icon">🏆</span>Quiz</button>
+      <button class="bnav-btn" data-panel="progress"><span class="bnav-icon">📊</span>Progress</button>
+      <button class="bnav-btn" data-panel="pricing"><span class="bnav-icon">💎</span>Plans</button>
+    </div>
+  </nav>
 
   <script>
-    // ─────────────────────────────────────────────────────────────────────────
-    // Config
-    // ─────────────────────────────────────────────────────────────────────────
-    const LEARNER_ID   = 'default';
-    const STORAGE_KEY  = 'mypy_tutor_history_v2';
-    const LEVEL_KEY    = 'mypy_tutor_level';
+    // ── Config ────────────────────────────────────────────────────────────────
+    const LEARNER_ID  = 'default';
+    const STORAGE_KEY = 'mypy_tutor_history_v2';
+    const LEVEL_KEY   = 'mypy_tutor_level';
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // State
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── State ─────────────────────────────────────────────────────────────────
     let history = [];
-    let currentQuiz = { topic: '', question: '', options: [], answer: null };
+    let currentQuiz = { topic: '', question: '', options: [] };
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // DOM refs
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── DOM refs ──────────────────────────────────────────────────────────────
     const chatContainer    = document.getElementById('chat-container');
     const messageInput     = document.getElementById('message-input');
     const sendBtn          = document.getElementById('send-btn');
@@ -778,10 +827,10 @@
     const badgeRow         = document.getElementById('badge-row');
     const gapList          = document.getElementById('gap-list');
     const recentTopics     = document.getElementById('recent-topics');
+    const sidebar          = document.getElementById('sidebar');
+    const sidebarOverlay   = document.getElementById('sidebar-overlay');
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // marked.js setup (identical to original)
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── marked.js ─────────────────────────────────────────────────────────────
     marked.setOptions({ breaks: true, gfm: true });
     const renderer = new marked.Renderer();
     renderer.code = function(code, language) {
@@ -808,66 +857,79 @@
       });
     });
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Panel navigation
-    // ─────────────────────────────────────────────────────────────────────────
-    document.querySelectorAll('.nav-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-        tab.classList.add('active');
-        const panelId = tab.dataset.panel + '-panel';
-        document.getElementById(panelId).classList.add('active');
-        if (tab.dataset.panel === 'progress') refreshProgress();
-        if (tab.dataset.panel === 'courses')  refreshCourses();
-      });
+    // ── Sidebar (mobile drawer) ───────────────────────────────────────────────
+    function openSidebar() {
+      sidebar.classList.add('open');
+      sidebarOverlay.classList.add('open');
+      document.body.style.overflow = 'hidden';
+    }
+    function closeSidebar() {
+      sidebar.classList.remove('open');
+      sidebarOverlay.classList.remove('open');
+      document.body.style.overflow = '';
+    }
+    document.getElementById('menu-btn').addEventListener('click', openSidebar);
+    document.getElementById('sidebar-close').addEventListener('click', closeSidebar);
+    sidebarOverlay.addEventListener('click', closeSidebar);
+
+    // ── Panel switching ───────────────────────────────────────────────────────
+    function switchPanel(name) {
+      // Desktop nav tabs
+      document.querySelectorAll('.nav-tab').forEach(t =>
+        t.classList.toggle('active', t.dataset.panel === name));
+      // Mobile bottom nav
+      document.querySelectorAll('.bnav-btn').forEach(t =>
+        t.classList.toggle('active', t.dataset.panel === name));
+      // Panels
+      document.querySelectorAll('.panel').forEach(p =>
+        p.classList.toggle('active', p.id === name + '-panel'));
+
+      closeSidebar();
+      if (name === 'progress') refreshProgress();
+      if (name === 'courses')  refreshCourses();
+    }
+
+    document.querySelectorAll('.nav-tab, .bnav-btn').forEach(btn => {
+      btn.addEventListener('click', () => switchPanel(btn.dataset.panel));
     });
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Level selector
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── Level selector ────────────────────────────────────────────────────────
     levelSelect.value = localStorage.getItem(LEVEL_KEY) || 'beginner';
-    levelSelect.addEventListener('change', () => {
-      localStorage.setItem(LEVEL_KEY, levelSelect.value);
-    });
+    levelSelect.addEventListener('change', () => localStorage.setItem(LEVEL_KEY, levelSelect.value));
     function getLevel() { return levelSelect.value; }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Topics — loaded from /topics (original behaviour)
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── Topics ────────────────────────────────────────────────────────────────
     async function loadTopics() {
       try {
-        const res = await fetch('/topics');
+        const res  = await fetch('/topics');
         const data = await res.json();
         data.topics.forEach(t => {
+          // Header select (desktop)
           const o1 = document.createElement('option');
           o1.value = t; o1.textContent = t;
           topicSelect.appendChild(o1);
-
-          const o2 = document.createElement('option');
-          o2.value = t; o2.textContent = t;
-          document.getElementById('quiz-topic-select').appendChild(o2);
+          // Sidebar select (mobile)
+          const o2 = o1.cloneNode(true);
+          document.getElementById('topic-select-mobile').appendChild(o2);
+          // Quiz select
+          const o3 = o1.cloneNode(true);
+          document.getElementById('quiz-topic-select').appendChild(o3);
         });
       } catch (_) {}
     }
 
-    topicSelect.addEventListener('change', () => {
-      const topic = topicSelect.value;
-      if (!topic) return;
-      messageInput.value = `Explain ${topic} in Python`;
-      topicSelect.value = '';
+    function handleTopicSelect(value) {
+      if (!value) return;
+      messageInput.value = `Explain ${value} in Python`;
       switchPanel('chat');
-      messageInput.focus();
+      setTimeout(() => messageInput.focus(), 50);
+    }
+    topicSelect.addEventListener('change', () => { handleTopicSelect(topicSelect.value); topicSelect.value = ''; });
+    document.getElementById('topic-select-mobile').addEventListener('change', e => {
+      handleTopicSelect(e.target.value); e.target.value = '';
     });
 
-    function switchPanel(name) {
-      document.querySelectorAll('.nav-tab').forEach(t => t.classList.toggle('active', t.dataset.panel === name));
-      document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === name + '-panel'));
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Code editor toggle (original behaviour)
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── Code editor toggle ────────────────────────────────────────────────────
     codeEditorToggle.addEventListener('change', () => {
       if (codeEditorToggle.checked) { codeEditorPanel.classList.add('visible'); codeInput.focus(); }
       else { codeEditorPanel.classList.remove('visible'); codeInput.value = ''; }
@@ -881,32 +943,25 @@
       }
     });
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Sidebar quick-ask buttons
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── Sidebar quick-ask ─────────────────────────────────────────────────────
     document.querySelectorAll('.sidebar-btn[data-ask]').forEach(btn => {
       btn.addEventListener('click', () => {
         messageInput.value = btn.dataset.ask;
         switchPanel('chat');
-        messageInput.focus();
+        setTimeout(() => messageInput.focus(), 50);
       });
     });
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // XP bar updater
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── XP bar ────────────────────────────────────────────────────────────────
     function updateXPBar(xp, level, badges) {
       const thresholds = { beginner: 200, intermediate: 500, advanced: 9999 };
       const max = thresholds[level] || 200;
-      const pct = Math.min((xp / max) * 100, 100);
-      xpBarFill.style.width = pct + '%';
+      xpBarFill.style.width = Math.min((xp / max) * 100, 100) + '%';
       xpLabel.textContent = `XP: ${xp} · ${level.charAt(0).toUpperCase()+level.slice(1)}`;
       if (badges && badges.length) badgeRow.textContent = badges.slice(-3).join(' ');
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Refresh sidebar gaps & recent topics from progress API
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── Refresh sidebar ───────────────────────────────────────────────────────
     async function refreshSidebar() {
       try {
         const res = await fetch(`/progress/${LEARNER_ID}`);
@@ -914,23 +969,20 @@
         const p = await res.json();
         updateXPBar(p.xp, p.level, p.badges);
 
-        // Gaps
         if (p.knowledge_gaps.length) {
           gapList.innerHTML = p.knowledge_gaps.map(g =>
-            `<span class="gap-tag" title="Tap to practice" style="cursor:pointer" data-gap="${g}">${g}</span>`
-          ).join('');
+            `<span class="gap-tag" data-gap="${g}">${g}</span>`).join('');
           gapList.querySelectorAll('[data-gap]').forEach(el => {
             el.addEventListener('click', () => {
               messageInput.value = `I need help understanding ${el.dataset.gap}`;
               switchPanel('chat');
-              messageInput.focus();
+              setTimeout(() => messageInput.focus(), 50);
             });
           });
         } else {
           gapList.innerHTML = '<span style="font-size:0.78rem;color:#4a5568">No gaps detected yet.</span>';
         }
 
-        // Recent topics
         if (p.topics_seen.length) {
           recentTopics.innerHTML = p.topics_seen.slice(-5).reverse().map(t =>
             `<span class="badge-chip" style="cursor:pointer;display:block;margin-bottom:3px" data-topic="${t}">${t}</span>`
@@ -939,22 +991,19 @@
             el.addEventListener('click', () => {
               messageInput.value = `Explain ${el.dataset.topic} in Python`;
               switchPanel('chat');
-              messageInput.focus();
+              setTimeout(() => messageInput.focus(), 50);
             });
           });
         }
       } catch (_) {}
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Progress panel
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── Progress panel ────────────────────────────────────────────────────────
     async function refreshProgress() {
       try {
         const res = await fetch(`/progress/${LEARNER_ID}`);
         if (!res.ok) return;
         const p = await res.json();
-
         document.getElementById('stat-xp').textContent = p.xp;
         document.getElementById('stat-level').textContent = p.level.charAt(0).toUpperCase()+p.level.slice(1);
         document.getElementById('stat-topics').textContent = p.topics_seen.length;
@@ -970,23 +1019,20 @@
           tpl.innerHTML = Object.values(p.topic_progress).map(tp => `
             <div class="topic-row">
               <span>${tp.topic}</span>
-              <span style="font-size:0.78rem;color:#718096">
-                ${tp.lessons_completed} lessons · ${tp.exercises_passed}/${tp.exercises_attempted} exercises
-                ${tp.quiz_scores.length ? '· Quiz avg: ' + Math.round(tp.quiz_scores.reduce((a,b)=>a+b,0)/tp.quiz_scores.length) + '%' : ''}
+              <span style="font-size:0.75rem;color:#718096">
+                ${tp.lessons_completed} lessons · ${tp.exercises_passed}/${tp.exercises_attempted} ex
+                ${tp.quiz_scores.length ? '· ' + Math.round(tp.quiz_scores.reduce((a,b)=>a+b,0)/tp.quiz_scores.length) + '%' : ''}
               </span>
-              <span>${tp.weak ? '<span class="weak-dot" title="Knowledge gap"></span>' : '<span class="ok-dot" title="Good"></span>'}</span>
+              <span>${tp.weak ? '<span class="weak-dot"></span>' : '<span class="ok-dot"></span>'}</span>
             </div>`).join('');
         } else {
           tpl.innerHTML = '<span style="font-size:0.82rem;color:#4a5568">Start chatting to track topics.</span>';
         }
-
         updateXPBar(p.xp, p.level, p.badges);
       } catch (_) {}
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Courses panel
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── Courses panel ─────────────────────────────────────────────────────────
     async function refreshCourses() {
       try {
         const profile = await fetch(`/progress/${LEARNER_ID}`).then(r => r.json());
@@ -994,7 +1040,6 @@
         const res     = await fetch(`/courses?level=${level}`);
         const data    = await res.json();
 
-        // Active course bar
         const bar = document.getElementById('active-course-bar');
         if (profile.current_course) {
           bar.classList.add('visible');
@@ -1015,7 +1060,7 @@
             <div class="course-info">
               <h4>${c.name.replace(/-/g,' ').replace(/\b\w/g,l=>l.toUpperCase())}</h4>
               <p>${c.description}</p>
-              <p style="margin-top:4px;font-size:0.75rem;color:#4a5568">${c.total_steps} steps</p>
+              <p style="margin-top:4px;font-size:0.73rem;color:#4a5568">${c.total_steps} steps</p>
             </div>
             <div class="course-meta">
               <span class="level-pill level-${c.level}">${c.level}</span>
@@ -1042,7 +1087,7 @@
       }
     }
 
-    document.getElementById('continue-course-btn').addEventListener('click', () => nextCourseStep());
+    document.getElementById('continue-course-btn').addEventListener('click', nextCourseStep);
 
     async function nextCourseStep() {
       switchPanel('chat');
@@ -1052,13 +1097,10 @@
         loadEl.remove();
         if (!res.ok) { appendMessage('error', 'Could not advance course.'); return; }
         const data = await res.json();
-        if (data.completed) {
-          appendMessage('assistant', data.content, 'course');
-          if (data.badge) showBadgeToast(data.badge);
-        } else {
-          appendMessage('assistant', `### 📚 Step ${data.step}/${data.total_steps}: ${data.title}\n\n${data.content}`, 'course');
-          if (data.badge) showBadgeToast(data.badge);
-        }
+        appendMessage('assistant',
+          data.completed ? data.content : `### 📚 Step ${data.step}/${data.total_steps}: ${data.title}\n\n${data.content}`,
+          'course');
+        if (data.badge) showBadgeToast(data.badge);
         refreshSidebar();
       } catch (err) {
         loadEl.remove();
@@ -1066,117 +1108,84 @@
       }
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Quiz panel
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── Quiz ──────────────────────────────────────────────────────────────────
     document.getElementById('start-quiz-btn').addEventListener('click', generateQuiz);
     document.getElementById('next-quiz-btn').addEventListener('click', generateQuiz);
 
     async function generateQuiz() {
       const topic = document.getElementById('quiz-topic-select').value;
       if (!topic) { alert('Pick a topic first.'); return; }
-
       document.getElementById('quiz-question-box').classList.remove('visible');
       document.getElementById('quiz-result-box').classList.remove('visible');
       document.getElementById('next-quiz-btn').classList.remove('visible');
       document.getElementById('start-quiz-btn').textContent = 'Loading…';
       document.getElementById('start-quiz-btn').disabled = true;
-
       try {
-        const res = await fetch('/quiz/generate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        const res  = await fetch('/quiz/generate', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ learner_id: LEARNER_ID, topic, level: getLevel() }),
         });
         const data = await res.json();
         currentQuiz = { topic, question: data.question, options: data.options };
-
         document.getElementById('quiz-q-text').textContent = data.question;
         const optBox = document.getElementById('quiz-options');
         optBox.innerHTML = '';
         data.options.forEach(opt => {
           const btn = document.createElement('button');
-          btn.className = 'quiz-option';
-          btn.textContent = opt;
-          btn.addEventListener('click', () => submitQuizAnswer(opt, data.options));
+          btn.className = 'quiz-option'; btn.textContent = opt;
+          btn.addEventListener('click', () => submitQuizAnswer(opt));
           optBox.appendChild(btn);
         });
         document.getElementById('quiz-question-box').classList.add('visible');
-      } catch (e) {
-        alert('Could not load quiz. Try again.');
-      } finally {
+      } catch { alert('Could not load quiz. Try again.'); }
+      finally {
         document.getElementById('start-quiz-btn').textContent = 'Generate Question';
         document.getElementById('start-quiz-btn').disabled = false;
       }
     }
 
-    async function submitQuizAnswer(answer, allOptions) {
+    async function submitQuizAnswer(answer) {
       document.querySelectorAll('.quiz-option').forEach(b => b.disabled = true);
-
       try {
-        const res = await fetch('/quiz/answer', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            learner_id: LEARNER_ID,
-            topic: currentQuiz.topic,
-            level: getLevel(),
-            question: currentQuiz.question,
-            answer,
-          }),
+        const res  = await fetch('/quiz/answer', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ learner_id: LEARNER_ID, topic: currentQuiz.topic, level: getLevel(), question: currentQuiz.question, answer }),
         });
         const data = await res.json();
-
         document.querySelectorAll('.quiz-option').forEach(btn => {
-          const letter = btn.textContent.charAt(0);
           if (data.correct && btn.textContent === answer) btn.classList.add('correct');
           else if (!data.correct && btn.textContent === answer) btn.classList.add('wrong');
         });
-
-        const resultBox = document.getElementById('quiz-result-box');
-        resultBox.innerHTML = marked.parse(data.explanation) +
-          `<div class="xp-toast" style="margin-top:8px">+${data.xp_gained} XP</div>`;
-        resultBox.classList.add('visible');
+        const rb = document.getElementById('quiz-result-box');
+        rb.innerHTML = marked.parse(data.explanation) + `<div class="xp-toast" style="margin-top:8px">+${data.xp_gained} XP</div>`;
+        rb.classList.add('visible');
         document.getElementById('next-quiz-btn').classList.add('visible');
-
         refreshSidebar();
       } catch (_) {}
     }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Chat helpers (original logic, with XP toast added)
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── Chat helpers ──────────────────────────────────────────────────────────
     function scrollToBottom() { chatContainer.scrollTop = chatContainer.scrollHeight; }
+    function removeWelcome() { const w = chatContainer.querySelector('.welcome'); if (w) w.remove(); }
 
-    function removeWelcome() {
-      const w = chatContainer.querySelector('.welcome');
-      if (w) w.remove();
-    }
-
-    function appendMessage(role, text, intent = null, save = true) {
+    function appendMessage(role, text, intent = null) {
       removeWelcome();
       const wrapper = document.createElement('div');
       wrapper.classList.add('message', role);
-
       const label = document.createElement('div');
       label.className = 'label';
       label.textContent = role === 'user' ? 'You' : role === 'error' ? 'Error' : 'Tutor';
       wrapper.appendChild(label);
-
       if (role === 'assistant' && intent) {
         const badge = document.createElement('span');
         badge.className = `intent-badge intent-${intent}`;
         badge.textContent = intent;
         wrapper.appendChild(badge);
       }
-
       const bubble = document.createElement('div');
       bubble.className = 'bubble';
-      if (role === 'user' || role === 'error') {
-        bubble.textContent = text;
-      } else {
-        bubble.innerHTML = marked.parse(text);
-      }
+      if (role === 'user' || role === 'error') bubble.textContent = text;
+      else bubble.innerHTML = marked.parse(text);
       wrapper.appendChild(bubble);
       chatContainer.appendChild(wrapper);
       scrollToBottom();
@@ -1185,8 +1194,8 @@
 
     function showBadgeToast(badge) {
       const toast = document.createElement('div');
-      toast.style.cssText = 'position:fixed;bottom:80px;right:20px;background:#276749;color:#68d391;border-radius:12px;padding:10px 18px;font-size:0.9rem;font-weight:600;z-index:999;animation:fadeIn 0.3s';
-      toast.textContent = `🏅 New Badge: ${badge}`;
+      toast.style.cssText = 'position:fixed;bottom:72px;right:16px;background:#276749;color:#68d391;border-radius:12px;padding:10px 16px;font-size:0.88rem;font-weight:600;z-index:999;max-width:80vw;';
+      toast.textContent = `🏅 ${badge}`;
       document.body.appendChild(toast);
       setTimeout(() => toast.remove(), 4000);
     }
@@ -1207,18 +1216,12 @@
       return wrapper;
     }
 
-    function setLoading(on) {
-      sendBtn.disabled = on;
-      messageInput.disabled = on;
-    }
+    function setLoading(on) { sendBtn.disabled = on; messageInput.disabled = on; }
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // localStorage (original behaviour preserved)
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── localStorage ──────────────────────────────────────────────────────────
     function saveHistory() {
       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(history)); } catch (_) {}
     }
-
     function loadHistory() {
       try {
         const saved = localStorage.getItem(STORAGE_KEY);
@@ -1228,8 +1231,8 @@
         history = parsed;
         removeWelcome();
         history.forEach(msg => {
-          if (msg.role === 'user') appendMessage('user', msg.content, null, false);
-          else if (msg.role === 'assistant') appendMessage('assistant', msg.content, msg.intent || null, false);
+          if (msg.role === 'user') appendMessage('user', msg.content, null);
+          else if (msg.role === 'assistant') appendMessage('assistant', msg.content, msg.intent || null);
         });
       } catch (_) { history = []; }
     }
@@ -1238,24 +1241,18 @@
       if (!confirm('Clear all chat history?')) return;
       history = [];
       try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
-      chatContainer.innerHTML = `<div class="welcome"><h2>Welcome to MyPy Tutor v2 🐍</h2><p>Ask me anything about Python — concepts, debugging, code, exercises, or start a <strong>Course</strong>.</p></div>`;
+      chatContainer.innerHTML = `<div class="welcome"><h2>Welcome to MyPy Tutor 🐍</h2><p>Ask me anything about Python.</p></div>`;
     });
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Send message (original logic + level + learner_id)
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── Send message ──────────────────────────────────────────────────────────
     async function sendMessage() {
       let text = messageInput.value.trim();
       if (!text) return;
-
       const code = codeInput.value.trim();
-      if (codeEditorToggle.checked && code) {
-        text = `${text}\n\n\`\`\`python\n${code}\n\`\`\``;
-      }
+      if (codeEditorToggle.checked && code) text = `${text}\n\n\`\`\`python\n${code}\n\`\`\``;
 
       appendMessage('user', text);
       history.push({ role: 'user', content: text });
-
       messageInput.value = '';
       messageInput.style.height = 'auto';
       if (codeEditorToggle.checked) {
@@ -1272,37 +1269,27 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: text,
-            // Truncate each history message to 10000 chars so AI responses never trip the limit
-            history: history.slice(0, -1).map(m => ({
-              role: m.role,
-              content: m.content.slice(0, 10000),
-            })),
+            history: history.slice(0, -1).map(m => ({ role: m.role, content: m.content.slice(0, 10000) })),
             learner_id: LEARNER_ID,
             level: getLevel(),
           }),
         });
-
         loadingEl.remove();
-
         if (!res.ok) {
           let errMsg = `Server error (${res.status})`;
           try {
             const d = await res.json();
-            if (typeof d.detail === 'string') errMsg = d.detail;
-            else if (typeof d.error === 'string') errMsg = d.error;
-            else if (res.status === 429) errMsg = 'Too many requests — please wait a moment.';
-            else if (res.status === 503) errMsg = 'AI service is busy, please retry.';
-            else if (res.status === 422) errMsg = 'Invalid request. Please check your message.';
+            if (typeof d.error === 'string') errMsg = d.error;
+            else if (typeof d.detail === 'string') errMsg = d.detail;
+            else if (res.status === 429) errMsg = 'Too many requests — wait a moment.';
+            else if (res.status === 503) errMsg = 'AI is busy, please retry.';
           } catch (_) {}
           appendMessage('error', errMsg);
           history.pop();
           return;
         }
-
         const data = await res.json();
         const msgEl = appendMessage('assistant', data.content, data.intent);
-
-        // Show XP toast on the message
         if (data.xp_gained) {
           const xpEl = document.createElement('div');
           xpEl.className = 'xp-toast';
@@ -1310,11 +1297,9 @@
           msgEl.appendChild(xpEl);
         }
         if (data.badge) showBadgeToast(data.badge);
-
         history.push({ role: 'assistant', content: data.content, intent: data.intent });
         saveHistory();
         refreshSidebar();
-
       } catch (err) {
         loadingEl.remove();
         appendMessage('error', `Network error: ${err.message}`);
@@ -1331,34 +1316,28 @@
     });
     messageInput.addEventListener('input', () => {
       messageInput.style.height = 'auto';
-      messageInput.style.height = Math.min(messageInput.scrollHeight, 150) + 'px';
+      messageInput.style.height = Math.min(messageInput.scrollHeight, 140) + 'px';
     });
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Init
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── Init ──────────────────────────────────────────────────────────────────
     loadTopics();
     loadHistory();
     refreshSidebar();
     messageInput.focus();
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // Service Worker registration (PWA)
-    // ─────────────────────────────────────────────────────────────────────────
+    // ── Service Worker (PWA) ──────────────────────────────────────────────────
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('/sw.js')
-          .then(reg => console.log('SW registered, scope:', reg.scope))
-          .catch(err => console.warn('SW registration failed:', err));
+          .then(r => console.log('SW registered', r.scope))
+          .catch(e => console.warn('SW failed', e));
       });
     }
 
-    // ── PWA install prompt ──────────────────────────────────────────────────
     let deferredInstallPrompt = null;
     window.addEventListener('beforeinstallprompt', e => {
       e.preventDefault();
       deferredInstallPrompt = e;
-      // Show install banner
       const banner = document.getElementById('install-banner');
       if (banner) banner.style.display = 'flex';
     });
@@ -1376,20 +1355,15 @@
 
   <!-- PWA install banner -->
   <div id="install-banner" style="
-    display:none; position:fixed; bottom:16px; left:50%; transform:translateX(-50%);
+    display:none; position:fixed; bottom:70px; left:50%; transform:translateX(-50%);
     background:#1a365d; border:1px solid #2c5282; border-radius:14px;
-    padding:12px 18px; gap:12px; align-items:center; z-index:9999;
-    font-size:0.85rem; color:#e2e8f0; box-shadow:0 4px 24px rgba(0,0,0,0.5);
-    max-width:360px; width:calc(100% - 32px);
+    padding:12px 16px; gap:10px; align-items:center; z-index:9999;
+    font-size:0.84rem; color:#e2e8f0; box-shadow:0 4px 24px rgba(0,0,0,0.5);
+    max-width:340px; width:calc(100% - 32px);
   ">
     <span>🐍 Install <strong>MyPy Tutor</strong> for offline access</span>
-    <button id="install-btn" style="
-      background:#3182ce; color:#fff; border:none; border-radius:8px;
-      padding:6px 14px; font-size:0.82rem; font-weight:600; cursor:pointer; white-space:nowrap;
-    ">Install</button>
-    <button id="install-dismiss" style="
-      background:transparent; color:#718096; border:none; font-size:1rem; cursor:pointer; padding:0 4px;
-    ">✕</button>
+    <button id="install-btn" style="background:#3182ce;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:0.82rem;font-weight:600;cursor:pointer;white-space:nowrap;min-height:36px;">Install</button>
+    <button id="install-dismiss" style="background:transparent;color:#718096;border:none;font-size:1.1rem;cursor:pointer;padding:0 4px;">✕</button>
   </div>
 
 </body>
