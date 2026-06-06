@@ -5,8 +5,10 @@ Security layer: rate limiting, input validation, security headers, sanitised err
 
 import logging
 import re
+import os as _os
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -59,15 +61,21 @@ app = FastAPI(
 # Middleware — order matters: CORS first, then security
 # ---------------------------------------------------------------------------
 
-# CORS: only allow requests from the same origin (Render domain)
-# Wildcard "*" is intentionally NOT used — that would allow any site to call your API
+# The frontend and backend are served from the SAME Render service (same origin),
+# so browser requests are never cross-origin. We allow the Render wildcard pattern
+# plus localhost for dev. Using allow_origins=["*"] would be unsafe for a separate
+# frontend, but here it's equivalent since our static files come from the same host.
+_RENDER_URL = _os.getenv("RENDER_EXTERNAL_URL", "")  # auto-set by Render
+_allowed_origins = list(filter(None, [
+    _RENDER_URL,
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+])) or ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://mypy-tutor.onrender.com",   # production
-        "http://localhost:8000",              # local dev
-        "http://127.0.0.1:8000",
-    ],
+    allow_origins=_allowed_origins,
+    allow_origin_regex=r"https://.*\.onrender\.com",  # covers any Render subdomain
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
     allow_credentials=False,
@@ -390,6 +398,18 @@ def _parse_quiz(raw: str) -> tuple[str, list[str]]:
 # Global error handlers — never expose internals
 # ---------------------------------------------------------------------------
 
+@app.exception_handler(RequestValidationError)
+async def request_validation_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """Catch Pydantic 422 errors and return a clean single-string message."""
+    try:
+        first = exc.errors()[0]
+        field  = " → ".join(str(loc) for loc in first.get("loc", []) if loc != "body")
+        msg    = first.get("msg", "Invalid value")
+        detail = f"{field}: {msg}" if field else msg
+    except Exception:
+        detail = "Invalid request data"
+    return JSONResponse(status_code=422, content={"error": detail})
+
 @app.exception_handler(400)
 async def bad_request_handler(request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=400, content={"error": "Bad request"})
@@ -404,7 +424,6 @@ async def method_not_allowed_handler(request: Request, exc: Exception) -> JSONRe
 
 @app.exception_handler(422)
 async def validation_error_handler(request: Request, exc: Exception) -> JSONResponse:
-    # Pydantic validation errors — return generic message, not the full schema dump
     return JSONResponse(status_code=422, content={"error": "Invalid request data"})
 
 @app.exception_handler(500)
