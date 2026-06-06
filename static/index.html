@@ -21,125 +21,168 @@
       display: flex;
       flex-direction: column;
       align-items: center;
+      overflow: hidden;
     }
 
     /* ── Header ── */
     header {
       width: 100%;
-      max-width: 900px;
-      padding: 14px 20px;
+      max-width: 1100px;
+      padding: 10px 20px;
       border-bottom: 1px solid #2d3748;
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 10px;
-    }
-    header .logo { font-size: 1.4rem; font-weight: 700; color: #63b3ed; }
-    header .subtitle { font-size: 0.82rem; color: #718096; }
-
-    /* Topic selector */
-    #topic-selector {
-      display: flex;
-      align-items: center;
-      gap: 8px;
       flex-shrink: 0;
     }
-    #topic-selector label { font-size: 0.82rem; color: #718096; white-space: nowrap; }
+    header .logo { font-size: 1.3rem; font-weight: 700; color: #63b3ed; }
+    header .subtitle { font-size: 0.78rem; color: #718096; }
+
+    .header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+
+    /* Level selector */
+    #level-select {
+      background: #1a202c; border: 1px solid #2d3748; color: #e2e8f0;
+      border-radius: 8px; padding: 5px 10px; font-size: 0.8rem; cursor: pointer; outline: none;
+    }
+    #level-select:focus { border-color: #4299e1; }
+
+    /* Topic selector */
     #topic-select {
-      background: #1a202c;
-      border: 1px solid #2d3748;
-      color: #e2e8f0;
-      border-radius: 8px;
-      padding: 6px 10px;
-      font-size: 0.82rem;
-      cursor: pointer;
-      outline: none;
-      max-width: 180px;
+      background: #1a202c; border: 1px solid #2d3748; color: #e2e8f0;
+      border-radius: 8px; padding: 5px 10px; font-size: 0.8rem; cursor: pointer;
+      outline: none; max-width: 160px;
     }
     #topic-select:focus { border-color: #4299e1; }
+
+    /* Nav tabs */
+    .nav-tabs { display: flex; gap: 4px; }
+    .nav-tab {
+      background: transparent; border: 1px solid #2d3748; color: #718096;
+      border-radius: 8px; padding: 5px 12px; font-size: 0.8rem; cursor: pointer;
+      transition: all 0.15s; white-space: nowrap;
+    }
+    .nav-tab:hover { border-color: #4299e1; color: #90cdf4; }
+    .nav-tab.active { background: #2c5282; border-color: #4299e1; color: #90cdf4; }
+
     #clear-btn {
-      background: transparent;
-      border: 1px solid #2d3748;
-      color: #718096;
-      border-radius: 8px;
-      padding: 6px 10px;
-      font-size: 0.82rem;
-      cursor: pointer;
-      white-space: nowrap;
-      transition: border-color 0.15s, color 0.15s;
+      background: transparent; border: 1px solid #2d3748; color: #718096;
+      border-radius: 8px; padding: 5px 10px; font-size: 0.8rem; cursor: pointer;
+      transition: border-color 0.15s, color 0.15s; white-space: nowrap;
     }
     #clear-btn:hover { border-color: #fc8181; color: #fc8181; }
 
-    /* ── Chat ── */
-    #chat-container {
-      flex: 1;
-      width: 100%;
-      max-width: 900px;
-      overflow-y: auto;
-      padding: 20px;
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-      scroll-behavior: smooth;
+    /* ── XP bar ── */
+    #xp-bar-wrap {
+      width: 100%; max-width: 1100px; padding: 4px 20px;
+      display: flex; align-items: center; gap: 10px; flex-shrink: 0;
+      border-bottom: 1px solid #1a202c;
     }
-    .welcome { text-align: center; padding: 40px 20px; color: #718096; }
-    .welcome h2 { font-size: 1.2rem; color: #a0aec0; margin-bottom: 8px; }
-    .welcome p { font-size: 0.9rem; line-height: 1.6; }
+    #xp-label { font-size: 0.75rem; color: #718096; white-space: nowrap; min-width: 120px; }
+    #xp-bar-bg {
+      flex: 1; height: 6px; background: #2d3748; border-radius: 99px; overflow: hidden;
+    }
+    #xp-bar-fill {
+      height: 100%; background: linear-gradient(90deg, #3182ce, #63b3ed);
+      border-radius: 99px; transition: width 0.6s ease;
+    }
+    #badge-row { font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px; }
+
+    /* ── Main layout ── */
+    #main-layout {
+      flex: 1; width: 100%; max-width: 1100px;
+      display: flex; gap: 0; overflow: hidden;
+    }
+
+    /* ── Sidebar ── */
+    #sidebar {
+      width: 220px; flex-shrink: 0; border-right: 1px solid #2d3748;
+      display: flex; flex-direction: column; overflow-y: auto; padding: 12px;
+      gap: 16px;
+    }
+    .sidebar-section h4 {
+      font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em;
+      color: #4a5568; margin-bottom: 8px;
+    }
+    .sidebar-btn {
+      display: block; width: 100%; background: transparent;
+      border: 1px solid #2d3748; color: #a0aec0;
+      border-radius: 8px; padding: 7px 10px; font-size: 0.82rem;
+      cursor: pointer; text-align: left; transition: all 0.15s; margin-bottom: 4px;
+    }
+    .sidebar-btn:hover { background: #1a202c; border-color: #4299e1; color: #90cdf4; }
+    .sidebar-btn.active-course { border-color: #68d391; color: #68d391; }
+
+    .gap-tag {
+      display: inline-block; background: #3b1a1a; border: 1px solid #742a2a;
+      color: #fc8181; border-radius: 6px; padding: 3px 8px;
+      font-size: 0.75rem; margin: 2px;
+    }
+
+    /* ── Panels ── */
+    #panels { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+    .panel { display: none; flex-direction: column; height: 100%; }
+    .panel.active { display: flex; }
+
+    /* Chat panel */
+    #chat-container {
+      flex: 1; overflow-y: auto; padding: 16px 20px;
+      display: flex; flex-direction: column; gap: 14px; scroll-behavior: smooth;
+    }
+    .welcome { text-align: center; padding: 30px 20px; color: #718096; }
+    .welcome h2 { font-size: 1.1rem; color: #a0aec0; margin-bottom: 8px; }
+    .welcome p { font-size: 0.88rem; line-height: 1.7; }
 
     /* Messages */
     .message { display: flex; flex-direction: column; max-width: 82%; }
     .message.user { align-self: flex-end; align-items: flex-end; }
     .message.assistant { align-self: flex-start; align-items: flex-start; }
     .message .label {
-      font-size: 0.72rem; font-weight: 600; text-transform: uppercase;
+      font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
       letter-spacing: 0.05em; margin-bottom: 4px; color: #718096;
     }
     .message.user .label { color: #63b3ed; }
     .message.assistant .label { color: #68d391; }
-
     .bubble {
-      padding: 12px 16px; border-radius: 12px;
-      line-height: 1.6; font-size: 0.95rem; word-break: break-word;
+      padding: 11px 15px; border-radius: 12px;
+      line-height: 1.65; font-size: 0.93rem; word-break: break-word;
     }
-    .message.user .bubble {
-      background: #2b4a7a; color: #e2e8f0; border-bottom-right-radius: 4px;
-    }
+    .message.user .bubble { background: #2b4a7a; color: #e2e8f0; border-bottom-right-radius: 4px; }
     .message.assistant .bubble {
       background: #1a202c; border: 1px solid #2d3748;
       color: #e2e8f0; border-bottom-left-radius: 4px; max-width: 100%;
     }
-    .message.error .bubble {
-      background: #3b1a1a; border: 1px solid #742a2a; color: #fc8181;
-    }
+    .message.error .bubble { background: #3b1a1a; border: 1px solid #742a2a; color: #fc8181; }
 
-    /* Markdown styles */
-    .bubble h1, .bubble h2, .bubble h3, .bubble h4 { margin: 12px 0 6px; color: #90cdf4; }
-    .bubble h1 { font-size: 1.2rem; } .bubble h2 { font-size: 1.1rem; } .bubble h3 { font-size: 1rem; }
-    .bubble p { margin: 6px 0; }
-    .bubble ul, .bubble ol { margin: 6px 0 6px 20px; }
+    /* Markdown */
+    .bubble h1,.bubble h2,.bubble h3,.bubble h4 { margin: 12px 0 6px; color: #90cdf4; }
+    .bubble h1{font-size:1.15rem}.bubble h2{font-size:1.05rem}.bubble h3{font-size:0.97rem}
+    .bubble p { margin: 5px 0; }
+    .bubble ul,.bubble ol { margin: 5px 0 5px 18px; }
     .bubble li { margin: 3px 0; }
     .bubble strong { color: #fbd38d; }
     .bubble em { color: #b794f4; }
     .bubble code:not(pre code) {
       background: #2d3748; color: #f6ad55; padding: 2px 5px;
-      border-radius: 4px; font-family: "Fira Code", Consolas, monospace; font-size: 0.88em;
+      border-radius: 4px; font-family: "Fira Code", Consolas, monospace; font-size: 0.87em;
     }
-    .bubble pre { margin: 10px 0; border-radius: 8px; overflow: hidden; position: relative; }
+    .bubble pre { margin: 8px 0; border-radius: 8px; overflow: hidden; }
     .bubble pre code {
-      font-family: "Fira Code", Consolas, monospace; font-size: 0.88em;
-      display: block; padding: 14px 16px; overflow-x: auto;
+      font-family: "Fira Code", Consolas, monospace; font-size: 0.86em;
+      display: block; padding: 12px 14px; overflow-x: auto;
     }
-    .bubble blockquote { border-left: 3px solid #4a5568; padding-left: 12px; color: #a0aec0; margin: 8px 0; }
-    .bubble hr { border: none; border-top: 1px solid #2d3748; margin: 10px 0; }
+    .bubble blockquote { border-left: 3px solid #4a5568; padding-left: 10px; color: #a0aec0; margin: 7px 0; }
+    .bubble hr { border: none; border-top: 1px solid #2d3748; margin: 8px 0; }
 
-    /* Copy button on code blocks */
-    .code-wrapper { position: relative; margin: 10px 0; }
+    /* Copy btn */
+    .code-wrapper { position: relative; margin: 8px 0; }
     .copy-btn {
-      position: absolute; top: 8px; right: 8px;
+      position: absolute; top: 7px; right: 7px;
       background: #2d3748; color: #a0aec0; border: none;
-      border-radius: 5px; padding: 3px 8px; font-size: 0.75rem;
-      cursor: pointer; opacity: 0; transition: opacity 0.15s, background 0.15s;
-      z-index: 1;
+      border-radius: 5px; padding: 3px 7px; font-size: 0.72rem;
+      cursor: pointer; opacity: 0; transition: opacity 0.15s, background 0.15s; z-index: 1;
     }
     .code-wrapper:hover .copy-btn { opacity: 1; }
     .copy-btn:hover { background: #4a5568; color: #e2e8f0; }
@@ -147,185 +190,383 @@
 
     /* Intent badge */
     .intent-badge {
-      display: inline-block; font-size: 0.7rem; font-weight: 600;
+      display: inline-block; font-size: 0.68rem; font-weight: 600;
       text-transform: uppercase; letter-spacing: 0.06em;
-      padding: 2px 7px; border-radius: 999px; margin-bottom: 5px;
+      padding: 2px 7px; border-radius: 999px; margin-bottom: 4px;
     }
-    .intent-concept  { background: #2c5282; color: #90cdf4; }
-    .intent-debug    { background: #742a2a; color: #fc8181; }
-    .intent-codegen  { background: #276749; color: #68d391; }
-    .intent-exercise { background: #553c9a; color: #d6bcfa; }
-    .intent-ambiguous{ background: #4a5568; color: #e2e8f0; }
+    .intent-concept   { background: #2c5282; color: #90cdf4; }
+    .intent-debug     { background: #742a2a; color: #fc8181; }
+    .intent-codegen   { background: #276749; color: #68d391; }
+    .intent-exercise  { background: #553c9a; color: #d6bcfa; }
+    .intent-ambiguous { background: #4a5568; color: #e2e8f0; }
+    .intent-quiz      { background: #744210; color: #f6ad55; }
+    .intent-course    { background: #1a365d; color: #63b3ed; }
+
+    /* XP toast */
+    .xp-toast {
+      display: inline-block; background: #276749; color: #68d391;
+      border-radius: 999px; padding: 2px 8px; font-size: 0.72rem;
+      font-weight: 600; margin-top: 4px;
+    }
 
     /* Loading dots */
     .loading-dots {
-      display: flex; gap: 5px; padding: 14px 16px;
+      display: flex; gap: 5px; padding: 12px 14px;
       background: #1a202c; border: 1px solid #2d3748;
       border-radius: 12px; border-bottom-left-radius: 4px; width: fit-content;
     }
     .loading-dots span {
-      width: 8px; height: 8px; background: #4a5568;
+      width: 7px; height: 7px; background: #4a5568;
       border-radius: 50%; animation: bounce 1.2s infinite ease-in-out;
     }
-    .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
-    .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+    .loading-dots span:nth-child(2){animation-delay:.2s}
+    .loading-dots span:nth-child(3){animation-delay:.4s}
     @keyframes bounce {
-      0%, 80%, 100% { transform: scale(0.7); opacity: 0.5; }
-      40%            { transform: scale(1);   opacity: 1;   }
+      0%,80%,100%{transform:scale(0.7);opacity:.5}
+      40%{transform:scale(1);opacity:1}
     }
 
     /* ── Input area ── */
     #input-area {
-      width: 100%; max-width: 900px;
-      padding: 10px 20px 16px;
+      width: 100%; padding: 8px 16px 12px;
       border-top: 1px solid #2d3748;
-      display: flex; flex-direction: column; gap: 8px;
+      display: flex; flex-direction: column; gap: 6px; flex-shrink: 0;
     }
-
-    /* Code editor toggle */
-    #editor-toggle {
-      display: flex; align-items: center; gap: 8px;
-    }
-    #editor-toggle label { font-size: 0.8rem; color: #718096; cursor: pointer; user-select: none; }
+    #editor-toggle { display: flex; align-items: center; gap: 8px; }
+    #editor-toggle label { font-size: 0.78rem; color: #718096; cursor: pointer; user-select: none; }
     #code-editor-toggle {
-      appearance: none; width: 34px; height: 18px;
+      appearance: none; width: 32px; height: 17px;
       background: #2d3748; border-radius: 999px; cursor: pointer;
       position: relative; transition: background 0.2s; flex-shrink: 0;
     }
     #code-editor-toggle:checked { background: #3182ce; }
     #code-editor-toggle::after {
-      content: ''; position: absolute; top: 2px; left: 2px;
-      width: 14px; height: 14px; background: #e2e8f0;
+      content:''; position: absolute; top: 2px; left: 2px;
+      width: 13px; height: 13px; background: #e2e8f0;
       border-radius: 50%; transition: left 0.2s;
     }
-    #code-editor-toggle:checked::after { left: 18px; }
-
-    /* Code editor panel */
-    #code-editor-panel {
-      display: none; flex-direction: column; gap: 6px;
-    }
+    #code-editor-toggle:checked::after { left: 17px; }
+    #code-editor-panel { display: none; flex-direction: column; gap: 5px; }
     #code-editor-panel.visible { display: flex; }
-    #code-editor-panel label { font-size: 0.8rem; color: #718096; }
+    #code-editor-panel label { font-size: 0.78rem; color: #718096; }
     #code-input {
       background: #0d1117; border: 1px solid #2d3748; border-radius: 8px;
       color: #e2e8f0; font-family: "Fira Code", Consolas, monospace;
-      font-size: 0.88rem; padding: 10px 14px; resize: vertical;
-      min-height: 120px; max-height: 300px; outline: none;
+      font-size: 0.86rem; padding: 9px 12px; resize: vertical;
+      min-height: 100px; max-height: 260px; outline: none;
       tab-size: 4; transition: border-color 0.15s;
     }
     #code-input:focus { border-color: #4299e1; }
     #code-input::placeholder { color: #4a5568; }
-
-    /* Message row */
-    #message-row { display: flex; gap: 10px; align-items: flex-end; }
+    #message-row { display: flex; gap: 8px; align-items: flex-end; }
     #message-input {
       flex: 1; background: #1a202c; border: 1px solid #2d3748;
-      border-radius: 10px; color: #e2e8f0; font-size: 0.95rem;
-      padding: 10px 14px; resize: none; min-height: 44px; max-height: 160px;
+      border-radius: 10px; color: #e2e8f0; font-size: 0.93rem;
+      padding: 9px 13px; resize: none; min-height: 42px; max-height: 150px;
       line-height: 1.5; outline: none; transition: border-color 0.15s; font-family: inherit;
     }
     #message-input:focus { border-color: #4299e1; }
     #message-input::placeholder { color: #4a5568; }
     #send-btn {
       background: #3182ce; color: #fff; border: none; border-radius: 10px;
-      padding: 10px 18px; font-size: 0.95rem; font-weight: 600;
+      padding: 9px 16px; font-size: 0.93rem; font-weight: 600;
       cursor: pointer; transition: background 0.15s, opacity 0.15s;
-      white-space: nowrap; height: 44px;
+      white-space: nowrap; height: 42px;
     }
     #send-btn:hover:not(:disabled) { background: #2b6cb0; }
     #send-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
+    /* ── Progress panel ── */
+    #progress-panel { padding: 20px; overflow-y: auto; gap: 20px; }
+    .progress-card {
+      background: #1a202c; border: 1px solid #2d3748; border-radius: 12px; padding: 16px;
+    }
+    .progress-card h3 { color: #90cdf4; font-size: 0.95rem; margin-bottom: 12px; }
+    .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .stat-box {
+      background: #0f1117; border: 1px solid #2d3748; border-radius: 8px;
+      padding: 10px 14px;
+    }
+    .stat-box .val { font-size: 1.4rem; font-weight: 700; color: #63b3ed; }
+    .stat-box .key { font-size: 0.72rem; color: #718096; margin-top: 2px; }
+    .topic-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 6px 0; border-bottom: 1px solid #2d3748; font-size: 0.85rem;
+    }
+    .topic-row:last-child { border-bottom: none; }
+    .weak-dot { width: 8px; height: 8px; background: #fc8181; border-radius: 50%; flex-shrink: 0; }
+    .ok-dot   { width: 8px; height: 8px; background: #68d391; border-radius: 50%; flex-shrink: 0; }
+    .badge-chip {
+      display: inline-block; background: #2d3748; border-radius: 999px;
+      padding: 3px 10px; font-size: 0.78rem; margin: 3px;
+    }
+
+    /* ── Quiz panel ── */
+    #quiz-panel { padding: 20px; overflow-y: auto; gap: 14px; }
+    #quiz-panel h3 { color: #90cdf4; font-size: 1rem; }
+    #quiz-topic-select {
+      background: #1a202c; border: 1px solid #2d3748; color: #e2e8f0;
+      border-radius: 8px; padding: 7px 12px; font-size: 0.88rem; outline: none; width: 100%;
+    }
+    #quiz-topic-select:focus { border-color: #4299e1; }
+    #start-quiz-btn {
+      background: #3182ce; color: #fff; border: none; border-radius: 8px;
+      padding: 9px 20px; font-size: 0.9rem; font-weight: 600; cursor: pointer;
+      transition: background 0.15s;
+    }
+    #start-quiz-btn:hover { background: #2b6cb0; }
+    #quiz-question-box {
+      background: #1a202c; border: 1px solid #2d3748; border-radius: 12px; padding: 18px;
+      display: none; flex-direction: column; gap: 12px;
+    }
+    #quiz-question-box.visible { display: flex; }
+    #quiz-q-text { font-size: 0.95rem; line-height: 1.6; color: #e2e8f0; }
+    .quiz-option {
+      background: #0f1117; border: 1px solid #2d3748; color: #e2e8f0;
+      border-radius: 8px; padding: 10px 14px; font-size: 0.88rem;
+      cursor: pointer; transition: all 0.15s; text-align: left; width: 100%;
+    }
+    .quiz-option:hover:not(:disabled) { border-color: #4299e1; background: #1a2a3a; }
+    .quiz-option.correct { border-color: #68d391; background: #1a3a26; color: #68d391; }
+    .quiz-option.wrong   { border-color: #fc8181; background: #3b1a1a; color: #fc8181; }
+    #quiz-result-box {
+      background: #1a202c; border: 1px solid #2d3748; border-radius: 12px; padding: 16px;
+      display: none; font-size: 0.88rem; line-height: 1.65;
+    }
+    #quiz-result-box.visible { display: block; }
+    #next-quiz-btn {
+      background: #276749; color: #68d391; border: none; border-radius: 8px;
+      padding: 8px 18px; font-size: 0.88rem; font-weight: 600; cursor: pointer;
+      display: none; transition: background 0.15s;
+    }
+    #next-quiz-btn:hover { background: #2f855a; }
+    #next-quiz-btn.visible { display: inline-block; }
+
+    /* ── Courses panel ── */
+    #courses-panel { padding: 20px; overflow-y: auto; gap: 14px; }
+    #courses-panel h3 { color: #90cdf4; font-size: 1rem; }
+    .course-card {
+      background: #1a202c; border: 1px solid #2d3748; border-radius: 12px;
+      padding: 14px 16px; display: flex; justify-content: space-between; align-items: center;
+      gap: 12px;
+    }
+    .course-card .course-info h4 { font-size: 0.9rem; color: #e2e8f0; margin-bottom: 4px; }
+    .course-card .course-info p  { font-size: 0.78rem; color: #718096; }
+    .course-card .course-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+    .level-pill {
+      font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 2px 8px; border-radius: 999px;
+    }
+    .level-beginner     { background: #276749; color: #68d391; }
+    .level-intermediate { background: #744210; color: #f6ad55; }
+    .level-advanced     { background: #742a2a; color: #fc8181; }
+    .enrol-btn {
+      background: #2c5282; color: #90cdf4; border: 1px solid #4299e1;
+      border-radius: 8px; padding: 6px 14px; font-size: 0.8rem; font-weight: 600;
+      cursor: pointer; transition: background 0.15s; white-space: nowrap;
+    }
+    .enrol-btn:hover { background: #2a4a7f; }
+    #active-course-bar {
+      background: #1a365d; border: 1px solid #2c5282; border-radius: 10px;
+      padding: 12px 16px; display: none; gap: 12px; align-items: center;
+    }
+    #active-course-bar.visible { display: flex; }
+    #active-course-bar .course-title { flex: 1; font-size: 0.88rem; color: #90cdf4; }
+    #active-course-bar .step-info { font-size: 0.78rem; color: #718096; }
+    #continue-course-btn {
+      background: #3182ce; color: #fff; border: none; border-radius: 8px;
+      padding: 7px 14px; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+    }
+
     /* Scrollbar */
-    #chat-container::-webkit-scrollbar { width: 6px; }
-    #chat-container::-webkit-scrollbar-track { background: transparent; }
-    #chat-container::-webkit-scrollbar-thumb { background: #2d3748; border-radius: 3px; }
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2d3748; border-radius: 3px; }
   </style>
 </head>
 <body>
 
+  <!-- ── Header ── -->
   <header>
     <div>
       <div class="logo">🐍 MyPy Tutor</div>
-      <div class="subtitle">Ask me anything about Python — concepts, debugging, code, exercises</div>
+      <div class="subtitle">Your personalised Python learning companion</div>
     </div>
-    <div id="topic-selector">
-      <label for="topic-select">Topic:</label>
-      <select id="topic-select" aria-label="Select a topic">
-        <option value="">— Browse topics —</option>
+    <div class="header-right">
+      <div class="nav-tabs">
+        <button class="nav-tab active" data-panel="chat">💬 Chat</button>
+        <button class="nav-tab" data-panel="courses">📚 Courses</button>
+        <button class="nav-tab" data-panel="quiz">🏆 Quiz</button>
+        <button class="nav-tab" data-panel="progress">📊 Progress</button>
+      </div>
+      <select id="level-select" title="Your level" aria-label="Select your level">
+        <option value="beginner">🟢 Beginner</option>
+        <option value="intermediate">🟡 Intermediate</option>
+        <option value="advanced">🔴 Advanced</option>
       </select>
-      <button id="clear-btn" title="Clear chat history">Clear chat</button>
+      <select id="topic-select" aria-label="Select a topic">
+        <option value="">— Topics —</option>
+      </select>
+      <button id="clear-btn" title="Clear chat">Clear</button>
     </div>
   </header>
 
-  <div id="chat-container">
-    <div class="welcome">
-      <h2>Welcome! I'm MyPy Tutor.</h2>
-      <p>
-        Ask me to <strong>explain a concept</strong>, <strong>debug your code</strong>,
-        <strong>generate a snippet</strong>, or <strong>give you an exercise</strong>.<br />
-        Use the <strong>topic dropdown</strong> to explore, or toggle the <strong>code editor</strong> to paste code.
-      </p>
-    </div>
+  <!-- ── XP bar ── -->
+  <div id="xp-bar-wrap">
+    <span id="xp-label">XP: 0 · Beginner</span>
+    <div id="xp-bar-bg"><div id="xp-bar-fill" style="width:0%"></div></div>
+    <span id="badge-row"></span>
   </div>
 
-  <div id="input-area">
-    <!-- Code editor toggle -->
-    <div id="editor-toggle">
-      <input type="checkbox" id="code-editor-toggle" aria-label="Toggle code editor" />
-      <label for="code-editor-toggle">📝 Paste code for debugging</label>
+  <!-- ── Main layout ── -->
+  <div id="main-layout">
+
+    <!-- Sidebar -->
+    <div id="sidebar">
+      <div class="sidebar-section">
+        <h4>Quick Ask</h4>
+        <button class="sidebar-btn" data-ask="Explain Python variables for me">📦 Variables</button>
+        <button class="sidebar-btn" data-ask="Explain loops in Python">🔄 Loops</button>
+        <button class="sidebar-btn" data-ask="Explain functions in Python">⚙️ Functions</button>
+        <button class="sidebar-btn" data-ask="Explain OOP in Python">🏗️ OOP</button>
+        <button class="sidebar-btn" data-ask="Explain exception handling in Python">🛡️ Exceptions</button>
+        <button class="sidebar-btn" data-ask="Explain data structures in Python">📐 Data Structures</button>
+        <button class="sidebar-btn" data-ask="Explain algorithms in Python">🔍 Algorithms</button>
+      </div>
+      <div class="sidebar-section">
+        <h4>Knowledge Gaps</h4>
+        <div id="gap-list"><span style="font-size:0.78rem;color:#4a5568">No gaps detected yet.</span></div>
+      </div>
+      <div class="sidebar-section">
+        <h4>Recent Topics</h4>
+        <div id="recent-topics"><span style="font-size:0.78rem;color:#4a5568">None yet.</span></div>
+      </div>
     </div>
 
-    <!-- Code editor panel -->
-    <div id="code-editor-panel">
-      <label for="code-input">Your Python code:</label>
-      <textarea
-        id="code-input"
-        placeholder="# Paste your Python code here..."
-        spellcheck="false"
-        autocomplete="off"
-      ></textarea>
-    </div>
+    <!-- Panels -->
+    <div id="panels">
 
-    <!-- Message input row -->
-    <div id="message-row">
-      <textarea
-        id="message-input"
-        placeholder="Ask a Python question…"
-        rows="1"
-        aria-label="Message input"
-      ></textarea>
-      <button id="send-btn" aria-label="Send message">Send</button>
-    </div>
-  </div>
+      <!-- ── CHAT PANEL ── -->
+      <div id="chat-panel" class="panel active">
+        <div id="chat-container">
+          <div class="welcome">
+            <h2>Welcome to MyPy Tutor v2 🐍</h2>
+            <p>
+              Ask me to <strong>explain a concept</strong>, <strong>debug your code</strong>,
+              <strong>generate a snippet</strong>, or <strong>give you an exercise</strong>.<br/>
+              Use <strong>Courses</strong> for structured learning, <strong>Quiz</strong> to test yourself,
+              and <strong>Progress</strong> to track your journey.<br/>
+              Set your <strong>level</strong> in the top-right for responses tailored to you.
+            </p>
+          </div>
+        </div>
+        <div id="input-area">
+          <div id="editor-toggle">
+            <input type="checkbox" id="code-editor-toggle" aria-label="Toggle code editor" />
+            <label for="code-editor-toggle">📝 Paste code for debugging</label>
+          </div>
+          <div id="code-editor-panel">
+            <label for="code-input">Your Python code:</label>
+            <textarea id="code-input" placeholder="# Paste your Python code here..." spellcheck="false" autocomplete="off"></textarea>
+          </div>
+          <div id="message-row">
+            <textarea id="message-input" placeholder="Ask a Python question…" rows="1" aria-label="Message input"></textarea>
+            <button id="send-btn" aria-label="Send message">Send</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── COURSES PANEL ── -->
+      <div id="courses-panel" class="panel">
+        <h3>📚 Learning Paths</h3>
+        <div id="active-course-bar">
+          <span class="course-title" id="active-course-title">—</span>
+          <span class="step-info" id="active-course-step">Step 0</span>
+          <button id="continue-course-btn">Continue →</button>
+        </div>
+        <div id="course-list"></div>
+      </div>
+
+      <!-- ── QUIZ PANEL ── -->
+      <div id="quiz-panel" class="panel">
+        <h3>🏆 Test Your Knowledge</h3>
+        <p style="font-size:0.82rem;color:#718096">Select a topic and take a quiz. Your score tracks your knowledge gaps.</p>
+        <select id="quiz-topic-select" aria-label="Quiz topic"></select>
+        <button id="start-quiz-btn">Generate Question</button>
+        <div id="quiz-question-box">
+          <div id="quiz-q-text"></div>
+          <div id="quiz-options"></div>
+        </div>
+        <div id="quiz-result-box"></div>
+        <button id="next-quiz-btn">Next Question →</button>
+      </div>
+
+      <!-- ── PROGRESS PANEL ── -->
+      <div id="progress-panel" class="panel">
+        <div class="progress-card">
+          <h3>📊 Your Stats</h3>
+          <div class="stat-grid">
+            <div class="stat-box"><div class="val" id="stat-xp">0</div><div class="key">Total XP</div></div>
+            <div class="stat-box"><div class="val" id="stat-level">Beginner</div><div class="key">Level</div></div>
+            <div class="stat-box"><div class="val" id="stat-topics">0</div><div class="key">Topics Explored</div></div>
+            <div class="stat-box"><div class="val" id="stat-projects">0</div><div class="key">Courses Done</div></div>
+          </div>
+        </div>
+        <div class="progress-card">
+          <h3>🏅 Badges</h3>
+          <div id="badges-list"><span style="font-size:0.82rem;color:#4a5568">No badges yet — keep learning!</span></div>
+        </div>
+        <div class="progress-card">
+          <h3>📈 Topic Progress</h3>
+          <div id="topic-progress-list"><span style="font-size:0.82rem;color:#4a5568">Start chatting to track topics.</span></div>
+        </div>
+      </div>
+
+    </div><!-- /panels -->
+  </div><!-- /main-layout -->
 
   <script>
-    const API_ENDPOINT = '/chat';
-    const STORAGE_KEY  = 'mypy_tutor_history';
+    // ─────────────────────────────────────────────────────────────────────────
+    // Config
+    // ─────────────────────────────────────────────────────────────────────────
+    const LEARNER_ID   = 'default';
+    const STORAGE_KEY  = 'mypy_tutor_history_v2';
+    const LEVEL_KEY    = 'mypy_tutor_level';
 
-    // ── State ──────────────────────────────────────────────────────────────────
-    /** @type {Array<{role: string, content: string}>} */
+    // ─────────────────────────────────────────────────────────────────────────
+    // State
+    // ─────────────────────────────────────────────────────────────────────────
     let history = [];
+    let currentQuiz = { topic: '', question: '', options: [], answer: null };
 
-    // ── DOM refs ───────────────────────────────────────────────────────────────
-    const chatContainer     = document.getElementById('chat-container');
-    const messageInput      = document.getElementById('message-input');
-    const sendBtn           = document.getElementById('send-btn');
-    const topicSelect       = document.getElementById('topic-select');
-    const clearBtn          = document.getElementById('clear-btn');
-    const codeEditorToggle  = document.getElementById('code-editor-toggle');
-    const codeEditorPanel   = document.getElementById('code-editor-panel');
-    const codeInput         = document.getElementById('code-input');
+    // ─────────────────────────────────────────────────────────────────────────
+    // DOM refs
+    // ─────────────────────────────────────────────────────────────────────────
+    const chatContainer    = document.getElementById('chat-container');
+    const messageInput     = document.getElementById('message-input');
+    const sendBtn          = document.getElementById('send-btn');
+    const topicSelect      = document.getElementById('topic-select');
+    const levelSelect      = document.getElementById('level-select');
+    const clearBtn         = document.getElementById('clear-btn');
+    const codeEditorToggle = document.getElementById('code-editor-toggle');
+    const codeEditorPanel  = document.getElementById('code-editor-panel');
+    const codeInput        = document.getElementById('code-input');
+    const xpLabel          = document.getElementById('xp-label');
+    const xpBarFill        = document.getElementById('xp-bar-fill');
+    const badgeRow         = document.getElementById('badge-row');
+    const gapList          = document.getElementById('gap-list');
+    const recentTopics     = document.getElementById('recent-topics');
 
-    // ── marked.js setup ────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // marked.js setup (identical to original)
+    // ─────────────────────────────────────────────────────────────────────────
     marked.setOptions({ breaks: true, gfm: true });
-
     const renderer = new marked.Renderer();
-    renderer.code = function (code, language) {
-      const lang    = (typeof code === 'object') ? code.lang  : language;
-      const content = (typeof code === 'object') ? code.text  : code;
+    renderer.code = function(code, language) {
+      const lang    = (typeof code === 'object') ? code.lang : language;
+      const content = (typeof code === 'object') ? code.text : code;
       const validLang = lang && hljs.getLanguage(lang) ? lang : 'python';
       const highlighted = hljs.highlight(content, { language: validLang }).value;
-      // Return placeholder — copy buttons injected after innerHTML is set
       return `<div class="code-wrapper"><pre><code class="hljs language-${validLang}">${highlighted}</code></pre><button class="copy-btn" data-code="${escAttr(content)}">Copy</button></div>`;
     };
     marked.use({ renderer });
@@ -334,31 +575,58 @@
       return str.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     }
 
-    // ── Copy button handler (delegated) ───────────────────────────────────────
-    chatContainer.addEventListener('click', (e) => {
+    chatContainer.addEventListener('click', e => {
       const btn = e.target.closest('.copy-btn');
       if (!btn) return;
       const code = btn.getAttribute('data-code')
         .replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&lt;/g,'<').replace(/&gt;/g,'>');
       navigator.clipboard.writeText(code).then(() => {
-        btn.textContent = 'Copied!';
-        btn.classList.add('copied');
+        btn.textContent = 'Copied!'; btn.classList.add('copied');
         setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
       });
     });
 
-    // ── Topic dropdown ─────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // Panel navigation
+    // ─────────────────────────────────────────────────────────────────────────
+    document.querySelectorAll('.nav-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        const panelId = tab.dataset.panel + '-panel';
+        document.getElementById(panelId).classList.add('active');
+        if (tab.dataset.panel === 'progress') refreshProgress();
+        if (tab.dataset.panel === 'courses')  refreshCourses();
+      });
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Level selector
+    // ─────────────────────────────────────────────────────────────────────────
+    levelSelect.value = localStorage.getItem(LEVEL_KEY) || 'beginner';
+    levelSelect.addEventListener('change', () => {
+      localStorage.setItem(LEVEL_KEY, levelSelect.value);
+    });
+    function getLevel() { return levelSelect.value; }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Topics — loaded from /topics (original behaviour)
+    // ─────────────────────────────────────────────────────────────────────────
     async function loadTopics() {
       try {
         const res = await fetch('/topics');
         const data = await res.json();
         data.topics.forEach(t => {
-          const opt = document.createElement('option');
-          opt.value = t;
-          opt.textContent = t;
-          topicSelect.appendChild(opt);
+          const o1 = document.createElement('option');
+          o1.value = t; o1.textContent = t;
+          topicSelect.appendChild(o1);
+
+          const o2 = document.createElement('option');
+          o2.value = t; o2.textContent = t;
+          document.getElementById('quiz-topic-select').appendChild(o2);
         });
-      } catch (_) { /* silently ignore */ }
+      } catch (_) {}
     }
 
     topicSelect.addEventListener('change', () => {
@@ -366,22 +634,23 @@
       if (!topic) return;
       messageInput.value = `Explain ${topic} in Python`;
       topicSelect.value = '';
+      switchPanel('chat');
       messageInput.focus();
     });
 
-    // ── Code editor toggle ─────────────────────────────────────────────────────
-    codeEditorToggle.addEventListener('change', () => {
-      if (codeEditorToggle.checked) {
-        codeEditorPanel.classList.add('visible');
-        codeInput.focus();
-      } else {
-        codeEditorPanel.classList.remove('visible');
-        codeInput.value = '';
-      }
-    });
+    function switchPanel(name) {
+      document.querySelectorAll('.nav-tab').forEach(t => t.classList.toggle('active', t.dataset.panel === name));
+      document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === name + '-panel'));
+    }
 
-    // Tab key inserts spaces in code editor
-    codeInput.addEventListener('keydown', (e) => {
+    // ─────────────────────────────────────────────────────────────────────────
+    // Code editor toggle (original behaviour)
+    // ─────────────────────────────────────────────────────────────────────────
+    codeEditorToggle.addEventListener('change', () => {
+      if (codeEditorToggle.checked) { codeEditorPanel.classList.add('visible'); codeInput.focus(); }
+      else { codeEditorPanel.classList.remove('visible'); codeInput.value = ''; }
+    });
+    codeInput.addEventListener('keydown', e => {
       if (e.key === 'Tab') {
         e.preventDefault();
         const s = codeInput.selectionStart;
@@ -390,44 +659,271 @@
       }
     });
 
-    // ── localStorage persistence ───────────────────────────────────────────────
-    function saveHistory() {
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(history)); } catch (_) {}
-    }
-
-    function loadHistory() {
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (!saved) return;
-        const parsed = JSON.parse(saved);
-        if (!Array.isArray(parsed) || parsed.length === 0) return;
-        history = parsed;
-        removeWelcome();
-        history.forEach(msg => {
-          if (msg.role === 'user') {
-            appendMessage('user', msg.content, null, false);
-          } else if (msg.role === 'assistant') {
-            // Try to parse stored intent from content prefix
-            appendMessage('assistant', msg.content, msg.intent || null, false);
-          }
-        });
-      } catch (_) { history = []; }
-    }
-
-    // ── Clear chat ─────────────────────────────────────────────────────────────
-    clearBtn.addEventListener('click', () => {
-      if (!confirm('Clear all chat history?')) return;
-      history = [];
-      try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
-      chatContainer.innerHTML = `
-        <div class="welcome">
-          <h2>Welcome! I'm MyPy Tutor.</h2>
-          <p>Ask me to <strong>explain a concept</strong>, <strong>debug your code</strong>,
-          <strong>generate a snippet</strong>, or <strong>give you an exercise</strong>.</p>
-        </div>`;
+    // ─────────────────────────────────────────────────────────────────────────
+    // Sidebar quick-ask buttons
+    // ─────────────────────────────────────────────────────────────────────────
+    document.querySelectorAll('.sidebar-btn[data-ask]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        messageInput.value = btn.dataset.ask;
+        switchPanel('chat');
+        messageInput.focus();
+      });
     });
 
-    // ── Helpers ────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // XP bar updater
+    // ─────────────────────────────────────────────────────────────────────────
+    function updateXPBar(xp, level, badges) {
+      const thresholds = { beginner: 200, intermediate: 500, advanced: 9999 };
+      const max = thresholds[level] || 200;
+      const pct = Math.min((xp / max) * 100, 100);
+      xpBarFill.style.width = pct + '%';
+      xpLabel.textContent = `XP: ${xp} · ${level.charAt(0).toUpperCase()+level.slice(1)}`;
+      if (badges && badges.length) badgeRow.textContent = badges.slice(-3).join(' ');
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Refresh sidebar gaps & recent topics from progress API
+    // ─────────────────────────────────────────────────────────────────────────
+    async function refreshSidebar() {
+      try {
+        const res = await fetch(`/progress/${LEARNER_ID}`);
+        if (!res.ok) return;
+        const p = await res.json();
+        updateXPBar(p.xp, p.level, p.badges);
+
+        // Gaps
+        if (p.knowledge_gaps.length) {
+          gapList.innerHTML = p.knowledge_gaps.map(g =>
+            `<span class="gap-tag" title="Tap to practice" style="cursor:pointer" data-gap="${g}">${g}</span>`
+          ).join('');
+          gapList.querySelectorAll('[data-gap]').forEach(el => {
+            el.addEventListener('click', () => {
+              messageInput.value = `I need help understanding ${el.dataset.gap}`;
+              switchPanel('chat');
+              messageInput.focus();
+            });
+          });
+        } else {
+          gapList.innerHTML = '<span style="font-size:0.78rem;color:#4a5568">No gaps detected yet.</span>';
+        }
+
+        // Recent topics
+        if (p.topics_seen.length) {
+          recentTopics.innerHTML = p.topics_seen.slice(-5).reverse().map(t =>
+            `<span class="badge-chip" style="cursor:pointer;display:block;margin-bottom:3px" data-topic="${t}">${t}</span>`
+          ).join('');
+          recentTopics.querySelectorAll('[data-topic]').forEach(el => {
+            el.addEventListener('click', () => {
+              messageInput.value = `Explain ${el.dataset.topic} in Python`;
+              switchPanel('chat');
+              messageInput.focus();
+            });
+          });
+        }
+      } catch (_) {}
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Progress panel
+    // ─────────────────────────────────────────────────────────────────────────
+    async function refreshProgress() {
+      try {
+        const res = await fetch(`/progress/${LEARNER_ID}`);
+        if (!res.ok) return;
+        const p = await res.json();
+
+        document.getElementById('stat-xp').textContent = p.xp;
+        document.getElementById('stat-level').textContent = p.level.charAt(0).toUpperCase()+p.level.slice(1);
+        document.getElementById('stat-topics').textContent = p.topics_seen.length;
+        document.getElementById('stat-projects').textContent = p.completed_projects.length;
+
+        const bl = document.getElementById('badges-list');
+        bl.innerHTML = p.badges.length
+          ? p.badges.map(b => `<span class="badge-chip">${b}</span>`).join('')
+          : '<span style="font-size:0.82rem;color:#4a5568">No badges yet — keep learning!</span>';
+
+        const tpl = document.getElementById('topic-progress-list');
+        if (Object.keys(p.topic_progress).length) {
+          tpl.innerHTML = Object.values(p.topic_progress).map(tp => `
+            <div class="topic-row">
+              <span>${tp.topic}</span>
+              <span style="font-size:0.78rem;color:#718096">
+                ${tp.lessons_completed} lessons · ${tp.exercises_passed}/${tp.exercises_attempted} exercises
+                ${tp.quiz_scores.length ? '· Quiz avg: ' + Math.round(tp.quiz_scores.reduce((a,b)=>a+b,0)/tp.quiz_scores.length) + '%' : ''}
+              </span>
+              <span>${tp.weak ? '<span class="weak-dot" title="Knowledge gap"></span>' : '<span class="ok-dot" title="Good"></span>'}</span>
+            </div>`).join('');
+        } else {
+          tpl.innerHTML = '<span style="font-size:0.82rem;color:#4a5568">Start chatting to track topics.</span>';
+        }
+
+        updateXPBar(p.xp, p.level, p.badges);
+      } catch (_) {}
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Courses panel
+    // ─────────────────────────────────────────────────────────────────────────
+    async function refreshCourses() {
+      try {
+        const profile = await fetch(`/progress/${LEARNER_ID}`).then(r => r.json());
+        const level   = profile.level || getLevel();
+        const res     = await fetch(`/courses?level=${level}`);
+        const data    = await res.json();
+
+        // Active course bar
+        const bar = document.getElementById('active-course-bar');
+        if (profile.current_course) {
+          bar.classList.add('visible');
+          document.getElementById('active-course-title').textContent = profile.current_course;
+          document.getElementById('active-course-step').textContent =
+            `Step ${profile.current_course_step} of ${data.courses.find(c=>c.name===profile.current_course)?.total_steps || '?'}`;
+        } else {
+          bar.classList.remove('visible');
+        }
+
+        const cl = document.getElementById('course-list');
+        cl.innerHTML = '';
+        data.courses.forEach(c => {
+          const card = document.createElement('div');
+          card.className = 'course-card';
+          const isActive = profile.current_course === c.name;
+          card.innerHTML = `
+            <div class="course-info">
+              <h4>${c.name.replace(/-/g,' ').replace(/\b\w/g,l=>l.toUpperCase())}</h4>
+              <p>${c.description}</p>
+              <p style="margin-top:4px;font-size:0.75rem;color:#4a5568">${c.total_steps} steps</p>
+            </div>
+            <div class="course-meta">
+              <span class="level-pill level-${c.level}">${c.level}</span>
+              <button class="enrol-btn" data-course="${c.name}">${isActive ? '▶ Continue' : '▶ Start'}</button>
+            </div>`;
+          card.querySelector('.enrol-btn').addEventListener('click', () => startCourse(c.name));
+          cl.appendChild(card);
+        });
+      } catch (_) {}
+    }
+
+    async function startCourse(name) {
+      switchPanel('chat');
+      const loadEl = showLoading();
+      try {
+        const res = await fetch(`/course/start?learner_id=${LEARNER_ID}&course_name=${encodeURIComponent(name)}`, { method: 'POST' });
+        loadEl.remove();
+        if (!res.ok) { appendMessage('error', 'Could not start course.'); return; }
+        const data = await res.json();
+        appendMessage('assistant', `### 📚 ${data.course} — Step ${data.step}/${data.total_steps}: ${data.title}\n\n${data.content}`, 'course');
+      } catch (err) {
+        loadEl.remove();
+        appendMessage('error', `Error: ${err.message}`);
+      }
+    }
+
+    document.getElementById('continue-course-btn').addEventListener('click', () => nextCourseStep());
+
+    async function nextCourseStep() {
+      switchPanel('chat');
+      const loadEl = showLoading();
+      try {
+        const res = await fetch(`/course/next?learner_id=${LEARNER_ID}`, { method: 'POST' });
+        loadEl.remove();
+        if (!res.ok) { appendMessage('error', 'Could not advance course.'); return; }
+        const data = await res.json();
+        if (data.completed) {
+          appendMessage('assistant', data.content, 'course');
+          if (data.badge) showBadgeToast(data.badge);
+        } else {
+          appendMessage('assistant', `### 📚 Step ${data.step}/${data.total_steps}: ${data.title}\n\n${data.content}`, 'course');
+          if (data.badge) showBadgeToast(data.badge);
+        }
+        refreshSidebar();
+      } catch (err) {
+        loadEl.remove();
+        appendMessage('error', `Error: ${err.message}`);
+      }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Quiz panel
+    // ─────────────────────────────────────────────────────────────────────────
+    document.getElementById('start-quiz-btn').addEventListener('click', generateQuiz);
+    document.getElementById('next-quiz-btn').addEventListener('click', generateQuiz);
+
+    async function generateQuiz() {
+      const topic = document.getElementById('quiz-topic-select').value;
+      if (!topic) { alert('Pick a topic first.'); return; }
+
+      document.getElementById('quiz-question-box').classList.remove('visible');
+      document.getElementById('quiz-result-box').classList.remove('visible');
+      document.getElementById('next-quiz-btn').classList.remove('visible');
+      document.getElementById('start-quiz-btn').textContent = 'Loading…';
+      document.getElementById('start-quiz-btn').disabled = true;
+
+      try {
+        const res = await fetch('/quiz/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ learner_id: LEARNER_ID, topic, level: getLevel() }),
+        });
+        const data = await res.json();
+        currentQuiz = { topic, question: data.question, options: data.options };
+
+        document.getElementById('quiz-q-text').textContent = data.question;
+        const optBox = document.getElementById('quiz-options');
+        optBox.innerHTML = '';
+        data.options.forEach(opt => {
+          const btn = document.createElement('button');
+          btn.className = 'quiz-option';
+          btn.textContent = opt;
+          btn.addEventListener('click', () => submitQuizAnswer(opt, data.options));
+          optBox.appendChild(btn);
+        });
+        document.getElementById('quiz-question-box').classList.add('visible');
+      } catch (e) {
+        alert('Could not load quiz. Try again.');
+      } finally {
+        document.getElementById('start-quiz-btn').textContent = 'Generate Question';
+        document.getElementById('start-quiz-btn').disabled = false;
+      }
+    }
+
+    async function submitQuizAnswer(answer, allOptions) {
+      document.querySelectorAll('.quiz-option').forEach(b => b.disabled = true);
+
+      try {
+        const res = await fetch('/quiz/answer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            learner_id: LEARNER_ID,
+            topic: currentQuiz.topic,
+            level: getLevel(),
+            question: currentQuiz.question,
+            answer,
+          }),
+        });
+        const data = await res.json();
+
+        document.querySelectorAll('.quiz-option').forEach(btn => {
+          const letter = btn.textContent.charAt(0);
+          if (data.correct && btn.textContent === answer) btn.classList.add('correct');
+          else if (!data.correct && btn.textContent === answer) btn.classList.add('wrong');
+        });
+
+        const resultBox = document.getElementById('quiz-result-box');
+        resultBox.innerHTML = marked.parse(data.explanation) +
+          `<div class="xp-toast" style="margin-top:8px">+${data.xp_gained} XP</div>`;
+        resultBox.classList.add('visible');
+        document.getElementById('next-quiz-btn').classList.add('visible');
+
+        refreshSidebar();
+      } catch (_) {}
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Chat helpers (original logic, with XP toast added)
+    // ─────────────────────────────────────────────────────────────────────────
     function scrollToBottom() { chatContainer.scrollTop = chatContainer.scrollHeight; }
 
     function removeWelcome() {
@@ -435,12 +931,6 @@
       if (w) w.remove();
     }
 
-    /**
-     * @param {'user'|'assistant'|'error'} role
-     * @param {string} text
-     * @param {string|null} intent
-     * @param {boolean} [save=true]
-     */
     function appendMessage(role, text, intent = null, save = true) {
       removeWelcome();
       const wrapper = document.createElement('div');
@@ -465,11 +955,18 @@
       } else {
         bubble.innerHTML = marked.parse(text);
       }
-
       wrapper.appendChild(bubble);
       chatContainer.appendChild(wrapper);
       scrollToBottom();
       return wrapper;
+    }
+
+    function showBadgeToast(badge) {
+      const toast = document.createElement('div');
+      toast.style.cssText = 'position:fixed;bottom:80px;right:20px;background:#276749;color:#68d391;border-radius:12px;padding:10px 18px;font-size:0.9rem;font-weight:600;z-index:999;animation:fadeIn 0.3s';
+      toast.textContent = `🏅 New Badge: ${badge}`;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 4000);
     }
 
     function showLoading() {
@@ -477,8 +974,7 @@
       const wrapper = document.createElement('div');
       wrapper.classList.add('message', 'assistant');
       const label = document.createElement('div');
-      label.className = 'label';
-      label.textContent = 'Tutor';
+      label.className = 'label'; label.textContent = 'Tutor';
       wrapper.appendChild(label);
       const dots = document.createElement('div');
       dots.className = 'loading-dots';
@@ -489,17 +985,47 @@
       return wrapper;
     }
 
-    function setLoading(isLoading) {
-      sendBtn.disabled = isLoading;
-      messageInput.disabled = isLoading;
+    function setLoading(on) {
+      sendBtn.disabled = on;
+      messageInput.disabled = on;
     }
 
-    // ── Send logic ─────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // localStorage (original behaviour preserved)
+    // ─────────────────────────────────────────────────────────────────────────
+    function saveHistory() {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(history)); } catch (_) {}
+    }
+
+    function loadHistory() {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (!saved) return;
+        const parsed = JSON.parse(saved);
+        if (!Array.isArray(parsed) || !parsed.length) return;
+        history = parsed;
+        removeWelcome();
+        history.forEach(msg => {
+          if (msg.role === 'user') appendMessage('user', msg.content, null, false);
+          else if (msg.role === 'assistant') appendMessage('assistant', msg.content, msg.intent || null, false);
+        });
+      } catch (_) { history = []; }
+    }
+
+    clearBtn.addEventListener('click', () => {
+      if (!confirm('Clear all chat history?')) return;
+      history = [];
+      try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+      chatContainer.innerHTML = `<div class="welcome"><h2>Welcome to MyPy Tutor v2 🐍</h2><p>Ask me anything about Python — concepts, debugging, code, exercises, or start a <strong>Course</strong>.</p></div>`;
+    });
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Send message (original logic + level + learner_id)
+    // ─────────────────────────────────────────────────────────────────────────
     async function sendMessage() {
       let text = messageInput.value.trim();
       if (!text) return;
 
-      // Append code block if code editor is open and has content
       const code = codeInput.value.trim();
       if (codeEditorToggle.checked && code) {
         text = `${text}\n\n\`\`\`python\n${code}\n\`\`\``;
@@ -519,10 +1045,15 @@
       const loadingEl = showLoading();
 
       try {
-        const res = await fetch(API_ENDPOINT, {
+        const res = await fetch('/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: text, history: history.slice(0, -1) }),
+          body: JSON.stringify({
+            message: text,
+            history: history.slice(0, -1),
+            learner_id: LEARNER_ID,
+            level: getLevel(),
+          }),
         });
 
         loadingEl.remove();
@@ -530,9 +1061,9 @@
         if (!res.ok) {
           let errMsg = `Server error (${res.status})`;
           try {
-            const errData = await res.json();
-            if (errData.detail) errMsg = errData.detail;
-            else if (errData.error) errMsg = errData.error;
+            const d = await res.json();
+            if (d.detail) errMsg = d.detail;
+            else if (d.error) errMsg = d.error;
           } catch (_) {}
           appendMessage('error', errMsg);
           history.pop();
@@ -540,9 +1071,20 @@
         }
 
         const data = await res.json();
-        appendMessage('assistant', data.content, data.intent);
+        const msgEl = appendMessage('assistant', data.content, data.intent);
+
+        // Show XP toast on the message
+        if (data.xp_gained) {
+          const xpEl = document.createElement('div');
+          xpEl.className = 'xp-toast';
+          xpEl.textContent = `+${data.xp_gained} XP`;
+          msgEl.appendChild(xpEl);
+        }
+        if (data.badge) showBadgeToast(data.badge);
+
         history.push({ role: 'assistant', content: data.content, intent: data.intent });
         saveHistory();
+        refreshSidebar();
 
       } catch (err) {
         loadingEl.remove();
@@ -554,19 +1096,21 @@
       }
     }
 
-    // ── Event listeners ────────────────────────────────────────────────────────
     sendBtn.addEventListener('click', sendMessage);
-    messageInput.addEventListener('keydown', (e) => {
+    messageInput.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
     });
     messageInput.addEventListener('input', () => {
       messageInput.style.height = 'auto';
-      messageInput.style.height = Math.min(messageInput.scrollHeight, 160) + 'px';
+      messageInput.style.height = Math.min(messageInput.scrollHeight, 150) + 'px';
     });
 
-    // ── Init ───────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // Init
+    // ─────────────────────────────────────────────────────────────────────────
     loadTopics();
     loadHistory();
+    refreshSidebar();
     messageInput.focus();
   </script>
 </body>
