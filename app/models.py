@@ -1,8 +1,10 @@
 """
-Pydantic models for MyPy Tutor — including learner profile and progress tracking.
+Pydantic models for MyPy Tutor.
+Field-level validation enforced here — lengths, allowed values, patterns.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from typing import Literal
 
 
 # ---------------------------------------------------------------------------
@@ -10,24 +12,25 @@ from pydantic import BaseModel, Field
 # ---------------------------------------------------------------------------
 
 class Message(BaseModel):
-    role: str
-    content: str
+    role: Literal["user", "assistant", "system"]
+    content: str = Field(..., min_length=1, max_length=2_000)
 
 
 class ChatRequest(BaseModel):
-    message: str
-    history: list[Message] = []
-    learner_id: str = "default"          # identifies the learner across sessions
-    level: str = "beginner"              # beginner | intermediate | advanced
+    message:    str          = Field(..., min_length=1, max_length=4_000)
+    history:    list[Message]= Field(default=[], max_length=20)
+    learner_id: str          = Field(default="default", min_length=1, max_length=64,
+                                     pattern=r"^[a-zA-Z0-9_\-]+$")
+    level:      Literal["beginner", "intermediate", "advanced"] = "beginner"
 
 
 class ChatResponse(BaseModel):
-    intent: str
-    content: str
-    topic: str | None = None
-    level: str = "beginner"
-    xp_gained: int = 0
-    badge: str | None = None
+    intent:    str
+    content:   str
+    topic:     str | None = None
+    level:     str        = "beginner"
+    xp_gained: int        = 0
+    badge:     str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -35,24 +38,24 @@ class ChatResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 class TopicProgress(BaseModel):
-    topic: str
-    lessons_completed: int = 0
-    exercises_attempted: int = 0
-    exercises_passed: int = 0
-    quiz_scores: list[int] = []          # 0-100 per quiz
-    weak: bool = False                   # flagged as a knowledge gap
+    topic:               str
+    lessons_completed:   int       = 0
+    exercises_attempted: int       = 0
+    exercises_passed:    int       = 0
+    quiz_scores:         list[int] = []
+    weak:                bool      = False
 
 
 class LearnerProfile(BaseModel):
-    learner_id: str
-    level: str = "beginner"              # beginner | intermediate | advanced
-    xp: int = 0
-    badges: list[str] = []
-    topics_seen: list[str] = []          # ordered — remembers lessons
-    topic_progress: dict[str, TopicProgress] = {}
-    current_course: str | None = None
-    current_course_step: int = 0
-    completed_projects: list[str] = []
+    learner_id:           str
+    level:                str       = "beginner"
+    xp:                   int       = 0
+    badges:               list[str] = []
+    topics_seen:          list[str] = []
+    topic_progress:       dict[str, TopicProgress] = {}
+    current_course:       str | None = None
+    current_course_step:  int        = 0
+    completed_projects:   list[str]  = []
 
 
 # ---------------------------------------------------------------------------
@@ -60,45 +63,47 @@ class LearnerProfile(BaseModel):
 # ---------------------------------------------------------------------------
 
 class CourseStep(BaseModel):
-    step: int
-    title: str
+    step:        int
+    title:       str
     description: str
-    intent: str                          # concept | codegen | exercise | quiz
+    intent:      str
 
 
 class Course(BaseModel):
-    name: str
-    level: str
+    name:        str
+    level:       str
     description: str
-    steps: list[CourseStep]
+    steps:       list[CourseStep]
 
 
 class QuizRequest(BaseModel):
-    learner_id: str = "default"
-    topic: str
-    level: str = "beginner"
+    learner_id: str = Field(default="default", min_length=1, max_length=64,
+                            pattern=r"^[a-zA-Z0-9_\-]+$")
+    topic:      str = Field(..., min_length=1, max_length=100)
+    level:      Literal["beginner", "intermediate", "advanced"] = "beginner"
 
 
 class QuizResponse(BaseModel):
     question: str
-    options: list[str]
-    topic: str
-    level: str
+    options:  list[str]
+    topic:    str
+    level:    str
 
 
 class QuizAnswerRequest(BaseModel):
-    learner_id: str = "default"
-    topic: str
-    level: str = "beginner"
-    question: str
-    answer: str
+    learner_id: str      = Field(default="default", min_length=1, max_length=64,
+                                 pattern=r"^[a-zA-Z0-9_\-]+$")
+    topic:      str      = Field(..., min_length=1, max_length=100)
+    level:      Literal["beginner", "intermediate", "advanced"] = "beginner"
+    question:   str      = Field(..., min_length=1, max_length=1_000)
+    answer:     str      = Field(..., min_length=1, max_length=500)
 
 
 class QuizAnswerResponse(BaseModel):
-    correct: bool
+    correct:     bool
     explanation: str
-    score: int                           # 0 or 100
-    xp_gained: int
+    score:       int
+    xp_gained:   int
 
 
 # ---------------------------------------------------------------------------
@@ -106,13 +111,13 @@ class QuizAnswerResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 class ProgressResponse(BaseModel):
-    learner_id: str
-    level: str
-    xp: int
-    badges: list[str]
-    topics_seen: list[str]
-    knowledge_gaps: list[str]
-    current_course: str | None
-    current_course_step: int
-    completed_projects: list[str]
-    topic_progress: dict[str, TopicProgress]
+    learner_id:           str
+    level:                str
+    xp:                   int
+    badges:               list[str]
+    topics_seen:          list[str]
+    knowledge_gaps:       list[str]
+    current_course:       str | None
+    current_course_step:  int
+    completed_projects:   list[str]
+    topic_progress:       dict[str, TopicProgress]

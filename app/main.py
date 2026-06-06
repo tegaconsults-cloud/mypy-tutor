@@ -1,12 +1,13 @@
 """
-FastAPI application — MyPy Tutor (upgraded).
-All original routes preserved. New routes added for progress, courses, quizzes.
+FastAPI application — MyPy Tutor (secured).
+Security layer: rate limiting, input validation, security headers, sanitised errors.
 """
 
 import logging
 import re
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -26,6 +27,12 @@ from app.progress import (
     record_exercise, get_knowledge_gaps, advance_course,
 )
 from app.courses import get_all_courses, get_courses_for_level, get_course
+from app.security import (
+    SecurityMiddleware,
+    validate_learner_id, validate_level,
+    validate_course_name, validate_topic,
+    validate_chat_request,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,38 +46,54 @@ except ValueError as exc:
     logger.error("Startup error: %s", exc)
     raise
 
-app = FastAPI(title="MyPy Tutor", version="2.0.0")
+app = FastAPI(
+    title="MyPy Tutor",
+    version="2.0.0",
+    # Disable docs in production to avoid leaking API schema
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
 
 # ---------------------------------------------------------------------------
-# Original /chat route — upgraded with level-awareness & progress tracking
+# Middleware — order matters: CORS first, then security
+# ---------------------------------------------------------------------------
+
+# CORS: only allow requests from the same origin (Render domain)
+# Wildcard "*" is intentionally NOT used — that would allow any site to call your API
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://mypy-tutor.onrender.com",   # production
+        "http://localhost:8000",              # local dev
+        "http://127.0.0.1:8000",
+    ],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+    allow_credentials=False,
+)
+
+# Rate limiting + security headers
+app.add_middleware(SecurityMiddleware)
+
+# ---------------------------------------------------------------------------
+# /chat — original + secured
 # ---------------------------------------------------------------------------
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest) -> ChatResponse:
-    """
-    Main chat endpoint. Classifies intent, builds a level-aware system prompt,
-    calls the LLM, records progress, and returns a structured response.
-    All original behaviour preserved — learner_id and level are optional extras.
-    """
-    if not request.message or not request.message.strip():
-        raise HTTPException(status_code=400, detail="Message cannot be empty")
+    # Input validation (size, level, learner_id, history)
+    validate_chat_request(request.message, request.history, request.level, request.learner_id)
 
     intent = classify_intent(request.message)
 
-    # Detect topic from the user message for gap-awareness
-    from app.formatter import _detect_topic  # reuse existing topic detection
-    topic = _detect_topic(request.message)
+    from app.formatter import _detect_topic
+    topic   = _detect_topic(request.message)
+    gaps    = get_knowledge_gaps(request.learner_id)
+    is_gap  = topic in gaps if topic else False
 
-    # Check if this is a known gap topic for this learner
-    gaps = get_knowledge_gaps(request.learner_id)
-    is_gap = topic in gaps if topic else False
-
-    # Build level-aware, gap-aware system prompt
     system_prompt = build_system_prompt(
-        intent,
-        topic=topic,
-        level=request.level,
-        is_gap_topic=is_gap,
+        intent, topic=topic, level=request.level, is_gap_topic=is_gap
     )
 
     messages = [{"role": m.role, "content": m.content} for m in request.history]
@@ -83,18 +106,14 @@ async def chat(request: ChatRequest) -> ChatResponse:
         if any(k in exc_type for k in ("ratelimit", "timeout", "serviceunavailable")):
             logger.warning("LLM unavailable: %s", exc)
             raise HTTPException(status_code=503, detail="LLM unavailable, please retry")
+        # Never leak raw exception details to the client
         logger.error("LLM error: %s", exc)
-        raise HTTPException(status_code=502, detail=str(exc))
+        raise HTTPException(status_code=502, detail="AI service error. Please try again.")
 
-    response_dict = format_response(content, intent)
-
-    # Detect topic from response if not found in message
-    detected_topic = response_dict.get("topic") or topic
-
-    # Record progress
-    xp, badge = record_lesson(request.learner_id, detected_topic or "", intent)
-
-    profile = get_profile(request.learner_id)
+    response_dict   = format_response(content, intent)
+    detected_topic  = response_dict.get("topic") or topic
+    xp, badge       = record_lesson(request.learner_id, detected_topic or "", intent)
+    profile         = get_profile(request.learner_id)
 
     return ChatResponse(
         intent=response_dict["intent"],
@@ -107,34 +126,32 @@ async def chat(request: ChatRequest) -> ChatResponse:
 
 
 # ---------------------------------------------------------------------------
-# Original /topics route — unchanged
+# /topics — original, unchanged
 # ---------------------------------------------------------------------------
 
 @app.get("/topics")
 async def topics() -> dict:
-    """Return the list of supported Python topics."""
     return {"topics": get_topics()}
 
 
 # ---------------------------------------------------------------------------
-# Original /health route — unchanged
+# /health — original, unchanged
 # ---------------------------------------------------------------------------
 
 @app.get("/health")
 async def health() -> dict:
-    """Simple health-check endpoint."""
     return {"status": "ok"}
 
 
 # ---------------------------------------------------------------------------
-# NEW: Progress & learner profile
+# /progress/{learner_id}
 # ---------------------------------------------------------------------------
 
 @app.get("/progress/{learner_id}", response_model=ProgressResponse)
 async def get_progress(learner_id: str) -> ProgressResponse:
-    """Return full learner profile including XP, badges, gaps, and course status."""
+    validate_learner_id(learner_id)
     profile = get_profile(learner_id)
-    gaps = get_knowledge_gaps(learner_id)
+    gaps    = get_knowledge_gaps(learner_id)
     return ProgressResponse(
         learner_id=profile.learner_id,
         level=profile.level,
@@ -150,12 +167,12 @@ async def get_progress(learner_id: str) -> ProgressResponse:
 
 
 # ---------------------------------------------------------------------------
-# NEW: Courses & learning paths
+# /courses
 # ---------------------------------------------------------------------------
 
 @app.get("/courses")
 async def list_courses(level: str = "beginner") -> dict:
-    """List all courses available for a given level."""
+    validate_level(level)
     courses = get_courses_for_level(level)
     return {
         "level": level,
@@ -171,30 +188,35 @@ async def list_courses(level: str = "beginner") -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# /course/start
+# ---------------------------------------------------------------------------
+
 @app.post("/course/start")
 async def start_course(learner_id: str, course_name: str) -> dict:
-    """Enrol a learner in a course and return the first lesson."""
+    validate_learner_id(learner_id)
+    validate_course_name(course_name)
+
     course = get_course(course_name)
     if not course:
-        raise HTTPException(status_code=404, detail=f"Course '{course_name}' not found")
+        raise HTTPException(status_code=404, detail="Course not found.")
 
     profile = get_profile(learner_id)
-    profile.current_course = course_name
+    profile.current_course      = course_name
     profile.current_course_step = 1
 
     from app.progress import save_profile
     save_profile(profile)
 
     step = course.steps[0]
-    system_prompt = build_system_prompt(
-        step.intent, topic=step.title, level=profile.level
-    )
+    system_prompt = build_system_prompt(step.intent, topic=step.title, level=profile.level)
     messages = [{"role": "user", "content": f"Teach me: {step.description}"}]
 
     try:
         content = get_completion(system_prompt, messages)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+        logger.error("Course start LLM error: %s", exc)
+        raise HTTPException(status_code=502, detail="AI service error. Please try again.")
 
     return {
         "course": course_name,
@@ -205,28 +227,32 @@ async def start_course(learner_id: str, course_name: str) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# /course/next
+# ---------------------------------------------------------------------------
+
 @app.post("/course/next")
 async def next_course_step(learner_id: str) -> dict:
-    """Advance to the next step in the learner's current course."""
+    validate_learner_id(learner_id)
+
     profile = get_profile(learner_id)
     if not profile.current_course:
         raise HTTPException(status_code=400, detail="No active course. Start a course first.")
 
     course = get_course(profile.current_course)
     if not course:
-        raise HTTPException(status_code=404, detail="Course not found")
+        raise HTTPException(status_code=404, detail="Course not found.")
 
     advance_course(learner_id)
-    profile = get_profile(learner_id)
-    step_idx = profile.current_course_step - 1
+    profile   = get_profile(learner_id)
+    step_idx  = profile.current_course_step - 1
 
     if step_idx >= len(course.steps):
-        # Course complete
         from app.progress import _award_badge, save_profile, XP_PROJECT
         profile.completed_projects.append(profile.current_course)
         profile.xp += XP_PROJECT
         badge = _award_badge(profile, "course_complete")
-        profile.current_course = None
+        profile.current_course      = None
         profile.current_course_step = 0
         save_profile(profile)
         return {
@@ -238,15 +264,14 @@ async def next_course_step(learner_id: str) -> dict:
         }
 
     step = course.steps[step_idx]
-    system_prompt = build_system_prompt(
-        step.intent, topic=step.title, level=profile.level
-    )
+    system_prompt = build_system_prompt(step.intent, topic=step.title, level=profile.level)
     messages = [{"role": "user", "content": f"Teach me: {step.description}"}]
 
     try:
         content = get_completion(system_prompt, messages)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+        logger.error("Course next LLM error: %s", exc)
+        raise HTTPException(status_code=502, detail="AI service error. Please try again.")
 
     xp, badge = record_lesson(learner_id, step.title, step.intent)
 
@@ -263,34 +288,35 @@ async def next_course_step(learner_id: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# NEW: Quiz generation & evaluation
+# /quiz/generate
 # ---------------------------------------------------------------------------
 
 @app.post("/quiz/generate", response_model=QuizResponse)
 async def generate_quiz(request: QuizRequest) -> QuizResponse:
-    """Generate a multiple-choice quiz question for a topic and level."""
+    # Pydantic already validated lengths; validate topic string safety
+    validate_topic(request.topic)
+
     system_prompt = build_system_prompt("quiz", topic=request.topic, level=request.level)
     messages = [{"role": "user", "content": f"Generate a quiz question about: {request.topic}"}]
 
     try:
         content = get_completion(system_prompt, messages)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+        logger.error("Quiz generate LLM error: %s", exc)
+        raise HTTPException(status_code=502, detail="AI service error. Please try again.")
 
-    # Parse the structured quiz response
     question, options = _parse_quiz(content)
+    return QuizResponse(question=question, options=options, topic=request.topic, level=request.level)
 
-    return QuizResponse(
-        question=question,
-        options=options,
-        topic=request.topic,
-        level=request.level,
-    )
 
+# ---------------------------------------------------------------------------
+# /quiz/answer
+# ---------------------------------------------------------------------------
 
 @app.post("/quiz/answer", response_model=QuizAnswerResponse)
 async def evaluate_quiz_answer(request: QuizAnswerRequest) -> QuizAnswerResponse:
-    """Evaluate a learner's quiz answer and record the result."""
+    validate_topic(request.topic)
+
     system_prompt = build_system_prompt("quiz_eval", topic=request.topic, level=request.level)
     messages = [{
         "role": "user",
@@ -304,30 +330,28 @@ async def evaluate_quiz_answer(request: QuizAnswerRequest) -> QuizAnswerResponse
     try:
         content = get_completion(system_prompt, messages)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+        logger.error("Quiz answer LLM error: %s", exc)
+        raise HTTPException(status_code=502, detail="AI service error. Please try again.")
 
-    correct = "correct: true" in content.lower()
-    score = 100 if correct else 0
-    xp, badge = record_quiz(request.learner_id, request.topic, score)
+    correct  = "correct: true" in content.lower()
+    score    = 100 if correct else 0
+    xp, _    = record_quiz(request.learner_id, request.topic, score)
 
-    return QuizAnswerResponse(
-        correct=correct,
-        explanation=content,
-        score=score,
-        xp_gained=xp,
-    )
+    return QuizAnswerResponse(correct=correct, explanation=content, score=score, xp_gained=xp)
 
 
 # ---------------------------------------------------------------------------
-# NEW: Personalised exercise generation
+# /exercise/generate
 # ---------------------------------------------------------------------------
 
 @app.post("/exercise/generate")
 async def generate_exercise(learner_id: str, topic: str) -> dict:
-    """Generate a personalised exercise based on learner level and known gaps."""
-    profile = get_profile(learner_id)
-    gaps = get_knowledge_gaps(learner_id)
-    is_gap = topic in gaps
+    validate_learner_id(learner_id)
+    validate_topic(topic)
+
+    profile  = get_profile(learner_id)
+    gaps     = get_knowledge_gaps(learner_id)
+    is_gap   = topic in gaps
 
     system_prompt = build_system_prompt(
         "exercise", topic=topic, level=profile.level, is_gap_topic=is_gap
@@ -337,14 +361,10 @@ async def generate_exercise(learner_id: str, topic: str) -> dict:
     try:
         content = get_completion(system_prompt, messages)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=str(exc))
+        logger.error("Exercise LLM error: %s", exc)
+        raise HTTPException(status_code=502, detail="AI service error. Please try again.")
 
-    return {
-        "topic": topic,
-        "level": profile.level,
-        "is_gap_topic": is_gap,
-        "content": content,
-    }
+    return {"topic": topic, "level": profile.level, "is_gap_topic": is_gap, "content": content}
 
 
 # ---------------------------------------------------------------------------
@@ -352,38 +372,49 @@ async def generate_exercise(learner_id: str, topic: str) -> dict:
 # ---------------------------------------------------------------------------
 
 def _parse_quiz(raw: str) -> tuple[str, list[str]]:
-    """Extract question text and A/B/C/D options from raw LLM output."""
-    question = ""
-    options = []
-
-    q_match = re.search(r"\*\*Question:\*\*\s*(.+?)(?=\n[A-D]\))", raw, re.DOTALL)
+    question    = ""
+    options     = []
+    q_match     = re.search(r"\*\*Question:\*\*\s*(.+?)(?=\n[A-D]\))", raw, re.DOTALL)
     if q_match:
         question = q_match.group(1).strip()
-
     opt_matches = re.findall(r"^([A-D])\)\s*(.+)$", raw, re.MULTILINE)
-    options = [f"{letter}) {text}" for letter, text in opt_matches]
-
+    options     = [f"{letter}) {text}" for letter, text in opt_matches]
     if not question:
         question = raw.split("\n")[0].strip()
     if not options:
         options = ["A) See full response", "B) —", "C) —", "D) —"]
-
     return question, options
 
 
 # ---------------------------------------------------------------------------
-# Original error handlers — unchanged
+# Global error handlers — never expose internals
 # ---------------------------------------------------------------------------
 
 @app.exception_handler(400)
 async def bad_request_handler(request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=400, content={"error": "Bad request"})
 
+@app.exception_handler(404)
+async def not_found_handler(request: Request, exc: Exception) -> JSONResponse:
+    return JSONResponse(status_code=404, content={"error": "Not found"})
+
+@app.exception_handler(405)
+async def method_not_allowed_handler(request: Request, exc: Exception) -> JSONResponse:
+    return JSONResponse(status_code=405, content={"error": "Method not allowed"})
+
+@app.exception_handler(422)
+async def validation_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    # Pydantic validation errors — return generic message, not the full schema dump
+    return JSONResponse(status_code=422, content={"error": "Invalid request data"})
+
+@app.exception_handler(500)
+async def internal_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.error("Unhandled error: %s", exc)
+    return JSONResponse(status_code=500, content={"error": "Internal server error"})
 
 @app.exception_handler(502)
 async def bad_gateway_handler(request: Request, exc: Exception) -> JSONResponse:
-    return JSONResponse(status_code=502, content={"error": "Bad gateway"})
-
+    return JSONResponse(status_code=502, content={"error": "AI service error. Please try again."})
 
 @app.exception_handler(503)
 async def service_unavailable_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -391,7 +422,7 @@ async def service_unavailable_handler(request: Request, exc: Exception) -> JSONR
 
 
 # ---------------------------------------------------------------------------
-# Static files — must be mounted LAST
+# Static files — mounted LAST
 # ---------------------------------------------------------------------------
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
