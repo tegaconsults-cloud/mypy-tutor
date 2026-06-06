@@ -1,7 +1,7 @@
 import os
 
 from dotenv import load_dotenv
-from openai import OpenAI
+from groq import Groq
 
 load_dotenv()
 
@@ -11,10 +11,7 @@ if not _api_key:
         "GROQ_API_KEY is not set. Please add it to your .env file or environment."
     )
 
-_client = OpenAI(
-    api_key=_api_key,
-    base_url="https://api.groq.com/openai/v1",
-)
+_client = Groq(api_key=_api_key)
 
 
 def get_completion(
@@ -24,12 +21,12 @@ def get_completion(
     temperature: float = 0.3,
 ) -> str:
     """
-    Calls OpenAI Chat Completions and returns the assistant message content.
+    Calls Groq Chat Completions and returns the assistant message content.
 
     Args:
         system_prompt: The system instruction string.
         messages: List of prior conversation messages in OpenAI format.
-        model: The OpenAI model to use.
+        model: The Groq model to use.
         temperature: Sampling temperature (0.0–2.0).
 
     Returns:

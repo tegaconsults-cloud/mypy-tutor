@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 try:
     # Importing llm_client already validates the API key (raises ValueError if
-    # OPENAI_API_KEY is missing).  We re-import here only to surface the error
+    # GROQ_API_KEY is missing).  We re-import here only to surface the error
     # at startup with a clear log message rather than silently at first request.
     import app.llm_client  # noqa: F401 — side-effect: key validation
 except ValueError as exc:
