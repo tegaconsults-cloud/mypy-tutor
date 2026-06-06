@@ -1061,7 +1061,11 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             message: text,
-            history: history.slice(0, -1),
+            // Truncate each history message to 10000 chars so AI responses never trip the limit
+            history: history.slice(0, -1).map(m => ({
+              role: m.role,
+              content: m.content.slice(0, 10000),
+            })),
             learner_id: LEARNER_ID,
             level: getLevel(),
           }),
@@ -1073,8 +1077,11 @@
           let errMsg = `Server error (${res.status})`;
           try {
             const d = await res.json();
-            if (d.detail) errMsg = d.detail;
-            else if (d.error) errMsg = d.error;
+            if (typeof d.detail === 'string') errMsg = d.detail;
+            else if (typeof d.error === 'string') errMsg = d.error;
+            else if (res.status === 429) errMsg = 'Too many requests — please wait a moment.';
+            else if (res.status === 503) errMsg = 'AI service is busy, please retry.';
+            else if (res.status === 422) errMsg = 'Invalid request. Please check your message.';
           } catch (_) {}
           appendMessage('error', errMsg);
           history.pop();
