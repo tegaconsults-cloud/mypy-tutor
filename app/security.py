@@ -38,7 +38,7 @@ LLM_ENDPOINTS = {"/chat", "/quiz/generate", "/quiz/answer",
 MAX_MESSAGE_LEN   = 4_000         # characters in a single user message
 MAX_CODE_LEN      = 8_000         # characters of pasted code (embedded in message)
 MAX_HISTORY_ITEMS = 20            # max conversation turns sent per request
-MAX_HISTORY_MSG_LEN = 2_000       # characters per history message
+MAX_HISTORY_MSG_LEN = 12_000       # characters per history message (AI responses are long)
 
 # Allowed field values
 ALLOWED_LEVELS    = {"beginner", "intermediate", "advanced"}

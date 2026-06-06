@@ -13,7 +13,7 @@ from typing import Literal
 
 class Message(BaseModel):
     role: Literal["user", "assistant", "system"]
-    content: str = Field(..., min_length=1, max_length=2_000)
+    content: str = Field(..., min_length=1, max_length=12_000)  # AI responses can be long
 
 
 class ChatRequest(BaseModel):
