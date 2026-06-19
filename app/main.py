@@ -22,6 +22,8 @@ from app.models import (
     QuizAnswerRequest, QuizAnswerResponse,
     ProgressResponse,
     GoogleAuthRequest, AuthResponse,
+    EmailSignUpRequest, EmailSignInRequest,
+    MessageFeedback, SurveyFeedback, FeedbackSummary,
 )
 from app.prompts import build_system_prompt
 from app.topics import get_topics
@@ -39,6 +41,14 @@ from app.security import (
 from app.auth import (
     verify_google_token, get_or_create_user,
     create_session_token, get_current_user, require_user,
+)
+from app.feedback import (
+    record_message_feedback, record_survey,
+    increment_interaction, get_summary,
+)
+from app.email_auth import (
+    register_email, confirm_email_token,
+    sign_in_email, hash_password, get_email_user_by_id,
 )
 
 logger = logging.getLogger(__name__)
@@ -128,6 +138,9 @@ async def chat(request: ChatRequest) -> ChatResponse:
     xp, badge       = record_lesson(request.learner_id, detected_topic or "", intent)
     profile         = get_profile(request.learner_id)
 
+    # Check if it's time to ask for a full survey
+    ask_survey = increment_interaction(request.learner_id)
+
     return ChatResponse(
         intent=response_dict["intent"],
         content=response_dict["content"],
@@ -135,6 +148,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
         level=profile.level,
         xp_gained=xp,
         badge=badge,
+        ask_survey=ask_survey,
     )
 
 
@@ -189,6 +203,107 @@ async def auth_me(user=Depends(require_user)) -> AuthResponse:
         email=user.email,
         picture=user.picture,
     )
+
+
+# ---------------------------------------------------------------------------
+# Email auth routes
+# ---------------------------------------------------------------------------
+
+@app.post("/auth/signup")
+async def auth_signup(request: EmailSignUpRequest) -> dict:
+    """Register with email + password. Sends confirmation email."""
+    pw_hash = hash_password(request.password)
+    success, message = register_email(request.email, request.name, pw_hash)
+    if not success:
+        raise HTTPException(status_code=400, detail=message)
+    return {"ok": True, "message": message}
+
+
+@app.post("/auth/signin", response_model=AuthResponse)
+async def auth_signin(request: EmailSignInRequest) -> AuthResponse:
+    """Sign in with email + password."""
+    success, user_data, message = sign_in_email(request.email, request.password)
+    if not success or not user_data:
+        raise HTTPException(status_code=401, detail=message)
+    token = create_session_token(user_data["learner_id"])
+    return AuthResponse(
+        token=token,
+        learner_id=user_data["learner_id"],
+        name=user_data["name"],
+        email=user_data["email"],
+        picture="",
+    )
+
+
+@app.get("/auth/confirm")
+async def auth_confirm(token: str) -> JSONResponse:
+    """Handle email confirmation link click — redirects to frontend with result."""
+    from fastapi.responses import RedirectResponse
+    success, message = confirm_email_token(token)
+    status = "confirmed" if success else "error"
+    msg_encoded = message.replace(" ", "+")
+    return RedirectResponse(url=f"/?auth={status}&msg={msg_encoded}", status_code=302)
+
+
+# ---------------------------------------------------------------------------
+# Feedback routes
+# ---------------------------------------------------------------------------
+
+@app.post("/feedback/message")
+async def message_feedback(fb: MessageFeedback) -> dict:
+    """Record a thumbs up/down on a single AI response."""
+    validate_learner_id(fb.learner_id)
+    record_message_feedback(fb)
+    return {"ok": True}
+
+
+@app.post("/feedback/survey")
+async def survey_feedback(fb: SurveyFeedback) -> dict:
+    """Record a full satisfaction survey response."""
+    validate_learner_id(fb.learner_id)
+    record_survey(fb)
+    return {"ok": True, "message": "Thank you for your feedback! 🙏"}
+
+
+@app.get("/feedback/summary", response_model=FeedbackSummary)
+async def feedback_summary() -> FeedbackSummary:
+    """Return aggregated feedback stats (admin use)."""
+    return get_summary()
+
+
+# ---------------------------------------------------------------------------
+# Certificate routes
+# ---------------------------------------------------------------------------
+
+from app.certificates import generate_certificate_html, get_cert_id, CERT_CONFIGS
+from fastapi.responses import HTMLResponse
+
+
+@app.get("/certificate/{level}", response_class=HTMLResponse)
+async def get_certificate(
+    level: str,
+    name: str = "Learner",
+    learner_id: str = "default",
+) -> HTMLResponse:
+    """
+    Generate and return a printable HTML certificate.
+    level: basic | advanced | executive
+    """
+    # Validate level
+    if level not in CERT_CONFIGS:
+        raise HTTPException(status_code=400, detail="Invalid certificate level. Use: basic, advanced, or executive")
+
+    # Sanitise name — max 80 chars, strip HTML
+    import re as _re
+    clean_name = _re.sub(r'[<>&"\']', '', name).strip()[:80] or "Learner"
+
+    cert_id  = get_cert_id(learner_id, level)
+    html_doc = generate_certificate_html(
+        learner_name=clean_name,
+        level=level,
+        cert_id=cert_id,
+    )
+    return HTMLResponse(content=html_doc)
 
 
 # ---------------------------------------------------------------------------

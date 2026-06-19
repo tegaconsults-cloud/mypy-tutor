@@ -514,6 +514,56 @@
     }
     .coming-soon-overlay { text-align: center; padding: 5px 0 0; font-size: 0.7rem; color: #4a5568; }
 
+    /* ── Certificates panel ── */
+    #certificates-panel { padding: 20px; overflow-y: auto; gap: 18px; -webkit-overflow-scrolling: touch; }
+    #certificates-panel h3 { color: #90cdf4; font-size: 0.97rem; }
+    .cert-level-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+    .cert-card {
+      border-radius: 14px; padding: 22px 18px;
+      display: flex; flex-direction: column; gap: 12px;
+      position: relative; border: 2px solid transparent;
+      transition: transform 0.2s, border-color 0.2s;
+    }
+    .cert-card:hover { transform: translateY(-2px); }
+    .cert-basic    { background: linear-gradient(135deg,#1a2a5e,#1a202c); border-color: #3182ce; }
+    .cert-advanced { background: linear-gradient(135deg,#2d1a5e,#1a202c); border-color: #9f7aea; }
+    .cert-executive{ background: linear-gradient(135deg,#5e3a00,#1a202c); border-color: #f6ad55; }
+    .cert-level-badge {
+      display: inline-block; font-size: 0.65rem; font-weight: 800;
+      text-transform: uppercase; letter-spacing: 0.14em;
+      padding: 3px 12px; border-radius: 999px; width: fit-content;
+    }
+    .cert-basic .cert-level-badge    { background: #1a365d; color: #63b3ed; }
+    .cert-advanced .cert-level-badge { background: #322659; color: #b794f4; }
+    .cert-executive .cert-level-badge{ background: #7b3a00; color: #f6ad55; }
+    .cert-card-title { font-size: 1.05rem; font-weight: 700; color: #e2e8f0; }
+    .cert-card-body  { font-size: 0.8rem; color: #a0aec0; line-height: 1.5; flex: 1; }
+    .cert-requirements { list-style: none; display: flex; flex-direction: column; gap: 5px; }
+    .cert-requirements li { font-size: 0.78rem; color: #718096; display: flex; gap: 6px; }
+    .cert-requirements li::before { content: "✓"; color: #68d391; flex-shrink: 0; }
+    .cert-preview-btn {
+      background: transparent; border: 1px solid currentColor;
+      border-radius: 8px; padding: 9px 14px; font-size: 0.84rem;
+      font-weight: 600; cursor: pointer; transition: opacity 0.15s;
+      min-height: 40px; width: 100%;
+    }
+    .cert-basic     .cert-preview-btn { color: #63b3ed; }
+    .cert-advanced  .cert-preview-btn { color: #b794f4; }
+    .cert-executive .cert-preview-btn { color: #f6ad55; }
+    .cert-preview-btn:hover { opacity: 0.8; }
+    .cert-name-input {
+      background: #0f1117; border: 1px solid #2d3748; color: #e2e8f0;
+      border-radius: 8px; padding: 9px 12px; font-size: 0.88rem;
+      outline: none; width: 100%; font-family: inherit;
+      transition: border-color 0.15s; height: 42px;
+    }
+    .cert-name-input:focus { border-color: #4299e1; }
+    .cert-info-box {
+      background: #1a202c; border: 1px solid #2d3748; border-radius: 10px;
+      padding: 14px; font-size: 0.82rem; color: #a0aec0; line-height: 1.6;
+    }
+    .cert-info-box strong { color: #e2e8f0; }
+
     /* ── Scrollbar ── */
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
@@ -660,6 +710,7 @@
         <button class="nav-tab" data-panel="courses">📚 Courses</button>
         <button class="nav-tab" data-panel="quiz">🏆 Quiz</button>
         <button class="nav-tab" data-panel="progress">📊 Progress</button>
+        <button class="nav-tab" data-panel="certificates">🎓 Certificates</button>
         <button class="nav-tab" data-panel="pricing">💎 Plans</button>
       </div>
     </div>
@@ -827,49 +878,145 @@
         </div>
       </div>
 
+      <!-- CERTIFICATES -->
+      <div id="certificates-panel" class="panel">
+        <h3>🎓 Your Certificates</h3>
+        <div class="cert-info-box">
+          <strong>Issued by:</strong> Teamsamikoko Global Academy &nbsp;·&nbsp;
+          <strong>Reg No:</strong> 3508656 &nbsp;·&nbsp;
+          <strong>Est:</strong> 2021<br/>
+          Enter your full name as it should appear on the certificate, then click Preview to open your printable certificate.
+          Use <strong>Print / Save PDF</strong> in the certificate window to download it.
+        </div>
+
+        <!-- Name input -->
+        <div>
+          <label style="font-size:0.8rem;color:#718096;display:block;margin-bottom:6px">Your full name for the certificate:</label>
+          <input id="cert-name-input" class="cert-name-input" type="text"
+            placeholder="e.g. Adaora Chukwuemeka" maxlength="80"
+            autocomplete="name" autocorrect="off" autocapitalize="words"/>
+        </div>
+
+        <!-- Three certificate cards -->
+        <div class="cert-level-cards">
+
+          <!-- Basic -->
+          <div class="cert-card cert-basic">
+            <span class="cert-level-badge">Basic</span>
+            <div class="cert-card-title">Certificate of Completion</div>
+            <div class="cert-card-body">
+              Awarded upon completing the <strong style="color:#e2e8f0">Basic Python Programming</strong> curriculum.
+            </div>
+            <ul class="cert-requirements">
+              <li>Python syntax &amp; data types</li>
+              <li>Loops, functions &amp; exceptions</li>
+              <li>Basic data structures</li>
+              <li>Pass all module quizzes</li>
+            </ul>
+            <button class="cert-preview-btn" onclick="previewCertificate('basic')">
+              🎓 Preview Basic Certificate
+            </button>
+          </div>
+
+          <!-- Advanced -->
+          <div class="cert-card cert-advanced">
+            <span class="cert-level-badge">Advanced</span>
+            <div class="cert-card-title">Certificate of Achievement</div>
+            <div class="cert-card-body">
+              Awarded upon completing the <strong style="color:#e2e8f0">Advanced Python Programming</strong> curriculum.
+            </div>
+            <ul class="cert-requirements">
+              <li>OOP &amp; design patterns</li>
+              <li>Data structures &amp; algorithms</li>
+              <li>REST APIs &amp; modules</li>
+              <li>All advanced assessments</li>
+            </ul>
+            <button class="cert-preview-btn" onclick="previewCertificate('advanced')">
+              🎓 Preview Advanced Certificate
+            </button>
+          </div>
+
+          <!-- Executive Masters -->
+          <div class="cert-card cert-executive">
+            <span class="cert-level-badge">Executive Masters</span>
+            <div class="cert-card-title">Executive Masters Certificate</div>
+            <div class="cert-card-body">
+              Awarded upon completing the <strong style="color:#e2e8f0">Python &amp; AI Engineering</strong> executive programme.
+            </div>
+            <ul class="cert-requirements">
+              <li>Advanced Python mastery</li>
+              <li>Prompt engineering</li>
+              <li>AI integration &amp; system design</li>
+              <li>Coding assessment — Distinction</li>
+            </ul>
+            <button class="cert-preview-btn" onclick="previewCertificate('executive')">
+              🎓 Preview Executive Masters Certificate
+            </button>
+          </div>
+
+        </div><!-- /cert-level-cards -->
+
+        <div class="cert-info-box" style="font-size:0.75rem;color:#4a5568">
+          💡 Certificates are generated instantly and open in a new tab.
+          Use your browser's <strong style="color:#718096">Print → Save as PDF</strong> to download.
+          Certificates are tied to your learner account and include a unique verification ID.
+        </div>
+      </div><!-- /certificates-panel -->
+
       <!-- PRICING -->
       <div id="pricing-panel" class="panel">
         <div class="pricing-header">
-          <h2>💎 Choose Your Plan</h2>
-          <p>Start free. Upgrade when you're ready.</p>
+          <h2>💎 MyPy Tutor Premium</h2>
+          <p>Start free. Upgrade to unlock the full learning experience.</p>
         </div>
+
+        <!-- Free plan banner -->
         <div class="free-banner">
-          <div class="free-text">You're on the <strong>Free Plan</strong> — full chat, courses, quizzes and progress included.</div>
+          <div class="free-text">You're on the <strong>Free Plan</strong> — full chat, courses, quizzes and progress tracking included.</div>
           <span class="free-pill">✓ Active</span>
         </div>
+
         <div class="pricing-grid">
+
+          <!-- ── TIER 1 ── -->
           <div class="tier-card tier-1">
             <span class="tier-badge">Tier 1</span>
             <div>
               <div class="tier-name">Pro Learner</div>
-              <div class="tier-price"><span class="currency">$</span>9<span class="period">/month</span></div>
+              <div class="tier-price"><span class="currency">₦</span>5,000<span class="period">/month</span></div>
               <div class="tier-desc" style="margin-top:6px">Personalised learning built around your goals and pace.</div>
             </div>
             <ul class="tier-features">
-              <li><span class="feat-icon">🗺️</span> Personalised curriculum</li>
+              <li><span class="feat-icon">🗺️</span> Personalised curriculum tailored to your gaps</li>
               <li><span class="feat-icon">📊</span> Advanced progress analytics</li>
               <li><span class="feat-icon">🚀</span> Project-based learning paths</li>
-              <li><span class="feat-icon">🔁</span> Unlimited course resets</li>
+              <li><span class="feat-icon">🔁</span> Unlimited course resets &amp; retakes</li>
               <li><span class="feat-icon">🤖</span> Priority AI responses</li>
+              <li><span class="feat-icon">🐍</span> Full Python course library</li>
+              <li><span class="feat-icon">📝</span> Coding assessments &amp; instant grading</li>
             </ul>
             <div>
               <button class="tier-cta coming-soon" disabled>Coming Soon</button>
               <div class="coming-soon-overlay">Launching Q3 2025</div>
             </div>
           </div>
+
+          <!-- ── TIER 2 ── -->
           <div class="tier-card tier-2" style="position:relative">
             <div class="popular-pill">Most Popular</div>
             <span class="tier-badge">Tier 2</span>
             <div>
               <div class="tier-name">Career Builder</div>
-              <div class="tier-price"><span class="currency">$</span>19<span class="period">/month</span></div>
-              <div class="tier-desc" style="margin-top:6px">Credentials and portfolio to land your first Python role.</div>
+              <div class="tier-price"><span class="currency">₦</span>10,000<span class="period">/month</span></div>
+              <div class="tier-desc" style="margin-top:6px">Credentials, portfolio, and AI skills to land your first tech role.</div>
             </div>
             <ul class="tier-features">
-              <li><span class="feat-icon">🏅</span> Verified certificates (PDF)</li>
-              <li><span class="feat-icon">💼</span> Auto-generated portfolio</li>
-              <li><span class="feat-icon">🗓️</span> Job-readiness roadmap</li>
-              <li><span class="feat-icon">🔗</span> LinkedIn-ready export</li>
+              <li><span class="feat-icon">🏅</span> Verified course certificates (shareable PDF)</li>
+              <li><span class="feat-icon">💼</span> Auto-generated portfolio from projects</li>
+              <li><span class="feat-icon">🗓️</span> Job-readiness roadmap with milestones</li>
+              <li><span class="feat-icon">🔗</span> LinkedIn-ready profile export</li>
+              <li><span class="feat-icon">🧠</span> Prompt engineering course (beginner → advanced)</li>
+              <li><span class="feat-icon">🎓</span> AI certification programmes</li>
               <li><span class="feat-icon">✅</span> Everything in Tier 1</li>
             </ul>
             <div>
@@ -877,27 +1024,37 @@
               <div class="coming-soon-overlay">Launching Q3 2025</div>
             </div>
           </div>
+
+          <!-- ── TIER 3 ── -->
           <div class="tier-card tier-3">
             <span class="tier-badge">Tier 3</span>
             <div>
               <div class="tier-name">Elite</div>
-              <div class="tier-price"><span class="currency">$</span>39<span class="period">/month</span></div>
-              <div class="tier-desc" style="margin-top:6px">Human connection, mentorship, and live learning.</div>
+              <div class="tier-price"><span class="currency">₦</span>20,000<span class="period">/month</span></div>
+              <div class="tier-desc" style="margin-top:6px">The complete package — human connection, expert mentorship, and live learning.</div>
             </div>
             <ul class="tier-features">
-              <li><span class="feat-icon">🌐</span> Community forum access</li>
-              <li><span class="feat-icon">👨‍💻</span> 1-on-1 mentorship sessions</li>
-              <li><span class="feat-icon">🎙️</span> Weekly live coding sessions</li>
-              <li><span class="feat-icon">⚡</span> Early feature access</li>
-              <li><span class="feat-icon">✅</span> Everything in Tier 1 & 2</li>
+              <li><span class="feat-icon">🌐</span> Access to the MyPy Tutor community forum</li>
+              <li><span class="feat-icon">👨‍💻</span> 1-on-1 mentorship with Python engineers</li>
+              <li><span class="feat-icon">🎙️</span> Weekly live coding sessions &amp; Q&amp;A</li>
+              <li><span class="feat-icon">⚡</span> Early access to new features</li>
+              <li><span class="feat-icon">🧠</span> Advanced prompt engineering masterclass</li>
+              <li><span class="feat-icon">🎓</span> AI certification programmes (all tracks)</li>
+              <li><span class="feat-icon">📝</span> Advanced coding assessments &amp; mock interviews</li>
+              <li><span class="feat-icon">✅</span> Everything in Tier 1 &amp; 2</li>
             </ul>
             <div>
               <button class="tier-cta coming-soon" disabled>Coming Soon</button>
               <div class="coming-soon-overlay">Launching Q4 2025</div>
             </div>
           </div>
+
+        </div><!-- /pricing-grid -->
+
+        <div class="tier-note">
+          All prices in Nigerian Naira (₦). Cancel anytime. No hidden fees.<br/>
+          Early-access waitlist opens soon — keep learning to earn a founding member discount.
         </div>
-        <div class="tier-note">All prices in USD. Cancel anytime. No hidden fees.</div>
       </div>
 
     </div><!-- /panels -->
@@ -910,6 +1067,7 @@
       <button class="bnav-btn" data-panel="courses"><span class="bnav-icon">📚</span>Courses</button>
       <button class="bnav-btn" data-panel="quiz"><span class="bnav-icon">🏆</span>Quiz</button>
       <button class="bnav-btn" data-panel="progress"><span class="bnav-icon">📊</span>Progress</button>
+      <button class="bnav-btn" data-panel="certificates"><span class="bnav-icon">🎓</span>Certs</button>
       <button class="bnav-btn" data-panel="pricing"><span class="bnav-icon">💎</span>Plans</button>
     </div>
   </nav>
@@ -1552,6 +1710,15 @@
     // Override LEARNER_ID to use auth'd user when signed in
     const _origLearnerId = LEARNER_ID;
     function getLearnerId() { return window._learnerId || _origLearnerId; }
+
+    // ── Certificates ─────────────────────────────────────────────────────────
+    function previewCertificate(level) {
+      const nameInput = document.getElementById('cert-name-input');
+      const name = (nameInput ? nameInput.value.trim() : '') || 'Learner';
+      const learnerId = getLearnerId();
+      const url = `/certificate/${level}?name=${encodeURIComponent(name)}&learner_id=${encodeURIComponent(learnerId)}`;
+      window.open(url, '_blank', 'width=1000,height=720,noopener,noreferrer');
+    }
 
     // ── Init ──────────────────────────────────────────────────────────────────
     loadTopics();

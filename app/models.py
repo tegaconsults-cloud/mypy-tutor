@@ -12,7 +12,7 @@ from typing import Literal
 # ---------------------------------------------------------------------------
 
 class UserAccount(BaseModel):
-    learner_id: str          # "g_<google_sub>"
+    learner_id: str
     email:      str
     name:       str
     picture:    str = ""
@@ -24,11 +24,60 @@ class GoogleAuthRequest(BaseModel):
 
 
 class AuthResponse(BaseModel):
-    token:      str           # session token for Authorization: Bearer
+    token:      str
     learner_id: str
     name:       str
     email:      str
     picture:    str
+
+
+class EmailSignUpRequest(BaseModel):
+    name:     str   = Field(..., min_length=1, max_length=80)
+    email:    str   = Field(..., min_length=5, max_length=254,
+                            pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    password: str   = Field(..., min_length=8, max_length=128)
+
+
+class EmailSignInRequest(BaseModel):
+    email:    str   = Field(..., min_length=5, max_length=254)
+    password: str   = Field(..., min_length=1, max_length=128)
+
+
+# ---------------------------------------------------------------------------
+# Feedback models
+# ---------------------------------------------------------------------------
+
+class MessageFeedback(BaseModel):
+    """Quick thumbs up/down on a single AI response."""
+    learner_id:  str   = Field(default="default", min_length=1, max_length=64,
+                               pattern=r"^[a-zA-Z0-9_\-]+$")
+    rating:      Literal["up", "down"]
+    intent:      str   = Field(default="", max_length=50)
+    topic:       str   = Field(default="", max_length=100)
+    comment:     str   = Field(default="", max_length=500)   # optional quick note
+
+
+class SurveyFeedback(BaseModel):
+    """Periodic full satisfaction survey."""
+    learner_id:      str  = Field(default="default", min_length=1, max_length=64,
+                                  pattern=r"^[a-zA-Z0-9_\-]+$")
+    overall:         int  = Field(..., ge=1, le=5)          # 1–5 star rating
+    clarity:         int  = Field(..., ge=1, le=5)          # how clear are explanations?
+    helpfulness:     int  = Field(..., ge=1, le=5)          # how helpful overall?
+    suggestion:      str  = Field(default="", max_length=1000)  # free text
+    would_recommend: bool = True
+
+
+class FeedbackSummary(BaseModel):
+    total_ratings:    int
+    thumbs_up:        int
+    thumbs_down:      int
+    satisfaction_pct: float          # % positive
+    avg_overall:      float          # avg survey overall score
+    avg_clarity:      float
+    avg_helpfulness:  float
+    total_surveys:    int
+    recent_suggestions: list[str]
 
 
 # ---------------------------------------------------------------------------
@@ -49,12 +98,13 @@ class ChatRequest(BaseModel):
 
 
 class ChatResponse(BaseModel):
-    intent:    str
-    content:   str
-    topic:     str | None = None
-    level:     str        = "beginner"
-    xp_gained: int        = 0
-    badge:     str | None = None
+    intent:     str
+    content:    str
+    topic:      str | None = None
+    level:      str        = "beginner"
+    xp_gained:  int        = 0
+    badge:      str | None = None
+    ask_survey: bool       = False   # True every 5 interactions → frontend shows survey
 
 
 # ---------------------------------------------------------------------------
