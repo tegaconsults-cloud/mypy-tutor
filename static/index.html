@@ -617,8 +617,36 @@
     .dropdown-item.danger { color: #fc8181; }
     .dropdown-item.danger:hover { background: #3b1a1a; }
 
-    /* Auth modal */
-    #auth-modal-overlay {
+    /* Auth modal — email tab */
+    .auth-tabs { display: flex; gap: 0; border-radius: 8px; overflow: hidden; border: 1px solid #2d3748; margin-bottom: 4px; }
+    .auth-tab-btn {
+      flex: 1; background: transparent; border: none; color: #718096;
+      padding: 9px; font-size: 0.84rem; font-weight: 600; cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+    .auth-tab-btn.active { background: #2c5282; color: #90cdf4; }
+    .auth-tab-btn:first-child { border-right: 1px solid #2d3748; }
+    .auth-form { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+    .auth-form input {
+      background: #0f1117; border: 1px solid #2d3748; color: #e2e8f0;
+      border-radius: 8px; padding: 10px 13px; font-size: 0.9rem;
+      outline: none; width: 100%; font-family: inherit; height: 44px;
+      transition: border-color 0.15s; -webkit-text-size-adjust: 100%;
+    }
+    .auth-form input:focus { border-color: #4299e1; }
+    .auth-form input::placeholder { color: #4a5568; }
+    .auth-submit-btn {
+      width: 100%; background: #3182ce; color: #fff; border: none;
+      border-radius: 10px; padding: 12px; font-size: 0.93rem;
+      font-weight: 700; cursor: pointer; min-height: 46px;
+      transition: background 0.15s;
+    }
+    .auth-submit-btn:hover:not(:disabled) { background: #2b6cb0; }
+    .auth-submit-btn:disabled { opacity: 0.5; cursor: default; }
+    .auth-success { background: #1c3a26; border: 1px solid #276749; color: #68d391; border-radius: 8px; padding: 10px 14px; font-size: 0.83rem; line-height: 1.5; display: none; text-align: center; }
+    .auth-success.visible { display: block; }
+    .auth-divider { display: flex; align-items: center; gap: 8px; color: #4a5568; font-size: 0.78rem; }
+    .auth-divider::before, .auth-divider::after { content: ''; flex: 1; height: 1px; background: #2d3748; }
       display: none; position: fixed; inset: 0;
       background: rgba(0,0,0,0.7); z-index: 1000;
       align-items: center; justify-content: center; padding: 20px;
@@ -1055,6 +1083,47 @@
           All prices in Nigerian Naira (₦). Cancel anytime. No hidden fees.<br/>
           Early-access waitlist opens soon — keep learning to earn a founding member discount.
         </div>
+
+        <!-- ── Payment methods ── -->
+        <div style="background:#1a202c;border:1px solid #2d3748;border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:14px;">
+          <div style="font-size:0.9rem;font-weight:700;color:#e2e8f0;text-align:center;">💳 Payment Methods</div>
+
+          <!-- Bank transfer -->
+          <div style="background:#0f1117;border:1px solid #2d3748;border-radius:10px;padding:14px;">
+            <div style="font-size:0.78rem;font-weight:700;color:#90cdf4;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;">🏦 Bank Transfer</div>
+            <div style="font-size:0.86rem;color:#e2e8f0;line-height:1.8;">
+              <span style="color:#718096;">Bank:</span> <strong>Zenith Bank Plc</strong><br/>
+              <span style="color:#718096;">Account Name:</span> <strong>Teamsamikoko Global Academy</strong><br/>
+              <span style="color:#718096;">Account Number:</span>
+              <strong style="font-size:1rem;letter-spacing:0.08em;color:#63b3ed;">1228732577</strong>
+              <button onclick="navigator.clipboard.writeText('1228732577').then(()=>{this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',2000)})"
+                style="margin-left:8px;background:#2d3748;color:#a0aec0;border:none;border-radius:5px;padding:2px 8px;font-size:0.72rem;cursor:pointer;">
+                Copy
+              </button>
+            </div>
+            <div style="font-size:0.72rem;color:#4a5568;margin-top:6px;">
+              After payment, send proof to us via the contact details below to activate your plan.
+            </div>
+          </div>
+
+          <!-- Paystack -->
+          <div style="text-align:center;">
+            <div style="font-size:0.78rem;font-weight:700;color:#90cdf4;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">⚡ Pay Online with Paystack</div>
+            <a href="https://paystack.shop/pay/vt_re4d3h52" target="_blank" rel="noopener noreferrer"
+              style="display:inline-flex;align-items:center;gap:8px;background:#00c3f7;color:#fff;
+                     text-decoration:none;font-weight:700;font-size:0.9rem;
+                     padding:12px 28px;border-radius:10px;transition:opacity 0.15s;"
+              onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect width="24" height="24" rx="4" fill="#00c3f7"/>
+                <path d="M7 12h10M12 7l5 5-5 5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              Pay via Paystack
+            </a>
+            <div style="font-size:0.72rem;color:#4a5568;margin-top:6px;">Secure card &amp; bank payment · Instant activation</div>
+          </div>
+        </div>
+
       </div>
 
     </div><!-- /panels -->
@@ -1601,12 +1670,95 @@
       document.getElementById('auth-modal-overlay').classList.add('open');
       document.getElementById('auth-modal-error').style.display = 'none';
       document.getElementById('auth-modal-error').textContent = '';
+      document.getElementById('auth-success-msg').classList.remove('visible');
+      switchAuthTab('signin');
     }
     function closeAuthModal() {
       document.getElementById('auth-modal-overlay').classList.remove('open');
     }
     function handleModalOverlayClick(e) {
       if (e.target === document.getElementById('auth-modal-overlay')) closeAuthModal();
+    }
+
+    function switchAuthTab(tab) {
+      document.getElementById('auth-signin-form').style.display = tab === 'signin' ? 'flex' : 'none';
+      document.getElementById('auth-signup-form').style.display = tab === 'signup' ? 'flex' : 'none';
+      document.getElementById('tab-signin').classList.toggle('active', tab === 'signin');
+      document.getElementById('tab-signup').classList.toggle('active', tab === 'signup');
+      document.getElementById('auth-modal-error').style.display = 'none';
+      document.getElementById('auth-success-msg').classList.remove('visible');
+    }
+
+    function _setAuthError(msg) {
+      const el = document.getElementById('auth-modal-error');
+      el.textContent = msg; el.style.display = 'block';
+      document.getElementById('auth-success-msg').classList.remove('visible');
+    }
+    function _setAuthSuccess(msg) {
+      const el = document.getElementById('auth-success-msg');
+      el.textContent = msg; el.classList.add('visible');
+      document.getElementById('auth-modal-error').style.display = 'none';
+    }
+
+    // ── Email Sign Up ─────────────────────────────────────────────────────────
+    async function handleEmailSignUp() {
+      const name     = document.getElementById('signup-name').value.trim();
+      const email    = document.getElementById('signup-email').value.trim();
+      const password = document.getElementById('signup-password').value;
+      const btn      = document.getElementById('signup-submit-btn');
+
+      if (!name)     { _setAuthError('Please enter your full name.'); return; }
+      if (!email || !email.includes('@')) { _setAuthError('Please enter a valid email address.'); return; }
+      if (password.length < 8) { _setAuthError('Password must be at least 8 characters.'); return; }
+
+      btn.disabled = true; btn.textContent = 'Creating account…';
+      document.getElementById('auth-modal-error').style.display = 'none';
+
+      try {
+        const res = await fetch('/auth/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, email, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) { _setAuthError(data.error || data.detail || 'Sign up failed.'); return; }
+        _setAuthSuccess('✅ ' + data.message);
+        document.getElementById('signup-password').value = '';
+      } catch (err) {
+        _setAuthError('Network error. Please try again.');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Create Account';
+      }
+    }
+
+    // ── Email Sign In ─────────────────────────────────────────────────────────
+    async function handleEmailSignIn() {
+      const email    = document.getElementById('signin-email').value.trim();
+      const password = document.getElementById('signin-password').value;
+      const btn      = document.getElementById('signin-submit-btn');
+
+      if (!email) { _setAuthError('Please enter your email address.'); return; }
+      if (!password) { _setAuthError('Please enter your password.'); return; }
+
+      btn.disabled = true; btn.textContent = 'Signing in…';
+      document.getElementById('auth-modal-error').style.display = 'none';
+
+      try {
+        const res = await fetch('/auth/signin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        const data = await res.json();
+        if (!res.ok) { _setAuthError(data.error || data.detail || 'Sign in failed.'); return; }
+        localStorage.setItem(SESSION_KEY, data.token);
+        setLoggedIn(data);
+        closeAuthModal();
+      } catch (err) {
+        _setAuthError('Network error. Please try again.');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Sign In';
+      }
     }
     function toggleUserDropdown() {
       document.getElementById('user-dropdown').classList.toggle('open');
@@ -1727,6 +1879,34 @@
     restoreSession();
     messageInput.focus();
 
+    // Handle email confirmation redirect (?auth=confirmed&msg=...)
+    (function handleConfirmRedirect() {
+      const params = new URLSearchParams(window.location.search);
+      const authStatus = params.get('auth');
+      const msg = params.get('msg');
+      if (authStatus && msg) {
+        const decoded = msg.replace(/\+/g, ' ');
+        if (authStatus === 'confirmed') {
+          // Show success toast
+          const toast = document.createElement('div');
+          toast.style.cssText = 'position:fixed;top:70px;left:50%;transform:translateX(-50%);background:#276749;color:#68d391;border-radius:12px;padding:12px 20px;font-size:0.9rem;font-weight:600;z-index:9999;max-width:90vw;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.4)';
+          toast.textContent = '✅ ' + decoded;
+          document.body.appendChild(toast);
+          setTimeout(() => toast.remove(), 6000);
+          // Open sign-in modal after a brief delay
+          setTimeout(() => { openAuthModal(); switchAuthTab('signin'); }, 800);
+        } else {
+          const toast = document.createElement('div');
+          toast.style.cssText = 'position:fixed;top:70px;left:50%;transform:translateX(-50%);background:#3b1a1a;color:#fc8181;border-radius:12px;padding:12px 20px;font-size:0.9rem;font-weight:600;z-index:9999;max-width:90vw;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.4)';
+          toast.textContent = '⚠️ ' + decoded;
+          document.body.appendChild(toast);
+          setTimeout(() => toast.remove(), 6000);
+        }
+        // Clean the URL
+        window.history.replaceState({}, '', '/');
+      }
+    })();
+
     // ── Service Worker (PWA) ──────────────────────────────────────────────────
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
@@ -1762,6 +1942,38 @@
       <div class="auth-modal-logo">🐍</div>
       <div class="auth-modal-title" id="auth-modal-title">Welcome to MyPy Tutor</div>
       <div class="auth-modal-sub">Sign in to save your progress, earn badges, and unlock your learning journey.</div>
+
+      <!-- Tabs: Sign In / Sign Up -->
+      <div class="auth-tabs" style="width:100%">
+        <button class="auth-tab-btn active" id="tab-signin" onclick="switchAuthTab('signin')">Sign In</button>
+        <button class="auth-tab-btn" id="tab-signup" onclick="switchAuthTab('signup')">Sign Up</button>
+      </div>
+
+      <!-- Sign In form -->
+      <div id="auth-signin-form" class="auth-form">
+        <input type="email" id="signin-email" placeholder="Email address" autocomplete="email" autocapitalize="none"/>
+        <input type="password" id="signin-password" placeholder="Password" autocomplete="current-password"/>
+        <button class="auth-submit-btn" id="signin-submit-btn" onclick="handleEmailSignIn()">Sign In</button>
+      </div>
+
+      <!-- Sign Up form -->
+      <div id="auth-signup-form" class="auth-form" style="display:none">
+        <input type="text" id="signup-name" placeholder="Full name" autocomplete="name" autocapitalize="words"/>
+        <input type="email" id="signup-email" placeholder="Email address" autocomplete="email" autocapitalize="none"/>
+        <input type="password" id="signup-password" placeholder="Password (min 8 characters)" autocomplete="new-password"/>
+        <button class="auth-submit-btn" id="signup-submit-btn" onclick="handleEmailSignUp()">Create Account</button>
+      </div>
+
+      <!-- Success message -->
+      <div id="auth-success-msg" class="auth-success"></div>
+
+      <!-- Error message -->
+      <div id="auth-modal-error"></div>
+
+      <!-- Divider -->
+      <div class="auth-divider" style="width:100%">or continue with</div>
+
+      <!-- Google sign-in -->
       <button id="google-signin-btn" onclick="handleGoogleSignIn()">
         <svg width="20" height="20" viewBox="0 0 18 18" fill="none">
           <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908C16.658 14.013 17.64 11.706 17.64 9.2z" fill="#4285F4"/>
@@ -1771,7 +1983,6 @@
         </svg>
         Continue with Google
       </button>
-      <div id="auth-modal-error"></div>
       <div class="auth-modal-note">
         By signing in you agree to our Terms of Service.<br/>
         Your progress is saved securely to your account.
