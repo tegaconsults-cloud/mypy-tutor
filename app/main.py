@@ -10,8 +10,9 @@ import os as _os
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi import Depends
 
 from app.classifier import classify_intent
 from app.formatter import format_response
@@ -50,6 +51,7 @@ from app.email_auth import (
     register_email, confirm_email_token,
     sign_in_email, hash_password, get_email_user_by_id,
 )
+from app.certificates import generate_certificate_html, get_cert_id, CERT_CONFIGS
 
 logger = logging.getLogger(__name__)
 
@@ -174,8 +176,6 @@ async def health() -> dict:
 # Auth routes — Google OAuth
 # ---------------------------------------------------------------------------
 
-from fastapi import Depends  # noqa: E402 — import here to avoid circular
-
 
 @app.post("/auth/google", response_model=AuthResponse)
 async def auth_google(request: GoogleAuthRequest) -> AuthResponse:
@@ -274,9 +274,6 @@ async def feedback_summary() -> FeedbackSummary:
 # ---------------------------------------------------------------------------
 # Certificate routes
 # ---------------------------------------------------------------------------
-
-from app.certificates import generate_certificate_html, get_cert_id, CERT_CONFIGS
-from fastapi.responses import HTMLResponse
 
 
 @app.get("/certificate/{level}", response_class=HTMLResponse)
