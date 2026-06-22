@@ -7,13 +7,15 @@
 
   <!-- PWA -->
   <link rel="manifest" href="/manifest.json" />
-  <meta name="theme-color" content="#0f1117" />
+  <meta name="theme-color" content="#3182ce" />
+  <meta name="description" content="Your best AI/ML &amp; Python Tutor — learn Python, take quizzes, earn certificates. Powered by Teamsamikoko Global Academy." />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="MyPy Tutor" />
   <link rel="apple-touch-icon" href="/icons/icon-192.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+  <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png" />
 
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
@@ -1882,6 +1884,16 @@
     refreshSidebar();
     restoreSession();
     messageInput.focus();
+
+    // Handle PWA shortcut links (?panel=chat, ?panel=quiz, etc.)
+    (function handleShortcutNav() {
+      const params = new URLSearchParams(window.location.search);
+      const panel = params.get('panel');
+      if (panel && ['chat','courses','quiz','progress','pricing','certificates'].includes(panel)) {
+        switchPanel(panel);
+        window.history.replaceState({}, '', '/');
+      }
+    })();
 
     // Handle email confirmation redirect (?auth=confirmed&msg=...)
     (function handleConfirmRedirect() {
