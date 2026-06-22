@@ -1,7 +1,7 @@
 {
-  "name": "MyPy Tutor",
-  "short_name": "MyPy",
-  "description": "Your personalised Python learning companion — concepts, debugging, exercises, courses and quizzes.",
+  "name": "Sir. Tega — MyPy Tutor",
+  "short_name": "Sir. Tega",
+  "description": "Your best AI/ML & Python Tutor — powered by Sir. Tega and Teamsamikoko Global Academy.",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait-primary",

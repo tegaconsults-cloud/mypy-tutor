@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>MyPy Tutor</title>
+  <title>Sir. Tega — MyPy Tutor | Best AI/ML &amp; Python Tutor</title>
 
   <!-- PWA -->
   <link rel="manifest" href="/manifest.json" />
@@ -11,7 +11,7 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="MyPy Tutor" />
+  <meta name="apple-mobile-web-app-title" content="Sir. Tega" />
   <link rel="apple-touch-icon" href="/icons/icon-192.png" />
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
 
@@ -735,7 +735,7 @@
   <header>
     <div class="header-left">
       <button id="menu-btn" aria-label="Open menu">☰</button>
-      <div class="logo">🐍 MyPy Tutor</div>
+      <div class="logo">🐍 Sir. Tega — MyPy Tutor</div>
       <div id="desktop-nav">
         <button class="nav-tab active" data-panel="chat">💬 Chat</button>
         <button class="nav-tab" data-panel="courses">📚 Courses</button>
@@ -795,7 +795,7 @@
     <!-- Sidebar drawer -->
     <div id="sidebar" role="navigation" aria-label="Quick actions">
       <div class="sidebar-header">
-        <span class="logo">🐍 MyPy Tutor</span>
+        <span class="logo">🐍 Sir. Tega — MyPy Tutor</span>
         <button id="sidebar-close" aria-label="Close menu">✕</button>
       </div>
 
@@ -839,8 +839,9 @@
       <div id="chat-panel" class="panel active">
         <div id="chat-container">
           <div class="welcome">
-            <h2>Welcome to MyPy Tutor 🐍</h2>
+            <h2>Hi, I'm Sir. Tega 🐍</h2>
             <p>
+              Your best <strong>AI/ML &amp; Python Tutor</strong>, powered by Teamsamikoko Global Academy.<br/>
               Ask me to <strong>explain a concept</strong>, <strong>debug your code</strong>,
               <strong>generate a snippet</strong>, or <strong>give you an exercise</strong>.<br/>
               Use <strong>Courses</strong> for structured learning and <strong>Quiz</strong> to test yourself.
@@ -1516,7 +1517,7 @@
       wrapper.classList.add('message', role);
       const label = document.createElement('div');
       label.className = 'label';
-      label.textContent = role === 'user' ? 'You' : role === 'error' ? 'Error' : 'Tutor';
+      label.textContent = role === 'user' ? 'You' : role === 'error' ? 'Error' : 'Sir. Tega';
       wrapper.appendChild(label);
       if (role === 'assistant' && intent) {
         const badge = document.createElement('span');
@@ -1547,7 +1548,7 @@
       const wrapper = document.createElement('div');
       wrapper.classList.add('message', 'assistant');
       const label = document.createElement('div');
-      label.className = 'label'; label.textContent = 'Tutor';
+      label.className = 'label'; label.textContent = 'Sir. Tega';
       wrapper.appendChild(label);
       const dots = document.createElement('div');
       dots.className = 'loading-dots';
@@ -1583,7 +1584,7 @@
       if (!confirm('Clear all chat history?')) return;
       history = [];
       try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
-      chatContainer.innerHTML = `<div class="welcome"><h2>Welcome to MyPy Tutor 🐍</h2><p>Ask me anything about Python.</p></div>`;
+      chatContainer.innerHTML = `<div class="welcome"><h2>Hi, I'm Sir. Tega 🐍</h2><p>Your best AI/ML &amp; Python Tutor. Ask me anything about Python!</p></div>`;
     });
 
     // ── Send message ──────────────────────────────────────────────────────────
@@ -1943,8 +1944,8 @@
     <div id="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title">
       <button id="auth-modal-close" onclick="closeAuthModal()" aria-label="Close">✕</button>
       <div class="auth-modal-logo">🐍</div>
-      <div class="auth-modal-title" id="auth-modal-title">Welcome to MyPy Tutor</div>
-      <div class="auth-modal-sub">Sign in to save your progress, earn badges, and unlock your learning journey.</div>
+      <div class="auth-modal-title" id="auth-modal-title">Welcome to Sir. Tega — MyPy Tutor</div>
+      <div class="auth-modal-sub">Sign in to save your progress, earn badges, and unlock your learning journey with Sir. Tega.</div>
 
       <!-- Tabs: Sign In / Sign Up -->
       <div class="auth-tabs" style="width:100%">
