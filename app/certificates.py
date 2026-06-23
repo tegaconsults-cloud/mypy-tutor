@@ -9,72 +9,11 @@ No extra packages required — free tier safe.
 import html
 from datetime import datetime
 
-# ---------------------------------------------------------------------------
-# Academy logo — recreated as inline SVG matching the circular seal
-# ---------------------------------------------------------------------------
+# Embedded logo data URIs (base64 PNG — works on Render without file paths)
+ACADEMY_LOGO_URI = "data:image/png;base64,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"
+MPT_LOGO_URI = "data:image/png;base64,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"
 
-ACADEMY_LOGO_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="120" height="120">
-  <!-- Outer spiky border -->
-  <circle cx="100" cy="100" r="96" fill="#1a3a8a" stroke="#1a3a8a" stroke-width="2"/>
-  <!-- Spiky crown effect using polygon points around circumference -->
-  <polygon points="100,4 105,14 100,10 95,14" fill="#fff" transform="rotate(0,100,100)"/>
-  <polygon points="100,4 105,14 100,10 95,14" fill="#fff" transform="rotate(15,100,100)"/>
-  <polygon points="100,4 105,14 100,10 95,14" fill="#fff" transform="rotate(30,100,100)"/>
-  <polygon points="100,4 105,14 100,10 95,14" fill="#fff" transform="rotate(45,100,100)"/>
-  <polygon points="100,4 105,14 100,10 95,14" fill="#fff" transform="rotate(60,100,100)"/>
-  <polygon points="100,4 105,14 100,10 95,14" fill="#fff" transform="rotate(75,100,100)"/>
-  <polygon points="100,4 105,14 100,10 95,14" fill="#fff" transform="rotate(90,100,100)"/>
-  <polygon points="100,4 105,14 100,10 95,14" fill="#fff" transform="rotate(105,100,100)"/>
-  <polygon points="100,4 105,14 100,10 95,14" fill="#fff" transform="rotate(120,100,100)"/>
-  <polygon points="100,4 105,14 100,10 95,14" fill="#fff" transform="rotate(135,100,100)"/>
-  <polygon points="100,4 105,14 100,10 95,14" fill="#fff" transform="rotate(150,100,100)"/>
-  <polygon points="100,4 105,14 100,10 95,14" fill="#fff" transform="rotate(165,100,100)"/>
-  <polygon points="100,4 105,14 100,10 95,14" fill="#fff" transform="rotate(180,100,100)"/>
-  <polygon points="100,4 105,14 100,10 95,14" fill="#fff" transform="rotate(195,100,100)"/>
-  <polygon points="100,4 105,14 100,10 95,14" fill="#fff" transform="rotate(210,100,100)"/>
-  <polygon points="100,4 105,14 100,10 95,14" fill="#fff" transform="rotate(225,100,100)"/>
-  <polygon points="100,4 105,14 100,10 95,14" fill="#fff" transform="rotate(240,100,100)"/>
-  <polygon points="100,4 105,14 100,10 95,14" fill="#fff" transform="rotate(255,100,100)"/>
-  <polygon points="100,4 105,14 100,10 95,14" fill="#fff" transform="rotate(270,100,100)"/>
-  <polygon points="100,4 105,14 100,10 95,14" fill="#fff" transform="rotate(285,100,100)"/>
-  <polygon points="100,4 105,14 100,10 95,14" fill="#fff" transform="rotate(300,100,100)"/>
-  <polygon points="100,4 105,14 100,10 95,14" fill="#fff" transform="rotate(315,100,100)"/>
-  <polygon points="100,4 105,14 100,10 95,14" fill="#fff" transform="rotate(330,100,100)"/>
-  <polygon points="100,4 105,14 100,10 95,14" fill="#fff" transform="rotate(345,100,100)"/>
-  <!-- Blue band -->
-  <circle cx="100" cy="100" r="88" fill="#1a3a8a"/>
-  <!-- White inner circle -->
-  <circle cx="100" cy="100" r="80" fill="#fff" stroke="#1a3a8a" stroke-width="2"/>
-  <!-- Inner blue ring -->
-  <circle cx="100" cy="100" r="76" fill="none" stroke="#1a3a8a" stroke-width="3"/>
-  <!-- Curved top text: TEAMSAMIKOKO GLOBAL ACADEMY -->
-  <path id="top-arc" d="M 22,100 A 78,78 0 0,1 178,100" fill="none"/>
-  <text font-family="Arial,sans-serif" font-size="10.5" font-weight="bold" fill="#fff">
-    <textPath href="#top-arc" startOffset="3%">TEAMSAMIKOKO GLOBAL ACADEMY</textPath>
-  </text>
-  <!-- Curved bottom text: Integrity is our identity -->
-  <path id="bot-arc" d="M 22,100 A 78,78 0 0,0 178,100" fill="none"/>
-  <text font-family="Arial,sans-serif" font-size="9" font-style="italic" fill="#1a3a8a">
-    <textPath href="#bot-arc" startOffset="8%">Integrity is our identity</textPath>
-  </text>
-  <!-- SINCE / 2021 -->
-  <text x="26" y="105" font-family="Arial,sans-serif" font-size="7.5" font-weight="bold" fill="#1a3a8a">SINCE</text>
-  <text x="163" y="105" font-family="Arial,sans-serif" font-size="7.5" font-weight="bold" fill="#1a3a8a">2021</text>
-  <!-- Globe (simplified) -->
-  <circle cx="108" cy="72" r="18" fill="none" stroke="#333" stroke-width="1.5"/>
-  <ellipse cx="108" cy="72" rx="9" ry="18" fill="none" stroke="#333" stroke-width="1"/>
-  <line x1="90" y1="72" x2="126" y2="72" stroke="#333" stroke-width="1"/>
-  <line x1="91" y1="64" x2="125" y2="64" stroke="#333" stroke-width="0.7"/>
-  <line x1="91" y1="80" x2="125" y2="80" stroke="#333" stroke-width="0.7"/>
-  <!-- Books (simplified stack) -->
-  <rect x="74" y="88" width="42" height="8" rx="1" fill="none" stroke="#333" stroke-width="1.5"/>
-  <rect x="72" y="93" width="46" height="7" rx="1" fill="none" stroke="#333" stroke-width="1.5"/>
-  <rect x="78" y="82" width="30" height="8" rx="1" fill="none" stroke="#333" stroke-width="1.2" transform="rotate(-8,93,86)"/>
-  <!-- Small text inside -->
-  <text x="100" y="113" font-family="Arial,sans-serif" font-size="5.5" font-weight="bold" fill="#333" text-anchor="middle">EDUCATIONAL SERVICES AND</text>
-  <text x="100" y="120" font-family="Arial,sans-serif" font-size="5.5" font-weight="bold" fill="#333" text-anchor="middle">CONSULTANCY, GENERAL CONTRACTS</text>
-  <text x="100" y="129" font-family="Arial,sans-serif" font-size="6" font-weight="bold" fill="#1a3a8a" text-anchor="middle">REG NO: 3508656</text>
-</svg>"""
+
 
 # ---------------------------------------------------------------------------
 # Certificate configs per level
@@ -167,8 +106,6 @@ def generate_certificate_html(
         f'{html.escape(s)}</span>'
         for s in cfg["skills"]
     )
-
-    logo_b64_uri = f"data:image/svg+xml;charset=utf-8,{ACADEMY_LOGO_SVG.replace('#','%23').replace('<','%3C').replace('>','%3E').replace(' ','%20').replace(chr(10),'').replace(chr(13),'')}"
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -303,7 +240,7 @@ def generate_certificate_html(
     <!-- Header -->
     <div class="header">
       <div class="logo-wrap">
-        {ACADEMY_LOGO_SVG.replace('width="120"', 'width="90"').replace('height="120"', 'height="90"')}
+        <img src="data:image/png;base64,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" width="90" height="90" alt="Teamsamikoko Academy" style="object-fit:contain"/>
       </div>
       <div class="header-text">
         <div class="academy-name">Teamsamikoko Global Academy</div>
@@ -313,7 +250,7 @@ def generate_certificate_html(
         </div>
       </div>
       <div class="logo-wrap" style="opacity:0.12">
-        {ACADEMY_LOGO_SVG.replace('width="120"', 'width="90"').replace('height="120"', 'height="90"')}
+        <img src="data:image/png;base64,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" width="90" height="90" alt="Teamsamikoko Academy" style="object-fit:contain"/>
       </div>
     </div>
 
