@@ -54,6 +54,12 @@ from app.email_auth import (
     sign_in_email, hash_password, get_email_user_by_id,
 )
 from app.certificates import generate_certificate_html, get_cert_id, CERT_CONFIGS
+from app.admin import (
+    verify_admin_login, create_admin_token, verify_admin_token,
+    add_payment, confirm_payment, get_payments, get_revenue_summary,
+    invite_team_member, create_task, update_task_status, get_team, get_tasks,
+    log_certificate, get_certificates,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -785,6 +791,249 @@ async def bad_gateway_handler(request: Request, exc: Exception) -> JSONResponse:
 async def service_unavailable_handler(request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=503, content={"error": "LLM unavailable, please retry"})
 
+
+# ---------------------------------------------------------------------------
+# Admin routes — protected by admin token
+# ---------------------------------------------------------------------------
+
+from pydantic import BaseModel as _BM
+
+
+class _AdminLogin(_BM):
+    email:    str
+    password: str
+
+
+class _PaymentAdd(_BM):
+    user_email: str
+    user_name:  str
+    amount:     float
+    plan:       str
+    method:     str = "bank"
+    notes:      str = ""
+
+
+class _TaskCreate(_BM):
+    title:       str
+    description: str
+    assigned_to: str
+    priority:    str = "medium"
+    due_date:    str = ""
+
+
+class _TeamInvite(_BM):
+    email: str
+    name:  str
+    role:  str = "team"
+
+
+def _require_admin(request: Request) -> str:
+    token = request.headers.get("X-Admin-Token", "") or request.cookies.get("admin_token", "")
+    if not token or not verify_admin_token(token):
+        raise HTTPException(status_code=403, detail="Admin authentication required.")
+    return token
+
+
+@app.post("/admin/login")
+async def admin_login(body: _AdminLogin) -> dict:
+    if not verify_admin_login(body.email, body.password):
+        raise HTTPException(status_code=401, detail="Invalid admin credentials.")
+    token = create_admin_token()
+    return {"ok": True, "token": token}
+
+
+@app.get("/admin/dashboard")
+async def admin_dashboard(request: Request) -> dict:
+    _require_admin(request)
+    from app.progress import _store as learner_store
+    from app.feedback import get_summary
+    from app.security import _daily_prompt_store
+    import datetime
+
+    today = datetime.date.today().isoformat()
+    active_today = sum(1 for k, (d, c) in _daily_prompt_store.items() if d == today and c > 0)
+
+    return {
+        "users": {
+            "total":         len(learner_store),
+            "active_today":  active_today,
+        },
+        "revenue":    get_revenue_summary(),
+        "payments":   len(get_payments()),
+        "certificates": len(get_certificates()),
+        "tasks": {
+            "total":       len(get_tasks()),
+            "open":        sum(1 for t in get_tasks() if t.status == "open"),
+            "in_progress": sum(1 for t in get_tasks() if t.status == "in_progress"),
+            "done":        sum(1 for t in get_tasks() if t.status == "done"),
+        },
+        "feedback": get_summary().model_dump(),
+        "team_size": len(get_team()),
+    }
+
+
+@app.get("/admin/users")
+async def admin_users(request: Request) -> dict:
+    _require_admin(request)
+    from app.progress import _store as learner_store
+    from app.email_auth import _confirmed
+    users = []
+    for lid, profile in learner_store.items():
+        users.append({
+            "learner_id":   lid,
+            "tier":         profile.tier,
+            "level":        profile.level,
+            "xp":           profile.xp,
+            "topics_seen":  len(profile.topics_seen),
+            "courses_done": len(profile.completed_projects),
+            "badges":       len(profile.badges),
+        })
+    email_users = [{"email": e, "name": u["name"], "type": "email"} for e, u in _confirmed.items()]
+    return {"learner_profiles": users, "email_accounts": email_users,
+            "total": len(users), "email_signups": len(email_users)}
+
+
+@app.get("/admin/payments")
+async def admin_payments(request: Request) -> dict:
+    _require_admin(request)
+    payments = get_payments()
+    return {
+        "payments": [
+            {"id": p.id, "user_email": p.user_email, "user_name": p.user_name,
+             "amount": p.amount, "currency": p.currency, "plan": p.plan,
+             "method": p.method, "status": p.status, "notes": p.notes,
+             "created_at": datetime.datetime.fromtimestamp(p.created_at).isoformat()}
+            for p in payments
+        ],
+        "summary": get_revenue_summary(),
+    }
+
+
+@app.post("/admin/payments/add")
+async def admin_add_payment(body: _PaymentAdd, request: Request) -> dict:
+    _require_admin(request)
+    p = add_payment(body.user_email, body.user_name, body.amount,
+                    body.plan, body.method, body.notes)
+    return {"ok": True, "payment_id": p.id}
+
+
+@app.post("/admin/payments/confirm/{payment_id}")
+async def admin_confirm_payment(payment_id: str, request: Request) -> dict:
+    _require_admin(request)
+    ok = confirm_payment(payment_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Payment not found.")
+    return {"ok": True}
+
+
+@app.get("/admin/certificates")
+async def admin_certificates(request: Request) -> dict:
+    _require_admin(request)
+    certs = get_certificates()
+    return {
+        "certificates": [
+            {"cert_id": c.cert_id, "learner_id": c.learner_id,
+             "learner_name": c.learner_name, "level": c.level,
+             "issued_at": datetime.datetime.fromtimestamp(c.issued_at).isoformat()}
+            for c in certs
+        ],
+        "total": len(certs),
+    }
+
+
+@app.get("/admin/team")
+async def admin_team(request: Request) -> dict:
+    _require_admin(request)
+    return {
+        "members": [{"email": m.email, "name": m.name, "role": m.role, "status": m.status}
+                    for m in get_team()],
+        "tasks": [{"id": t.id, "title": t.title, "assigned_to": t.assigned_to,
+                   "priority": t.priority, "status": t.status, "due_date": t.due_date,
+                   "description": t.description}
+                  for t in get_tasks()],
+    }
+
+
+@app.post("/admin/team/invite")
+async def admin_invite_team(body: _TeamInvite, request: Request) -> dict:
+    _require_admin(request)
+    m = invite_team_member(body.email, body.name, body.role)
+    # Send invite email if configured
+    try:
+        from app.email_auth import _send_email, APP_URL
+        html = f"""<div style="font-family:Arial;background:#0f1117;color:#e2e8f0;padding:32px;">
+        <h2 style="color:#63b3ed;">🐍 MyPy Tutor — Team Invitation</h2>
+        <p>Hi {body.name},</p>
+        <p>You've been invited to join the MyPy Tutor team as <strong>{body.role}</strong>.</p>
+        <a href="{APP_URL}" style="background:#3182ce;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Access Platform</a>
+        <p style="color:#4a5568;margin-top:20px;font-size:0.8rem;">MyPy Tutor · Teamsamikoko Global Academy</p></div>"""
+        _send_email(body.email, "You're invited to join MyPy Tutor team!", html,
+                    f"Hi {body.name}, you've been invited to the MyPy Tutor team as {body.role}.")
+    except Exception as e:
+        logger.warning("Team invite email failed: %s", e)
+    return {"ok": True, "member": {"email": m.email, "name": m.name, "role": m.role}}
+
+
+@app.post("/admin/tasks/create")
+async def admin_create_task(body: _TaskCreate, request: Request) -> dict:
+    _require_admin(request)
+    t = create_task(body.title, body.description, body.assigned_to, body.priority, body.due_date)
+    # Notify assignee by email
+    try:
+        from app.email_auth import _send_email, APP_URL
+        html = f"""<div style="font-family:Arial;background:#0f1117;color:#e2e8f0;padding:32px;">
+        <h2 style="color:#f6ad55;">📋 New Task Assigned</h2>
+        <p><strong>{body.title}</strong></p>
+        <p style="color:#a0aec0;">{body.description}</p>
+        <p>Priority: <strong style="color:{'#fc8181' if body.priority=='urgent' else '#f6ad55'}">{body.priority.upper()}</strong></p>
+        {"<p>Due: " + body.due_date + "</p>" if body.due_date else ""}
+        <a href="{APP_URL}" style="background:#3182ce;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">View Task</a>
+        <p style="color:#4a5568;margin-top:20px;font-size:0.8rem;">MyPy Tutor · Teamsamikoko Global Academy</p></div>"""
+        _send_email(body.assigned_to, f"Task assigned: {body.title}", html,
+                    f"New task: {body.title}\n{body.description}\nPriority: {body.priority}")
+    except Exception as e:
+        logger.warning("Task email failed: %s", e)
+    return {"ok": True, "task_id": t.id}
+
+
+@app.post("/admin/tasks/{task_id}/status")
+async def admin_update_task(task_id: str, status: str, request: Request) -> dict:
+    _require_admin(request)
+    if status not in ("open", "in_progress", "done"):
+        raise HTTPException(status_code=400, detail="Invalid status.")
+    ok = update_task_status(task_id, status)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Task not found.")
+    return {"ok": True}
+
+
+@app.get("/admin/feedback")
+async def admin_feedback_data(request: Request) -> dict:
+    _require_admin(request)
+    from app.feedback import _ratings, _surveys, get_summary
+    return {
+        "summary": get_summary().model_dump(),
+        "recent_ratings": [
+            {"learner_id": r.learner_id, "rating": r.rating, "topic": r.topic,
+             "comment": r.comment, "intent": r.intent}
+            for r in list(reversed(_ratings))[:20]
+        ],
+        "recent_surveys": [
+            {"learner_id": s.learner_id, "overall": s.overall, "clarity": s.clarity,
+             "helpfulness": s.helpfulness, "suggestion": s.suggestion,
+             "would_recommend": s.would_recommend}
+            for s in list(reversed(_surveys))[:20]
+        ],
+    }
+
+
+# Add datetime import needed above
+import datetime
+
+
+# ---------------------------------------------------------------------------
+# Static admin page served at /admin
+# ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # Static files — mounted LAST
