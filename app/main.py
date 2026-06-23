@@ -205,9 +205,94 @@ async def auth_config() -> dict:
     }
 
 
+@app.get("/auth/google/login")
+async def auth_google_login() -> JSONResponse:
+    """
+    Redirect user to Google OAuth consent screen.
+    Uses the Authorization Code flow — works in all browsers without cookies/popups.
+    """
+    from fastapi.responses import RedirectResponse
+    import urllib.parse
+
+    client_id  = _os.getenv("GOOGLE_CLIENT_ID", "")
+    app_url    = _os.getenv("APP_URL", "https://mypy-tutor.onrender.com")
+    redirect_uri = f"{app_url}/auth/google/callback"
+
+    if not client_id:
+        return RedirectResponse(url="/?auth=error&msg=Google+Sign-In+not+configured")
+
+    params = urllib.parse.urlencode({
+        "client_id":     client_id,
+        "redirect_uri":  redirect_uri,
+        "response_type": "code",
+        "scope":         "openid email profile",
+        "access_type":   "online",
+        "prompt":        "select_account",
+    })
+    return RedirectResponse(url=f"https://accounts.google.com/o/oauth2/v2/auth?{params}")
+
+
+@app.get("/auth/google/callback")
+async def auth_google_callback(code: str = None, error: str = None) -> JSONResponse:
+    """
+    Handle Google OAuth callback with authorization code.
+    Exchanges code for tokens, verifies ID token, creates/updates user.
+    """
+    from fastapi.responses import RedirectResponse
+    import urllib.parse, json
+
+    app_url      = _os.getenv("APP_URL", "https://mypy-tutor.onrender.com")
+    client_id    = _os.getenv("GOOGLE_CLIENT_ID", "")
+    client_secret= _os.getenv("GOOGLE_CLIENT_SECRET", "")
+    redirect_uri = f"{app_url}/auth/google/callback"
+
+    if error or not code:
+        msg = urllib.parse.quote(error or "Google sign-in was cancelled")
+        return RedirectResponse(url=f"/?auth=error&msg={msg}")
+
+    # Exchange code for tokens
+    try:
+        import httpx as _httpx
+        async with _httpx.AsyncClient(timeout=10) as hc:
+            token_res = await hc.post("https://oauth2.googleapis.com/token", data={
+                "code":          code,
+                "client_id":     client_id,
+                "client_secret": client_secret,
+                "redirect_uri":  redirect_uri,
+                "grant_type":    "authorization_code",
+            })
+            if token_res.status_code != 200:
+                logger.error("Token exchange failed: %s", token_res.text)
+                return RedirectResponse(url="/?auth=error&msg=Token+exchange+failed")
+
+            tokens   = token_res.json()
+            id_token = tokens.get("id_token", "")
+
+        # Verify the ID token
+        payload = verify_google_token(id_token)
+        user    = get_or_create_user(payload)
+        token   = create_session_token(user.learner_id)
+
+        # Pass session token back to frontend via URL fragment
+        # Frontend reads it, stores in localStorage, then cleans URL
+        import urllib.parse as _up
+        user_data = _up.quote(json.dumps({
+            "token":      token,
+            "learner_id": user.learner_id,
+            "name":       user.name,
+            "email":      user.email,
+            "picture":    user.picture,
+        }))
+        return RedirectResponse(url=f"/?auth=google_success&user={user_data}")
+
+    except Exception as exc:
+        logger.error("Google OAuth callback error: %s", exc)
+        return RedirectResponse(url="/?auth=error&msg=Google+sign-in+failed")
+
+
 @app.post("/auth/google", response_model=AuthResponse)
 async def auth_google(request: GoogleAuthRequest) -> AuthResponse:
-    """Verify Google id_token, create/update user, return session token."""
+    """Verify Google id_token from GSI One-Tap (kept for compatibility)."""
     payload = verify_google_token(request.credential)
     user    = get_or_create_user(payload)
     token   = create_session_token(user.learner_id)
