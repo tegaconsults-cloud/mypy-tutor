@@ -1,414 +1,567 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>MyPy Tutor — Admin Dashboard</title>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>MyPy Tutor — Admin</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh}
-#login-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
-.login-box{background:#1a202c;border:1px solid #2d3748;border-radius:16px;padding:36px 32px;width:100%;max-width:380px;display:flex;flex-direction:column;gap:16px}
-.login-box h2{color:#63b3ed;font-size:1.2rem;text-align:center}
-.login-box p{font-size:0.82rem;color:#718096;text-align:center}
-input{background:#0f1117;border:1px solid #2d3748;color:#e2e8f0;border-radius:8px;padding:11px 14px;font-size:0.95rem;outline:none;width:100%;height:44px;transition:border-color .15s}
-input:focus{border-color:#4299e1}
-.btn{width:100%;background:#3182ce;color:#fff;border:none;border-radius:8px;padding:12px;font-size:0.95rem;font-weight:700;cursor:pointer;height:44px;transition:opacity .15s}
-.btn:hover{opacity:.88}
-.btn:disabled{opacity:.5;cursor:default}
-#login-error{color:#fc8181;font-size:.82rem;text-align:center;display:none}
+#login{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.lbox{background:#1a202c;border:1px solid #2d3748;border-radius:16px;padding:36px 32px;width:100%;max-width:380px;display:flex;flex-direction:column;gap:14px}
+.lbox h2{color:#63b3ed;text-align:center;font-size:1.1rem}
+.lbox p{color:#718096;font-size:.82rem;text-align:center}
 #app{display:none;flex-direction:column;min-height:100vh}
-header{background:#1a202c;border-bottom:1px solid #2d3748;padding:12px 24px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
-header .logo{font-size:1rem;font-weight:700;color:#63b3ed}
-header .logout{background:transparent;border:1px solid #2d3748;color:#718096;border-radius:8px;padding:6px 14px;font-size:.8rem;cursor:pointer}
-.layout{display:flex;flex:1;overflow:hidden}
-nav{width:200px;background:#1a202c;border-right:1px solid #2d3748;padding:16px 10px;display:flex;flex-direction:column;gap:4px;flex-shrink:0;overflow-y:auto}
-.nav-item{background:transparent;border:none;color:#718096;border-radius:8px;padding:10px 14px;font-size:.85rem;cursor:pointer;text-align:left;transition:all .15s;width:100%}
-.nav-item:hover{background:#2d3748;color:#e2e8f0}
-.nav-item.active{background:#2c5282;color:#90cdf4}
-main{flex:1;overflow-y:auto;padding:24px}
+.topbar{background:#1a202c;border-bottom:1px solid #2d3748;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.topbar .logo{color:#63b3ed;font-weight:700;font-size:.95rem}
+.topbar .right{display:flex;align-items:center;gap:10px;font-size:.8rem;color:#718096}
+.layout{display:flex;flex:1;overflow:hidden;height:calc(100vh - 49px)}
+.sidebar{width:190px;background:#1a202c;border-right:1px solid #2d3748;padding:12px 8px;display:flex;flex-direction:column;gap:3px;overflow-y:auto;flex-shrink:0}
+.nb{background:transparent;border:none;color:#718096;border-radius:8px;padding:9px 12px;font-size:.82rem;cursor:pointer;text-align:left;width:100%;transition:all .15s}
+.nb:hover{background:#2d3748;color:#e2e8f0}
+.nb.active{background:#2c5282;color:#90cdf4}
+main{flex:1;overflow-y:auto;padding:20px}
 .page{display:none}.page.active{display:block}
-h3{color:#90cdf4;font-size:1rem;margin-bottom:16px}
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px}
-.card{background:#1a202c;border:1px solid #2d3748;border-radius:10px;padding:16px}
-.card .val{font-size:1.6rem;font-weight:800;color:#63b3ed}
-.card .lbl{font-size:.72rem;color:#718096;margin-top:4px}
-.card.green .val{color:#68d391}
-.card.gold .val{color:#f6ad55}
-.card.red .val{color:#fc8181}
-table{width:100%;border-collapse:collapse;font-size:.84rem}
-th{text-align:left;padding:8px 10px;color:#4a5568;font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;border-bottom:1px solid #2d3748}
-td{padding:8px 10px;border-bottom:1px solid #1a202c;color:#a0aec0}
+h2{color:#90cdf4;font-size:1rem;margin-bottom:14px}
+h3{color:#e2e8f0;font-size:.88rem;margin-bottom:10px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:18px}
+.card{background:#1a202c;border:1px solid #2d3748;border-radius:10px;padding:14px}
+.card .v{font-size:1.4rem;font-weight:800;color:#63b3ed}.card .l{font-size:.68rem;color:#718096;margin-top:3px}
+.card.g .v{color:#68d391}.card.gold .v{color:#f6ad55}.card.r .v{color:#fc8181}
+.sec{background:#1a202c;border:1px solid #2d3748;border-radius:10px;padding:14px;margin-bottom:14px}
+table{width:100%;border-collapse:collapse;font-size:.82rem}
+th{text-align:left;padding:6px 8px;color:#4a5568;font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid #2d3748}
+td{padding:6px 8px;border-bottom:1px solid #1a202c;color:#a0aec0;vertical-align:top}
 tr:hover td{background:#1a202c}
-.badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:.68rem;font-weight:700}
-.badge-green{background:#276749;color:#68d391}
-.badge-yellow{background:#744210;color:#f6ad55}
-.badge-red{background:#742a2a;color:#fc8181}
-.badge-blue{background:#1a365d;color:#63b3ed}
-.badge-grey{background:#2d3748;color:#718096}
-.form-row{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
-.form-row label{font-size:.78rem;color:#718096}
-.form-row input,.form-row select,.form-row textarea{background:#0f1117;border:1px solid #2d3748;color:#e2e8f0;border-radius:8px;padding:9px 12px;font-size:.88rem;outline:none;width:100%;font-family:inherit}
-.form-row textarea{min-height:80px;resize:vertical}
-.form-row select{height:40px}
-.btn-sm{background:#2c5282;color:#90cdf4;border:1px solid #4299e1;border-radius:6px;padding:5px 12px;font-size:.78rem;font-weight:600;cursor:pointer;transition:opacity .15s}
-.btn-sm:hover{opacity:.88}
-.btn-green{background:#276749;color:#68d391;border:1px solid #2f855a}
-.btn-red{background:#742a2a;color:#fc8181;border:1px solid #9b2c2c}
-.section{background:#1a202c;border:1px solid #2d3748;border-radius:10px;padding:16px;margin-bottom:16px}
-.section h4{color:#e2e8f0;font-size:.9rem;margin-bottom:12px}
-.two-col{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-@media(max-width:640px){.two-col{grid-template-columns:1fr}.layout{flex-direction:column}nav{width:100%;flex-direction:row;flex-wrap:wrap;padding:8px}.nav-item{flex:1;min-width:80px;text-align:center;font-size:.75rem}main{padding:14px}}
+.badge{display:inline-block;padding:2px 7px;border-radius:999px;font-size:.66rem;font-weight:700}
+.bg{background:#2c5282;color:#90cdf4}.gg{background:#276749;color:#68d391}
+.gy{background:#744210;color:#f6ad55}.gr{background:#742a2a;color:#fc8181}.grey{background:#2d3748;color:#718096}
+input,select,textarea{background:#0f1117;border:1px solid #2d3748;color:#e2e8f0;border-radius:7px;padding:8px 10px;font-size:.86rem;outline:none;font-family:inherit;width:100%}
+input:focus,select:focus,textarea:focus{border-color:#4299e1}
+textarea{min-height:70px;resize:vertical}select{height:38px}
+label{font-size:.74rem;color:#718096;display:block;margin-bottom:3px}
+.fr{margin-bottom:10px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.btn{display:inline-block;background:#3182ce;color:#fff;border:none;border-radius:7px;padding:8px 16px;font-size:.83rem;font-weight:600;cursor:pointer;transition:opacity .15s}
+.btn:hover{opacity:.88}
+.bsm{display:inline-block;background:#2c5282;color:#90cdf4;border:1px solid #4299e1;border-radius:6px;padding:3px 10px;font-size:.74rem;font-weight:600;cursor:pointer}
+.bsm:hover{opacity:.88}
+.bg2{background:#276749;color:#68d391;border-color:#2f855a}
+.br{background:#742a2a;color:#fc8181;border-color:#9b2c2c}
+.alert-g{background:#1c3a26;border:1px solid #276749;color:#68d391;border-radius:8px;padding:8px 12px;font-size:.82rem;margin-bottom:12px}
+.alert-r{background:#3b1a1a;border:1px solid #742a2a;color:#fc8181;border-radius:8px;padding:8px 12px;font-size:.82rem;margin-bottom:12px}
+#toast{position:fixed;bottom:20px;right:20px;background:#276749;color:#68d391;border-radius:10px;padding:10px 18px;font-size:.86rem;font-weight:600;z-index:9999;display:none}
+#modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;align-items:center;justify-content:center;padding:16px}
+#modal-overlay.open{display:flex}
+#modal-box{background:#1a202c;border:1px solid #2d3748;border-radius:14px;padding:24px;width:100%;max-width:500px;max-height:85vh;overflow-y:auto;position:relative}
+#modal-close{position:absolute;top:12px;right:14px;background:transparent;border:none;color:#718096;font-size:1.1rem;cursor:pointer}
+@media(max-width:640px){.layout{flex-direction:column}.sidebar{width:100%;height:auto;flex-direction:row;flex-wrap:wrap;padding:6px}.nb{flex:1;min-width:70px;text-align:center;font-size:.72rem;padding:7px 4px}.g2{grid-template-columns:1fr}main{padding:12px}}
 </style>
 </head>
 <body>
 
-<!-- Login screen -->
-<div id="login-screen">
-  <div class="login-box">
+<!-- Login -->
+<div id="login">
+  <div class="lbox">
     <h2>🐍 MyPy Tutor Admin</h2>
     <p>Sign in with your admin credentials</p>
-    <input id="admin-email" type="email" placeholder="Admin email" autocomplete="email"/>
-    <input id="admin-pass" type="password" placeholder="Password" autocomplete="current-password"/>
-    <button class="btn" id="login-btn" onclick="doLogin()">Sign In</button>
-    <div id="login-error">Invalid credentials. Please try again.</div>
+    <div><label>Email</label><input id="lemail" type="email" placeholder="Admin email" autocomplete="email"/></div>
+    <div><label>Password</label><input id="lpass" type="password" placeholder="Password" autocomplete="current-password"/></div>
+    <button class="btn" id="lbtn" onclick="doLogin()">Sign In</button>
+    <div id="lerr" class="alert-r" style="display:none">Invalid credentials.</div>
   </div>
 </div>
 
-<!-- Main app -->
+<!-- App -->
 <div id="app">
-  <header>
-    <div class="logo">🐍 MyPy Tutor — Admin</div>
-    <button class="logout" onclick="doLogout()">Sign Out</button>
-  </header>
+  <div class="topbar">
+    <span class="logo">🐍 MyPy Tutor Admin</span>
+    <div class="right"><span id="admin-email-lbl"></span><button class="bsm" onclick="doLogout()">Sign Out</button></div>
+  </div>
   <div class="layout">
-    <nav>
-      <button class="nav-item active" data-page="dashboard">📊 Dashboard</button>
-      <button class="nav-item" data-page="users">👥 Users</button>
-      <button class="nav-item" data-page="payments">💳 Payments</button>
-      <button class="nav-item" data-page="certificates">🎓 Certificates</button>
-      <button class="nav-item" data-page="feedback">💬 Feedback</button>
-      <button class="nav-item" data-page="team">👨‍💼 Team & Tasks</button>
-    </nav>
+    <div class="sidebar">
+      <button class="nb active" data-p="dashboard">📊 Dashboard</button>
+      <button class="nb" data-p="users">👥 Users</button>
+      <button class="nb" data-p="activity">🔍 Activity</button>
+      <button class="nb" data-p="payments">💳 Payments</button>
+      <button class="nb" data-p="certificates">🎓 Certificates</button>
+      <button class="nb" data-p="feedback">💬 Feedback</button>
+      <button class="nb" data-p="announce">📢 Announce</button>
+      <button class="nb" data-p="team">👨‍💼 Team</button>
+      <button class="nb" data-p="tasks">📋 Tasks</button>
+      <button class="nb" data-p="files">📁 Files</button>
+    </div>
     <main>
-
       <!-- DASHBOARD -->
-      <div id="page-dashboard" class="page active">
-        <h3>📊 Dashboard Overview</h3>
-        <div class="cards" id="dash-cards">
-          <div class="card"><div class="val" id="d-users">—</div><div class="lbl">Total Users</div></div>
-          <div class="card green"><div class="val" id="d-active">—</div><div class="lbl">Active Today</div></div>
-          <div class="card gold"><div class="val" id="d-revenue">—</div><div class="lbl">Total Revenue (₦)</div></div>
-          <div class="card"><div class="val" id="d-payments">—</div><div class="lbl">Payments</div></div>
-          <div class="card"><div class="val" id="d-certs">—</div><div class="lbl">Certificates Issued</div></div>
-          <div class="card"><div class="val" id="d-tasks">—</div><div class="lbl">Open Tasks</div></div>
-          <div class="card green"><div class="val" id="d-satisfaction">—</div><div class="lbl">Satisfaction %</div></div>
-          <div class="card"><div class="val" id="d-team">—</div><div class="lbl">Team Members</div></div>
+      <div id="p-dashboard" class="page active">
+        <h2>📊 Dashboard</h2>
+        <div class="cards">
+          <div class="card"><div class="v" id="d-users">—</div><div class="l">Total Users</div></div>
+          <div class="card g"><div class="v" id="d-active">—</div><div class="l">Active Today</div></div>
+          <div class="card gold"><div class="v" id="d-rev">—</div><div class="l">Revenue (₦)</div></div>
+          <div class="card"><div class="v" id="d-pmts">—</div><div class="l">Payments</div></div>
+          <div class="card"><div class="v" id="d-certs">—</div><div class="l">Certificates</div></div>
+          <div class="card"><div class="v" id="d-tasks">—</div><div class="l">Open Tasks</div></div>
+          <div class="card g"><div class="v" id="d-sat">—</div><div class="l">Satisfaction</div></div>
+          <div class="card"><div class="v" id="d-team">—</div><div class="l">Team</div></div>
         </div>
-        <div class="section">
-          <h4>Revenue by Plan</h4>
-          <div id="revenue-breakdown" style="font-size:.85rem;color:#a0aec0;">Loading…</div>
+        <div class="g2">
+          <div class="sec"><h3>User Tiers</h3><div id="d-tiers">Loading…</div></div>
+          <div class="sec"><h3>Revenue by Plan</h3><div id="d-plans">Loading…</div></div>
+        </div>
+        <div class="sec"><h3>Quick Actions</h3>
+          <div style="display:flex;flex-wrap:wrap;gap:8px">
+            <button class="bsm" onclick="nav('users')">👥 Users</button>
+            <button class="bsm" onclick="nav('payments')">💳 Payments</button>
+            <button class="bsm" onclick="nav('certificates')">🎓 Certificates</button>
+            <button class="bsm" onclick="nav('announce')">📢 Announce</button>
+          </div>
         </div>
       </div>
 
       <!-- USERS -->
-      <div id="page-users" class="page">
-        <h3>👥 Registered Users</h3>
-        <div id="users-table-wrap"><p style="color:#718096">Loading…</p></div>
+      <div id="p-users" class="page">
+        <h2>👥 Users</h2>
+        <div class="sec"><div style="overflow-x:auto"><table id="users-table">
+          <thead><tr><th>ID</th><th>Tier</th><th>Level</th><th>XP</th><th>Topics</th><th>Courses</th><th>Actions</th></tr></thead>
+          <tbody id="users-body"><tr><td colspan="7" style="color:#4a5568">Loading…</td></tr></tbody>
+        </table></div></div>
+      </div>
+
+      <!-- ACTIVITY -->
+      <div id="p-activity" class="page">
+        <h2>🔍 User Activity Monitor</h2>
+        <p style="color:#718096;font-size:.82rem;margin-bottom:12px">Last 200 actions — real-time view of what users are doing</p>
+        <div class="sec"><div style="overflow-x:auto"><table>
+          <thead><tr><th>Time</th><th>User</th><th>Action</th><th>Detail</th></tr></thead>
+          <tbody id="activity-body"><tr><td colspan="4" style="color:#4a5568">Loading…</td></tr></tbody>
+        </table></div></div>
       </div>
 
       <!-- PAYMENTS -->
-      <div id="page-payments" class="page">
-        <h3>💳 Payments</h3>
-        <div class="section">
-          <h4>Record New Payment</h4>
-          <div class="two-col">
-            <div class="form-row"><label>User Email</label><input id="p-email" placeholder="user@email.com"/></div>
-            <div class="form-row"><label>User Name</label><input id="p-name" placeholder="Full name"/></div>
-            <div class="form-row"><label>Amount (₦)</label><input id="p-amount" type="number" placeholder="5000"/></div>
-            <div class="form-row"><label>Plan</label>
-              <select id="p-plan">
-                <option value="tier1">Tier 1 — Pro Learner (₦5,000/mo)</option>
-                <option value="tier2">Tier 2 — Career Builder (₦10,000/mo)</option>
-                <option value="tier3">Tier 3 — Elite (₦20,000/mo)</option>
-                <option value="basic-cert">Basic Certificate (₦30,000)</option>
-                <option value="adv-cert">Advanced Certificate (₦50,000)</option>
-                <option value="exec-cert">Executive Masters (₦80,000)</option>
-              </select>
-            </div>
-            <div class="form-row"><label>Method</label>
-              <select id="p-method"><option value="bank">Bank Transfer</option><option value="paystack">Paystack</option></select>
-            </div>
-            <div class="form-row"><label>Notes</label><input id="p-notes" placeholder="Optional notes"/></div>
-          </div>
-          <button class="btn-sm" onclick="addPayment()">+ Record Payment</button>
-          <span id="p-msg" style="margin-left:10px;font-size:.8rem;color:#68d391;display:none">Saved!</span>
+      <div id="p-payments" class="page">
+        <h2>💳 Payments</h2>
+        <div class="cards">
+          <div class="card gold"><div class="v" id="p-total-rev">—</div><div class="l">Total Revenue</div></div>
+          <div class="card g"><div class="v" id="p-confirmed">—</div><div class="l">Confirmed</div></div>
+          <div class="card"><div class="v" id="p-pending">—</div><div class="l">Pending</div></div>
         </div>
-        <div id="payments-table-wrap"><p style="color:#718096">Loading…</p></div>
+        <div class="sec"><h3>Record Payment</h3>
+          <div class="g2">
+            <div class="fr"><label>User Email</label><input id="pe" placeholder="user@email.com"/></div>
+            <div class="fr"><label>User Name</label><input id="pn" placeholder="Full name"/></div>
+            <div class="fr"><label>Amount (₦)</label><input id="pa" type="number" placeholder="5000"/></div>
+            <div class="fr"><label>Plan</label><select id="pp">
+              <option value="tier1">Tier 1 — ₦5,000/mo</option>
+              <option value="tier2">Tier 2 — ₦10,000/mo</option>
+              <option value="tier3">Tier 3 — ₦20,000/mo</option>
+              <option value="basic-cert">Basic Certificate — ₦30,000</option>
+              <option value="adv-cert">Advanced — ₦50,000</option>
+              <option value="exec-cert">Executive — ₦80,000</option>
+            </select></div>
+            <div class="fr"><label>Method</label><select id="pm"><option value="bank">Bank Transfer</option><option value="paystack">Paystack</option></select></div>
+            <div class="fr"><label>Notes</label><input id="pnotes" placeholder="Optional"/></div>
+          </div>
+          <button class="btn" onclick="addPayment()">+ Record</button>
+        </div>
+        <div class="sec"><div style="overflow-x:auto"><table>
+          <thead><tr><th>ID</th><th>User</th><th>Amount</th><th>Plan</th><th>Method</th><th>Status</th><th>Date</th><th></th></tr></thead>
+          <tbody id="payments-body"><tr><td colspan="8" style="color:#4a5568">Loading…</td></tr></tbody>
+        </table></div></div>
       </div>
 
       <!-- CERTIFICATES -->
-      <div id="page-certificates" class="page">
-        <h3>🎓 Issued Certificates</h3>
-        <div id="certs-table-wrap"><p style="color:#718096">Loading…</p></div>
+      <div id="p-certificates" class="page">
+        <h2>🎓 Certificates</h2>
+        <div class="sec"><div style="overflow-x:auto"><table>
+          <thead><tr><th>Cert ID</th><th>Name</th><th>Learner ID</th><th>Level</th><th>Date</th><th></th></tr></thead>
+          <tbody id="certs-body"><tr><td colspan="6" style="color:#4a5568">Loading…</td></tr></tbody>
+        </table></div></div>
       </div>
 
       <!-- FEEDBACK -->
-      <div id="page-feedback" class="page">
-        <h3>💬 User Feedback</h3>
+      <div id="p-feedback" class="page">
+        <h2>💬 Feedback</h2>
         <div class="cards">
-          <div class="card green"><div class="val" id="fb-sat">—</div><div class="lbl">Satisfaction %</div></div>
-          <div class="card"><div class="val" id="fb-total">—</div><div class="lbl">Total Ratings</div></div>
-          <div class="card"><div class="val" id="fb-overall">—</div><div class="lbl">Avg Overall (/5)</div></div>
-          <div class="card"><div class="val" id="fb-clarity">—</div><div class="lbl">Avg Clarity (/5)</div></div>
+          <div class="card g"><div class="v" id="fb-sat">—</div><div class="l">Satisfaction</div></div>
+          <div class="card"><div class="v" id="fb-total">—</div><div class="l">Ratings</div></div>
+          <div class="card"><div class="v" id="fb-overall">—</div><div class="l">Avg Overall</div></div>
+          <div class="card"><div class="v" id="fb-clarity">—</div><div class="l">Avg Clarity</div></div>
         </div>
-        <div class="section"><h4>Recent Ratings</h4><div id="fb-ratings">Loading…</div></div>
-        <div class="section"><h4>Recent Survey Suggestions</h4><div id="fb-suggestions">Loading…</div></div>
+        <div class="sec"><h3>Recent Ratings</h3><div id="fb-ratings">Loading…</div></div>
+        <div class="sec"><h3>Survey Suggestions</h3><div id="fb-surveys">Loading…</div></div>
       </div>
 
-      <!-- TEAM & TASKS -->
-      <div id="page-team" class="page">
-        <h3>👨‍💼 Team & Tasks</h3>
-        <div class="two-col">
-          <div class="section">
-            <h4>Invite Team Member</h4>
-            <div class="form-row"><label>Email</label><input id="t-email" placeholder="member@email.com"/></div>
-            <div class="form-row"><label>Name</label><input id="t-name" placeholder="Full name"/></div>
-            <div class="form-row"><label>Role</label>
-              <select id="t-role"><option value="team">Team Member</option><option value="tutor">Tutor</option><option value="support">Support</option><option value="dev">Developer</option></select>
-            </div>
-            <button class="btn-sm" onclick="inviteTeam()">Send Invite</button>
-            <span id="t-msg" style="margin-left:8px;font-size:.78rem;color:#68d391;display:none">Invited!</span>
-          </div>
-          <div class="section">
-            <h4>Assign New Task</h4>
-            <div class="form-row"><label>Title</label><input id="task-title" placeholder="Task title"/></div>
-            <div class="form-row"><label>Assign To (email)</label><input id="task-to" placeholder="member@email.com"/></div>
-            <div class="form-row"><label>Priority</label>
-              <select id="task-priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option><option value="urgent">Urgent</option></select>
-            </div>
-            <div class="form-row"><label>Due Date (optional)</label><input id="task-due" type="date"/></div>
-            <div class="form-row"><label>Description</label><textarea id="task-desc" placeholder="Task details…"></textarea></div>
-            <button class="btn-sm" onclick="createTask()">Assign Task</button>
-            <span id="task-msg" style="margin-left:8px;font-size:.78rem;color:#68d391;display:none">Assigned!</span>
-          </div>
+      <!-- ANNOUNCE -->
+      <div id="p-announce" class="page">
+        <h2>📢 Announcements</h2>
+        <div class="sec"><h3>Send to Users</h3>
+          <div class="fr"><label>Target</label><select id="ann-target">
+            <option value="all">All Users</option>
+            <option value="free">Free Plan Only</option>
+            <option value="paid">All Paid Users</option>
+            <option value="tier1">Tier 1 Only</option>
+            <option value="tier2">Tier 2 Only</option>
+            <option value="tier3">Tier 3 Only</option>
+          </select></div>
+          <div class="fr"><label>Subject</label><input id="ann-subj" placeholder="e.g. New features now live!"/></div>
+          <div class="fr"><label>Message</label><textarea id="ann-body" rows="5" placeholder="Write your announcement..."></textarea></div>
+          <button class="btn" onclick="sendAnnouncement()">📢 Send Announcement</button>
+          <span id="ann-msg" style="margin-left:10px;font-size:.8rem;color:#68d391;display:none"></span>
         </div>
-        <div class="section"><h4>Team Members</h4><div id="team-list">Loading…</div></div>
-        <div class="section"><h4>All Tasks</h4><div id="tasks-list">Loading…</div></div>
+        <div class="sec"><h3>Sent History</h3><div id="ann-history">Loading…</div></div>
       </div>
 
+      <!-- TEAM -->
+      <div id="p-team" class="page">
+        <h2>👨‍💼 Team</h2>
+        <div class="g2">
+          <div class="sec"><h3>Invite Member</h3>
+            <div class="fr"><label>Email</label><input id="tm-email" placeholder="member@email.com" type="email"/></div>
+            <div class="fr"><label>Name</label><input id="tm-name" placeholder="Full name"/></div>
+            <div class="fr"><label>Role</label><select id="tm-role">
+              <option value="team">Team Member</option><option value="tutor">Tutor</option>
+              <option value="support">Support</option><option value="dev">Developer</option>
+            </select></div>
+            <button class="btn" onclick="inviteTeam()">Invite</button>
+          </div>
+          <div class="sec"><h3>Members</h3><div id="team-list">Loading…</div></div>
+        </div>
+      </div>
+
+      <!-- TASKS -->
+      <div id="p-tasks" class="page">
+        <h2>📋 Tasks</h2>
+        <div class="sec"><h3>Create Task</h3>
+          <div class="g2">
+            <div class="fr"><label>Title</label><input id="tk-title" placeholder="Task title"/></div>
+            <div class="fr"><label>Assign To (email)</label><input id="tk-to" placeholder="member@email.com"/></div>
+            <div class="fr"><label>Priority</label><select id="tk-pri">
+              <option value="low">Low</option><option value="medium" selected>Medium</option>
+              <option value="high">High</option><option value="urgent">Urgent</option>
+            </select></div>
+            <div class="fr"><label>Due Date</label><input id="tk-due" type="date"/></div>
+          </div>
+          <div class="fr"><label>Description</label><textarea id="tk-desc" rows="3" placeholder="Task details..."></textarea></div>
+          <button class="btn" onclick="createTask()">Assign Task</button>
+        </div>
+        <div class="sec"><h3>All Tasks</h3><div id="tasks-list">Loading…</div></div>
+      </div>
+
+      <!-- FILES -->
+      <div id="p-files" class="page">
+        <h2>📁 Project Files</h2>
+        <div class="sec"><div id="files-list">Loading…</div></div>
+      </div>
     </main>
   </div>
 </div>
 
-<script>
-const TOKEN_KEY = 'mpt_admin_token';
-let adminToken = localStorage.getItem(TOKEN_KEY) || '';
+<!-- User detail modal -->
+<div id="modal-overlay" onclick="if(event.target===this)closeModal()">
+  <div id="modal-box">
+    <button id="modal-close" onclick="closeModal()">✕</button>
+    <div id="modal-content"></div>
+  </div>
+</div>
 
-function api(path, opts = {}) {
-  return fetch(path, {
-    ...opts,
-    headers: { 'Content-Type': 'application/json', 'X-Admin-Token': adminToken, ...(opts.headers || {}) },
-  });
+<div id="toast"></div>
+
+<script>
+const TK = 'mpt_admin_token';
+let token = localStorage.getItem(TK) || '';
+const ADMIN_EMAIL = localStorage.getItem('mpt_admin_email') || '';
+
+function api(path, opts={}) {
+  return fetch(path, {...opts, headers:{'Content-Type':'application/json','X-Admin-Token':token,...(opts.headers||{})}});
+}
+function toast(msg, ok=true) {
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.style.background=ok?'#276749':'#742a2a';
+  t.style.color=ok?'#68d391':'#fc8181'; t.style.display='block';
+  setTimeout(()=>t.style.display='none',3500);
 }
 
 async function doLogin() {
-  const email = document.getElementById('admin-email').value.trim();
-  const pass  = document.getElementById('admin-pass').value;
-  const btn   = document.getElementById('login-btn');
-  btn.disabled = true; btn.textContent = 'Signing in…';
-  document.getElementById('login-error').style.display = 'none';
-  try {
-    const res = await fetch('/admin/login', { method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ email, password: pass }) });
-    const data = await res.json();
-    if (!res.ok) { document.getElementById('login-error').style.display = 'block'; return; }
-    adminToken = data.token;
-    localStorage.setItem(TOKEN_KEY, adminToken);
-    showApp();
-  } catch { document.getElementById('login-error').style.display = 'block'; }
-  finally { btn.disabled = false; btn.textContent = 'Sign In'; }
+  const email=document.getElementById('lemail').value.trim();
+  const pass=document.getElementById('lpass').value;
+  const btn=document.getElementById('lbtn');
+  btn.disabled=true; btn.textContent='Signing in…';
+  document.getElementById('lerr').style.display='none';
+  const r=await fetch('/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({email,password:pass})});
+  const d=await r.json();
+  if(!r.ok){document.getElementById('lerr').style.display='block';btn.disabled=false;btn.textContent='Sign In';return;}
+  token=d.token; localStorage.setItem(TK,token); localStorage.setItem('mpt_admin_email',email);
+  document.getElementById('admin-email-lbl').textContent=email;
+  showApp();
+  btn.disabled=false; btn.textContent='Sign In';
 }
+function doLogout(){token='';localStorage.removeItem(TK);location.reload();}
 
-function doLogout() {
-  adminToken = ''; localStorage.removeItem(TOKEN_KEY);
-  document.getElementById('app').style.display = 'none';
-  document.getElementById('login-screen').style.display = 'flex';
-}
-
-async function showApp() {
-  document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('app').style.display = 'flex';
+function showApp(){
+  document.getElementById('login').style.display='none';
+  document.getElementById('app').style.display='flex';
+  document.getElementById('admin-email-lbl').textContent=localStorage.getItem('mpt_admin_email')||'';
   loadDashboard();
 }
 
-// Nav
-document.querySelectorAll('.nav-item').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-    btn.classList.add('active');
-    document.getElementById('page-' + btn.dataset.page).classList.add('active');
-    if (btn.dataset.page === 'dashboard') loadDashboard();
-    if (btn.dataset.page === 'users') loadUsers();
-    if (btn.dataset.page === 'payments') loadPayments();
-    if (btn.dataset.page === 'certificates') loadCertificates();
-    if (btn.dataset.page === 'feedback') loadFeedback();
-    if (btn.dataset.page === 'team') loadTeam();
-  });
-});
+function nav(p){
+  document.querySelectorAll('.nb').forEach(b=>b.classList.toggle('active',b.dataset.p===p));
+  document.querySelectorAll('.page').forEach(pg=>pg.classList.toggle('active',pg.id==='p-'+p));
+  ({dashboard:loadDashboard,users:loadUsers,activity:loadActivity,payments:loadPayments,
+    certificates:loadCerts,feedback:loadFeedback,announce:loadAnnounce,
+    team:loadTeam,tasks:loadTasks,files:loadFiles})[p]?.();
+}
+document.querySelectorAll('.nb').forEach(b=>b.addEventListener('click',()=>nav(b.dataset.p)));
 
-// Dashboard
-async function loadDashboard() {
-  const r = await api('/admin/dashboard');
-  if (r.status === 403) { doLogout(); return; }
-  const d = await r.json();
-  document.getElementById('d-users').textContent    = d.users.total;
-  document.getElementById('d-active').textContent   = d.users.active_today;
-  document.getElementById('d-revenue').textContent  = '₦' + (d.revenue.total_revenue || 0).toLocaleString();
-  document.getElementById('d-payments').textContent = d.payments;
-  document.getElementById('d-certs').textContent    = d.certificates;
-  document.getElementById('d-tasks').textContent    = d.tasks.open;
-  document.getElementById('d-satisfaction').textContent = (d.feedback.satisfaction_pct || 0) + '%';
-  document.getElementById('d-team').textContent     = d.team_size;
-  const bp = d.revenue.by_plan || {};
-  document.getElementById('revenue-breakdown').innerHTML =
-    Object.entries(bp).map(([k,v]) =>
-      `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #2d3748">
-        <span>${k}</span><strong style="color:#68d391">₦${v.toLocaleString()}</strong></div>`
-    ).join('') || '<span style="color:#4a5568">No payments recorded yet.</span>';
+// Modal
+function openModal(html){document.getElementById('modal-content').innerHTML=html;document.getElementById('modal-overlay').classList.add('open');}
+function closeModal(){document.getElementById('modal-overlay').classList.remove('open');}
+
+// ── Dashboard ──────────────────────────────────────────────────────────────
+async function loadDashboard(){
+  const r=await api('/admin/dashboard');
+  if(r.status===403){doLogout();return;}
+  const d=await r.json();
+  document.getElementById('d-users').textContent=d.users.total;
+  document.getElementById('d-active').textContent=d.users.active_today;
+  document.getElementById('d-rev').textContent='₦'+(d.revenue.total_revenue||0).toLocaleString();
+  document.getElementById('d-pmts').textContent=d.payments;
+  document.getElementById('d-certs').textContent=d.certificates;
+  document.getElementById('d-tasks').textContent=d.tasks.open;
+  document.getElementById('d-sat').textContent=(d.feedback.satisfaction_pct||0)+'%';
+  document.getElementById('d-team').textContent=d.team_size;
+  const tiers=Object.entries(d.users_by_tier||{});
+  document.getElementById('d-tiers').innerHTML=tiers.length?tiers.map(([t,c])=>
+    `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #2d3748;font-size:.83rem">
+    <span class="badge ${t==='free'?'grey':t==='tier1'?'bg':t==='tier2'?'gy':'gr'}">${t}</span>
+    <strong>${c} users</strong></div>`).join(''):'<span style="color:#4a5568">No users yet.</span>';
+  const plans=Object.entries(d.revenue.by_plan||{});
+  document.getElementById('d-plans').innerHTML=plans.length?plans.map(([p,v])=>
+    `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #2d3748;font-size:.83rem">
+    <span>${p}</span><strong style="color:#68d391">₦${v.toLocaleString()}</strong></div>`).join(''):'<span style="color:#4a5568">No payments yet.</span>';
 }
 
-// Users
-async function loadUsers() {
-  const r = await api('/admin/users'); const d = await r.json();
-  const rows = d.learner_profiles.map(u =>
-    `<tr><td>${u.learner_id}</td><td><span class="badge badge-${u.tier==='free'?'grey':u.tier==='tier3'?'gold':'blue'}">${u.tier}</span></td>
-     <td>${u.level}</td><td>${u.xp}</td><td>${u.topics_seen}</td><td>${u.courses_done}</td><td>${u.badges}</td></tr>`
+// ── Users ──────────────────────────────────────────────────────────────────
+async function loadUsers(){
+  const r=await api('/admin/users'); const d=await r.json();
+  document.getElementById('users-body').innerHTML=d.learner_profiles.map(u=>{
+    const tc={free:'grey',tier1:'bg',tier2:'gy',tier3:'gr'}[u.tier]||'grey';
+    return `<tr>
+      <td style="font-size:.72rem;color:#4a5568">${u.learner_id}</td>
+      <td><span class="badge ${tc}">${u.tier}</span></td>
+      <td>${u.level}</td><td>${u.xp}</td><td>${u.topics_seen}</td><td>${u.courses_done}</td>
+      <td>
+        <button class="bsm" onclick="viewUser('${u.learner_id}')">View</button>
+        <button class="bsm bg2" onclick="setTier('${u.learner_id}')">Set Tier</button>
+        <button class="bsm br" onclick="terminateUser('${u.learner_id}')">Terminate</button>
+      </td></tr>`;
+  }).join('')||'<tr><td colspan="7" style="color:#4a5568">No users yet.</td></tr>';
+}
+
+async function viewUser(lid){
+  const r=await api('/admin/users/'+lid); const u=await r.json();
+  const topics=Object.entries(u.topic_progress||{}).map(([t,tp])=>
+    `<tr><td>${t}</td><td>${tp.lessons}</td><td>${tp.exercises_passed}/${tp.exercises_attempted}</td>
+    <td><span class="badge ${tp.weak?'gr':'gg'}">${tp.weak?'gap':'ok'}</span></td></tr>`
   ).join('');
-  document.getElementById('users-table-wrap').innerHTML =
-    `<p style="color:#718096;margin-bottom:10px">${d.total} learner profiles · ${d.email_signups} email accounts</p>
-    <div style="overflow-x:auto"><table><thead><tr><th>ID</th><th>Tier</th><th>Level</th><th>XP</th><th>Topics</th><th>Courses</th><th>Badges</th></tr></thead>
-    <tbody>${rows || '<tr><td colspan="7" style="color:#4a5568">No users yet.</td></tr>'}</tbody></table></div>`;
+  openModal(`<h3 style="color:#90cdf4;margin-bottom:12px">User: ${lid}</h3>
+    <div style="font-size:.85rem;line-height:2;margin-bottom:14px">
+      <b>Tier:</b> <span class="badge ${u.tier==='free'?'grey':'bg'}">${u.tier}</span> &nbsp;
+      <b>Level:</b> ${u.level} &nbsp; <b>XP:</b> ${u.xp}<br>
+      <b>Prompts today:</b> ${u.prompts_today} &nbsp; <b>Current course:</b> ${u.current_course||'—'}<br>
+      <b>Badges:</b> ${u.badges.join(', ')||'—'}
+    </div>
+    <h3 style="color:#e2e8f0;margin-bottom:8px;font-size:.86rem">Topic Progress</h3>
+    <div style="overflow-x:auto"><table><thead><tr><th>Topic</th><th>Lessons</th><th>Exercises</th><th>Status</th></tr></thead>
+    <tbody>${topics||'<tr><td colspan="4" style="color:#4a5568">No data</td></tr>'}</tbody></table></div>`);
 }
 
-// Payments
-async function loadPayments() {
-  const r = await api('/admin/payments'); const d = await r.json();
-  const rows = d.payments.map(p =>
-    `<tr><td>${p.id}</td><td>${p.user_name}<br><span style="font-size:.72rem;color:#4a5568">${p.user_email}</span></td>
-     <td>₦${p.amount.toLocaleString()}</td><td>${p.plan}</td><td>${p.method}</td>
-     <td><span class="badge ${p.status==='confirmed'?'badge-green':p.status==='pending'?'badge-yellow':'badge-red'}">${p.status}</span></td>
-     <td>${p.created_at.split('T')[0]}</td>
-     <td>${p.status==='pending'?`<button class="btn-sm btn-green" onclick="confirmPayment('${p.id}')">Confirm</button>`:''}</td></tr>`
-  ).join('');
-  document.getElementById('payments-table-wrap').innerHTML =
-    `<div style="overflow-x:auto"><table><thead><tr><th>ID</th><th>User</th><th>Amount</th><th>Plan</th><th>Method</th><th>Status</th><th>Date</th><th></th></tr></thead>
-    <tbody>${rows || '<tr><td colspan="8" style="color:#4a5568">No payments yet.</td></tr>'}</tbody></table></div>`;
+async function setTier(lid){
+  const tier=prompt('Set tier for '+lid+'\nOptions: free, tier1, tier2, tier3');
+  if(!tier)return;
+  const r=await api('/admin/users/'+lid+'/set-tier',{method:'POST',body:JSON.stringify({tier})});
+  const d=await r.json();
+  if(r.ok){toast('Tier updated to '+tier);loadUsers();}else toast(d.error||'Failed','red');
 }
 
-async function addPayment() {
-  const body = { user_email: document.getElementById('p-email').value, user_name: document.getElementById('p-name').value,
-    amount: parseFloat(document.getElementById('p-amount').value), plan: document.getElementById('p-plan').value,
-    method: document.getElementById('p-method').value, notes: document.getElementById('p-notes').value };
-  if (!body.user_email || !body.amount) { alert('Email and amount required.'); return; }
-  const r = await api('/admin/payments/add', { method:'POST', body: JSON.stringify(body) });
-  if (r.ok) { const m = document.getElementById('p-msg'); m.style.display='inline'; setTimeout(()=>m.style.display='none',3000); loadPayments(); }
+async function terminateUser(lid){
+  if(!confirm('Terminate subscription for '+lid+'?\nThis sets them to free and removes course progress.'))return;
+  const r=await api('/admin/users/'+lid+'/terminate',{method:'POST'});
+  const d=await r.json();
+  if(r.ok){toast('Subscription terminated');loadUsers();}else toast(d.error||'Failed',false);
 }
 
-async function confirmPayment(id) {
-  await api(`/admin/payments/confirm/${id}`, { method:'POST' }); loadPayments();
+// ── Activity ───────────────────────────────────────────────────────────────
+async function loadActivity(){
+  const r=await api('/admin/activity'); const d=await r.json();
+  document.getElementById('activity-body').innerHTML=(d.activity||[]).map(a=>
+    `<tr><td style="font-size:.72rem;white-space:nowrap">${a.ts}</td>
+    <td style="font-size:.72rem">${a.learner_id}</td>
+    <td><span class="badge bg">${a.action}</span></td>
+    <td style="max-width:260px;font-size:.78rem;color:#718096">${a.detail}</td></tr>`
+  ).join('')||'<tr><td colspan="4" style="color:#4a5568">No activity yet.</td></tr>';
 }
 
-// Certificates
-async function loadCertificates() {
-  const r = await api('/admin/certificates'); const d = await r.json();
-  const rows = d.certificates.map(c =>
-    `<tr><td>${c.cert_id}</td><td>${c.learner_name}</td><td>${c.learner_id}</td>
-     <td><span class="badge ${c.level==='executive'?'badge-gold':c.level==='advanced'?'badge-blue':'badge-green'}">${c.level}</span></td>
-     <td>${c.issued_at.split('T')[0]}</td>
-     <td><a href="/certificate/${c.level}?name=${encodeURIComponent(c.learner_name)}&learner_id=${c.learner_id}" target="_blank" class="btn-sm">View</a></td></tr>`
-  ).join('');
-  document.getElementById('certs-table-wrap').innerHTML =
-    `<p style="color:#718096;margin-bottom:10px">${d.total} certificates issued</p>
-    <div style="overflow-x:auto"><table><thead><tr><th>Cert ID</th><th>Name</th><th>Learner ID</th><th>Level</th><th>Date</th><th></th></tr></thead>
-    <tbody>${rows || '<tr><td colspan="6" style="color:#4a5568">No certificates issued yet.</td></tr>'}</tbody></table></div>`;
+// ── Payments ───────────────────────────────────────────────────────────────
+async function loadPayments(){
+  const r=await api('/admin/payments'); const d=await r.json();
+  const rev=d.summary||{};
+  document.getElementById('p-total-rev').textContent='₦'+(rev.total_revenue||0).toLocaleString();
+  document.getElementById('p-confirmed').textContent=rev.confirmed||0;
+  document.getElementById('p-pending').textContent=rev.pending||0;
+  document.getElementById('payments-body').innerHTML=(d.payments||[]).map(p=>{
+    const sc={confirmed:'gg',pending:'gy',refunded:'gr'}[p.status]||'grey';
+    const cfm=p.status==='pending'?`<button class="bsm bg2" onclick="confirmPayment('${p.id}')">Confirm</button>`:'';
+    return `<tr><td>${p.id}</td>
+      <td>${p.user_name}<br><span style="font-size:.7rem;color:#4a5568">${p.user_email}</span></td>
+      <td>₦${p.amount.toLocaleString()}</td><td>${p.plan}</td><td>${p.method}</td>
+      <td><span class="badge ${sc}">${p.status}</span></td>
+      <td>${p.created_at.split('T')[0]}</td><td>${cfm}</td></tr>`;
+  }).join('')||'<tr><td colspan="8" style="color:#4a5568">No payments yet.</td></tr>';
 }
 
-// Feedback
-async function loadFeedback() {
-  const r = await api('/admin/feedback'); const d = await r.json();
-  const s = d.summary;
-  document.getElementById('fb-sat').textContent     = s.satisfaction_pct + '%';
-  document.getElementById('fb-total').textContent   = s.total_ratings;
-  document.getElementById('fb-overall').textContent = s.avg_overall;
-  document.getElementById('fb-clarity').textContent = s.avg_clarity;
-  document.getElementById('fb-ratings').innerHTML = d.recent_ratings.map(r =>
-    `<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid #2d3748;font-size:.82rem">
-      <span style="color:${r.rating==='up'?'#68d391':'#fc8181'}">${r.rating==='up'?'👍':'👎'}</span>
-      <span style="color:#718096">${r.topic||'—'}</span>
-      <span>${r.comment||'—'}</span></div>`
-  ).join('') || '<span style="color:#4a5568">No ratings yet.</span>';
-  document.getElementById('fb-suggestions').innerHTML = d.recent_surveys.filter(s=>s.suggestion).map(s =>
-    `<div style="padding:7px 0;border-bottom:1px solid #2d3748;font-size:.82rem">
-      <span style="color:#f6ad55">${'⭐'.repeat(s.overall)}</span> ${s.suggestion}</div>`
-  ).join('') || '<span style="color:#4a5568">No suggestions yet.</span>';
+async function addPayment(){
+  const body={user_email:document.getElementById('pe').value,user_name:document.getElementById('pn').value,
+    amount:parseFloat(document.getElementById('pa').value),plan:document.getElementById('pp').value,
+    method:document.getElementById('pm').value,notes:document.getElementById('pnotes').value};
+  if(!body.user_email||!body.amount){toast('Email and amount required',false);return;}
+  const r=await api('/admin/payments/add',{method:'POST',body:JSON.stringify(body)});
+  if(r.ok){toast('Payment recorded');loadPayments();}
 }
 
-// Team & Tasks
-async function loadTeam() {
-  const r = await api('/admin/team'); const d = await r.json();
-  document.getElementById('team-list').innerHTML = d.members.map(m =>
-    `<div style="display:flex;gap:10px;align-items:center;padding:7px 0;border-bottom:1px solid #2d3748;font-size:.84rem">
-      <strong>${m.name}</strong> <span style="color:#718096">${m.email}</span>
-      <span class="badge badge-blue">${m.role}</span>
-      <span class="badge ${m.status==='active'?'badge-green':'badge-yellow'}">${m.status}</span></div>`
-  ).join('') || '<span style="color:#4a5568">No team members yet.</span>';
-  const statusColors = {open:'badge-yellow',in_progress:'badge-blue',done:'badge-green'};
-  const priorityColors = {urgent:'badge-red',high:'badge-yellow',medium:'badge-blue',low:'badge-grey'};
-  document.getElementById('tasks-list').innerHTML = d.tasks.map(t =>
+async function confirmPayment(id){
+  const r=await api('/admin/payments/confirm/'+id,{method:'POST'});
+  if(r.ok){toast('Payment confirmed');loadPayments();}
+}
+
+// ── Certificates ───────────────────────────────────────────────────────────
+async function loadCerts(){
+  const r=await api('/admin/certificates'); const d=await r.json();
+  document.getElementById('certs-body').innerHTML=(d.certificates||[]).map(c=>{
+    const lc={executive:'gr',advanced:'gy',basic:'gg'}[c.level]||'gg';
+    const url=`/certificate/${c.level}?name=${encodeURIComponent(c.learner_name)}&learner_id=${c.learner_id}`;
+    return `<tr><td>${c.cert_id}</td><td>${c.learner_name}</td><td style="font-size:.72rem">${c.learner_id}</td>
+      <td><span class="badge ${lc}">${c.level}</span></td>
+      <td>${c.issued_at.split('T')[0]}</td>
+      <td><a href="${url}" target="_blank" class="bsm">View PDF</a></td></tr>`;
+  }).join('')||'<tr><td colspan="6" style="color:#4a5568">No certificates issued yet.</td></tr>';
+}
+
+// ── Feedback ───────────────────────────────────────────────────────────────
+async function loadFeedback(){
+  const r=await api('/admin/feedback'); const d=await r.json();
+  const s=d.summary||{};
+  document.getElementById('fb-sat').textContent=(s.satisfaction_pct||0)+'%';
+  document.getElementById('fb-total').textContent=s.total_ratings||0;
+  document.getElementById('fb-overall').textContent=s.avg_overall||0;
+  document.getElementById('fb-clarity').textContent=s.avg_clarity||0;
+  document.getElementById('fb-ratings').innerHTML=(d.recent_ratings||[]).map(r=>
+    `<div style="display:flex;gap:8px;padding:6px 0;border-bottom:1px solid #2d3748;font-size:.82rem">
+    <span>${r.rating==='up'?'👍':'👎'}</span>
+    <span style="color:#718096">${r.topic||'—'}</span>
+    <span>${r.comment||'—'}</span></div>`
+  ).join('')||'<span style="color:#4a5568">No ratings yet.</span>';
+  document.getElementById('fb-surveys').innerHTML=(d.recent_surveys||[]).filter(s=>s.suggestion).map(s=>
+    `<div style="padding:6px 0;border-bottom:1px solid #2d3748;font-size:.82rem">
+    <span style="color:#f6ad55">${'⭐'.repeat(s.overall)}</span> ${s.suggestion}</div>`
+  ).join('')||'<span style="color:#4a5568">No suggestions yet.</span>';
+}
+
+// ── Announce ───────────────────────────────────────────────────────────────
+async function loadAnnounce(){
+  const r=await api('/admin/dashboard'); const d=await r.json();
+  // Show announcement history from dashboard if available
+  document.getElementById('ann-history').innerHTML='<span style="color:#4a5568;font-size:.82rem">Announcement history available after sending.</span>';
+}
+
+async function sendAnnouncement(){
+  const body={target:document.getElementById('ann-target').value,
+    subject:document.getElementById('ann-subj').value,
+    message:document.getElementById('ann-body').value};
+  if(!body.subject||!body.message){toast('Subject and message required',false);return;}
+  const r=await api('/admin/announce',{method:'POST',body:JSON.stringify(body)});
+  const d=await r.json();
+  if(r.ok){
+    const m=document.getElementById('ann-msg');
+    m.textContent=`Sent to ${d.sent_to} users`; m.style.display='inline';
+    setTimeout(()=>m.style.display='none',4000);
+    toast('Announcement sent to '+d.sent_to+' users');
+  } else toast(d.error||'Failed',false);
+}
+
+// ── Team ───────────────────────────────────────────────────────────────────
+async function loadTeam(){
+  const r=await api('/admin/team'); const d=await r.json();
+  document.getElementById('team-list').innerHTML=(d.members||[]).map(m=>
+    `<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid #2d3748;font-size:.83rem">
+    <strong>${m.name}</strong><span style="color:#718096">${m.email}</span>
+    <span class="badge bg">${m.role}</span>
+    <span class="badge ${m.status==='active'?'gg':'gy'}">${m.status}</span></div>`
+  ).join('')||'<span style="color:#4a5568">No team members yet.</span>';
+}
+
+async function inviteTeam(){
+  const body={email:document.getElementById('tm-email').value,name:document.getElementById('tm-name').value,role:document.getElementById('tm-role').value};
+  if(!body.email||!body.name){toast('Email and name required',false);return;}
+  const r=await api('/admin/team/invite',{method:'POST',body:JSON.stringify(body)});
+  if(r.ok){toast('Invitation sent to '+body.email);loadTeam();}
+}
+
+// ── Tasks ──────────────────────────────────────────────────────────────────
+async function loadTasks(){
+  const r=await api('/admin/team'); const d=await r.json();
+  const pc={urgent:'gr',high:'gy',medium:'bg',low:'grey'};
+  const sc={open:'gy',in_progress:'bg',done:'gg'};
+  document.getElementById('tasks-list').innerHTML=(d.tasks||[]).map(t=>
     `<div style="background:#1a202c;border:1px solid #2d3748;border-radius:8px;padding:12px;margin-bottom:8px">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-        <strong style="font-size:.88rem">${t.title}</strong>
-        <div style="display:flex;gap:6px;flex-shrink:0">
-          <span class="badge ${priorityColors[t.priority]||'badge-grey'}">${t.priority}</span>
-          <span class="badge ${statusColors[t.status]||'badge-grey'}">${t.status}</span>
-        </div>
-      </div>
-      <div style="font-size:.78rem;color:#718096;margin-top:4px">${t.description}</div>
-      <div style="font-size:.75rem;color:#4a5568;margin-top:6px;display:flex;gap:12px">
-        <span>→ ${t.assigned_to}</span>${t.due_date?`<span>Due: ${t.due_date}</span>`:''}
-      </div>
-      <div style="margin-top:8px;display:flex;gap:6px">
-        ${t.status!=='in_progress'?`<button class="btn-sm" onclick="updateTask('${t.id}','in_progress')">In Progress</button>`:''}
-        ${t.status!=='done'?`<button class="btn-sm btn-green" onclick="updateTask('${t.id}','done')">✓ Done</button>`:''}
-      </div></div>`
-  ).join('') || '<span style="color:#4a5568">No tasks yet.</span>';
+    <div style="display:flex;justify-content:space-between;gap:8px">
+      <strong style="font-size:.86rem">${t.title}</strong>
+      <div style="display:flex;gap:5px;flex-shrink:0">
+        <span class="badge ${pc[t.priority]||'grey'}">${t.priority}</span>
+        <span class="badge ${sc[t.status]||'grey'}">${t.status}</span>
+      </div></div>
+    <div style="font-size:.78rem;color:#718096;margin-top:4px">${t.description}</div>
+    <div style="font-size:.74rem;color:#4a5568;margin-top:5px">→ ${t.assigned_to}${t.due_date?' · Due: '+t.due_date:''}</div>
+    <div style="margin-top:8px;display:flex;gap:6px">
+      ${t.status!=='in_progress'?`<button class="bsm" onclick="updateTask('${t.id}','in_progress')">▶ In Progress</button>`:''}
+      ${t.status!=='done'?`<button class="bsm bg2" onclick="updateTask('${t.id}','done')">✓ Done</button>`:''}
+    </div></div>`
+  ).join('')||'<span style="color:#4a5568">No tasks yet.</span>';
 }
 
-async function inviteTeam() {
-  const body = { email: document.getElementById('t-email').value, name: document.getElementById('t-name').value, role: document.getElementById('t-role').value };
-  if (!body.email || !body.name) { alert('Email and name required.'); return; }
-  const r = await api('/admin/team/invite', { method:'POST', body: JSON.stringify(body) });
-  if (r.ok) { const m = document.getElementById('t-msg'); m.style.display='inline'; setTimeout(()=>m.style.display='none',3000); loadTeam(); }
+async function createTask(){
+  const body={title:document.getElementById('tk-title').value,
+    description:document.getElementById('tk-desc').value,
+    assigned_to:document.getElementById('tk-to').value,
+    priority:document.getElementById('tk-pri').value,
+    due_date:document.getElementById('tk-due').value};
+  if(!body.title||!body.assigned_to){toast('Title and assignee required',false);return;}
+  const r=await api('/admin/tasks/create',{method:'POST',body:JSON.stringify(body)});
+  if(r.ok){toast('Task assigned');loadTasks();}
 }
 
-async function createTask() {
-  const body = { title: document.getElementById('task-title').value, description: document.getElementById('task-desc').value,
-    assigned_to: document.getElementById('task-to').value, priority: document.getElementById('task-priority').value,
-    due_date: document.getElementById('task-due').value };
-  if (!body.title || !body.assigned_to) { alert('Title and assignee required.'); return; }
-  const r = await api('/admin/tasks/create', { method:'POST', body: JSON.stringify(body) });
-  if (r.ok) { const m = document.getElementById('task-msg'); m.style.display='inline'; setTimeout(()=>m.style.display='none',3000); loadTeam(); }
+async function updateTask(id,status){
+  await api('/admin/tasks/'+id+'/status?status='+status,{method:'POST'});
+  toast('Task updated'); loadTasks();
 }
 
-async function updateTask(id, status) {
-  await api(`/admin/tasks/${id}/status?status=${status}`, { method:'POST' }); loadTeam();
+// ── Files ──────────────────────────────────────────────────────────────────
+async function loadFiles(){
+  const r=await api('/admin/files'); const d=await r.json();
+  document.getElementById('files-list').innerHTML=
+    `<p style="color:#718096;font-size:.82rem;margin-bottom:10px">${d.total} files</p>
+    <div style="overflow-x:auto"><table><thead><tr><th>Path</th><th style="text-align:right">Size</th></tr></thead><tbody>`+
+    (d.files||[]).map(f=>`<tr><td style="font-family:monospace;font-size:.77rem">${f.path}</td>
+      <td style="text-align:right;font-size:.74rem;color:#718096">${f.size.toLocaleString()} B</td></tr>`
+    ).join('')+'</tbody></table></div>';
 }
 
-// Init
-document.getElementById('admin-pass').addEventListener('keydown', e => { if (e.key==='Enter') doLogin(); });
-if (adminToken) showApp();
+// ── Init ───────────────────────────────────────────────────────────────────
+document.getElementById('lpass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+if(token) showApp(); else {
+  document.getElementById('admin-email-lbl').textContent=ADMIN_EMAIL;
+}
 </script>
 </body>
 </html>
