@@ -58,8 +58,9 @@ from app.admin import (
     verify_admin_login, create_admin_token, verify_admin_token,
     add_payment, confirm_payment, get_payments, get_revenue_summary,
     invite_team_member, create_task, update_task_status, get_team, get_tasks,
-    log_certificate, get_certificates,
+    log_certificate, get_certificates, log_activity,
 )
+from app.admin_router import router as admin_router
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +109,9 @@ app.add_middleware(
 
 # Rate limiting + security headers
 app.add_middleware(SecurityMiddleware)
+
+# Include admin router
+app.include_router(admin_router)
 
 # ---------------------------------------------------------------------------
 # /chat — original + secured
@@ -164,6 +168,10 @@ async def chat(request: ChatRequest, req: Request) -> ChatResponse:
     detected_topic  = response_dict.get("topic") or topic
     xp, badge       = record_lesson(request.learner_id, detected_topic or "", intent)
     profile         = get_profile(request.learner_id)
+
+    # Log activity for admin monitoring
+    log_activity(request.learner_id, f"chat:{intent}",
+                 f"topic={detected_topic or '—'} | msg={request.message[:80]}")
 
     # Check if it's time to ask for a full survey
     ask_survey = increment_interaction(request.learner_id)
@@ -437,6 +445,7 @@ async def get_certificate(
     clean_name = _re.sub(r'[<>&"\']', '', name).strip()[:80] or "Learner"
 
     cert_id  = get_cert_id(learner_id, level)
+    log_certificate(cert_id, learner_id, clean_name, level)
     html_doc = generate_certificate_html(
         learner_name=clean_name,
         level=level,
