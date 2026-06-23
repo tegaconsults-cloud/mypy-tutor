@@ -215,7 +215,7 @@ async def auth_google_login() -> JSONResponse:
     import urllib.parse
 
     client_id  = _os.getenv("GOOGLE_CLIENT_ID", "")
-    app_url    = _os.getenv("APP_URL", "https://mypy-tutor.onrender.com")
+    app_url    = _os.getenv("APP_URL", "https://mypytutor.onrender.com")
     redirect_uri = f"{app_url}/auth/google/callback"
 
     if not client_id:
@@ -241,7 +241,7 @@ async def auth_google_callback(code: str = None, error: str = None) -> JSONRespo
     from fastapi.responses import RedirectResponse
     import urllib.parse, json
 
-    app_url      = _os.getenv("APP_URL", "https://mypy-tutor.onrender.com")
+    app_url      = _os.getenv("APP_URL", "https://mypytutor.onrender.com")
     client_id    = _os.getenv("GOOGLE_CLIENT_ID", "")
     client_secret= _os.getenv("GOOGLE_CLIENT_SECRET", "")
     redirect_uri = f"{app_url}/auth/google/callback"
