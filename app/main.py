@@ -60,7 +60,6 @@ from app.admin import (
     invite_team_member, create_task, update_task_status, get_team, get_tasks,
     log_certificate, get_certificates, log_activity,
 )
-from app.admin_router import router as admin_router
 
 logger = logging.getLogger(__name__)
 
@@ -109,9 +108,6 @@ app.add_middleware(
 
 # Rate limiting + security headers
 app.add_middleware(SecurityMiddleware)
-
-# Include admin router
-app.include_router(admin_router)
 
 # ---------------------------------------------------------------------------
 # /chat — original + secured
@@ -867,6 +863,8 @@ async def admin_dashboard(request: Request) -> dict:
             "total":         len(learner_store),
             "active_today":  active_today,
         },
+        "users_by_tier": {t: sum(1 for p in learner_store.values() if p.tier == t)
+                          for t in ["free","tier1","tier2","tier3"]},
         "revenue":    get_revenue_summary(),
         "payments":   len(get_payments()),
         "certificates": len(get_certificates()),
@@ -1041,8 +1039,133 @@ import datetime
 
 
 # ---------------------------------------------------------------------------
-# Static admin page served at /admin
+# Additional admin API routes
 # ---------------------------------------------------------------------------
+
+@app.get("/admin/users")
+async def admin_list_users(request: Request) -> dict:
+    _require_admin(request)
+    from app.progress import _store as ls
+    from app.email_auth import _confirmed
+    users = []
+    for lid, profile in ls.items():
+        users.append({
+            "learner_id":   lid,
+            "tier":         profile.tier,
+            "level":        profile.level,
+            "xp":           profile.xp,
+            "topics_seen":  len(profile.topics_seen),
+            "courses_done": len(profile.completed_projects),
+            "badges":       len(profile.badges),
+            "current_course": profile.current_course,
+        })
+    email_users = [{"email": e, "name": u["name"], "type": "email"}
+                   for e, u in _confirmed.items()]
+    return {"learner_profiles": users, "email_accounts": email_users,
+            "total": len(users), "email_signups": len(email_users)}
+
+
+@app.get("/admin/users/{learner_id}")
+async def admin_user_detail(learner_id: str, request: Request) -> dict:
+    _require_admin(request)
+    validate_learner_id(learner_id)
+    from app.progress import _store as ls
+    from app.security import _daily_prompt_store
+    p = ls.get(learner_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="User not found.")
+    today = datetime.date.today().isoformat()
+    entry = _daily_prompt_store.get(learner_id)
+    prompts_today = entry[1] if entry and entry[0] == today else 0
+    return {
+        "learner_id":    learner_id,
+        "tier":          p.tier,
+        "level":         p.level,
+        "xp":            p.xp,
+        "badges":        p.badges,
+        "topics_seen":   p.topics_seen,
+        "prompts_today": prompts_today,
+        "current_course": p.current_course,
+        "course_step":   p.current_course_step,
+        "courses_done":  p.completed_projects,
+        "topic_progress": {k: {"lessons": v.lessons_completed,
+                               "exercises_passed": v.exercises_passed,
+                               "exercises_attempted": v.exercises_attempted,
+                               "weak": v.weak}
+                           for k, v in p.topic_progress.items()},
+    }
+
+
+@app.post("/admin/users/{learner_id}/set-tier")
+async def admin_set_tier(learner_id: str, request: Request) -> dict:
+    _require_admin(request)
+    validate_learner_id(learner_id)
+    body = await request.json()
+    tier = body.get("tier", "free")
+    if tier not in ("free", "tier1", "tier2", "tier3"):
+        raise HTTPException(status_code=400, detail="Invalid tier.")
+    from app.progress import _store as ls, save_profile
+    p = ls.get(learner_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="User not found.")
+    p.tier = tier
+    save_profile(p)
+    log_activity(learner_id, "admin:set-tier", f"tier set to {tier}")
+    return {"ok": True, "learner_id": learner_id, "tier": tier}
+
+
+@app.post("/admin/users/{learner_id}/terminate")
+async def admin_terminate_user(learner_id: str, request: Request) -> dict:
+    _require_admin(request)
+    validate_learner_id(learner_id)
+    from app.progress import _store as ls, save_profile
+    p = ls.get(learner_id)
+    if not p:
+        raise HTTPException(status_code=404, detail="User not found.")
+    p.tier = "free"
+    p.current_course = None
+    p.current_course_step = 0
+    save_profile(p)
+    log_activity(learner_id, "admin:terminate", "subscription terminated by admin")
+    return {"ok": True, "message": f"Subscription terminated for {learner_id}"}
+
+
+@app.get("/admin/activity")
+async def admin_activity(request: Request) -> dict:
+    _require_admin(request)
+    from app.admin import _activity_log
+    return {"activity": list(reversed(_activity_log[-200:]))}
+
+
+@app.post("/admin/announce")
+async def admin_announce(request: Request) -> dict:
+    _require_admin(request)
+    body = await request.json()
+    target   = body.get("target", "all")
+    subject  = body.get("subject", "")
+    message  = body.get("message", "")
+    if not subject or not message:
+        raise HTTPException(status_code=400, detail="Subject and message required.")
+    from app.admin import send_announcement
+    sent = await send_announcement(target, subject, message)
+    return {"ok": True, "sent_to": sent, "message": f"Announcement sent to {sent} users"}
+
+
+@app.get("/admin/files")
+async def admin_files_list(request: Request) -> dict:
+    _require_admin(request)
+    import os as _os
+    files = []
+    for root, dirs, fnames in _os.walk("."):
+        dirs[:] = [d for d in dirs if d not in ['.venv','__pycache__','.git','.hypothesis']]
+        for f in fnames:
+            path = _os.path.join(root, f).replace("\\","/").lstrip("./")
+            if any(path.startswith(p) for p in ['app/','static/','requirements']):
+                size = _os.path.getsize(_os.path.join(root, f))
+                files.append({"path": path, "size": size})
+    files.sort(key=lambda x: x["path"])
+    return {"files": files, "total": len(files)}
+
 
 # ---------------------------------------------------------------------------
 # Static files — mounted LAST
