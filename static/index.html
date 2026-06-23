@@ -2237,23 +2237,6 @@
       });
     }
 
-    let deferredInstallPrompt = null;
-    window.addEventListener('beforeinstallprompt', e => {
-      e.preventDefault();
-      deferredInstallPrompt = e;
-      const banner = document.getElementById('install-banner');
-      if (banner) banner.style.display = 'flex';
-    });
-    document.getElementById('install-btn')?.addEventListener('click', async () => {
-      if (!deferredInstallPrompt) return;
-      deferredInstallPrompt.prompt();
-      const { outcome } = await deferredInstallPrompt.userChoice;
-      deferredInstallPrompt = null;
-      document.getElementById('install-banner').style.display = 'none';
-    });
-    document.getElementById('install-dismiss')?.addEventListener('click', () => {
-      document.getElementById('install-banner').style.display = 'none';
-    });
   </script>
 
   <!-- ── Auth Modal ── -->
@@ -2387,22 +2370,6 @@
         Send Feedback
       </button>
     </div>
-  </div>
-
-  <!-- PWA install banner — top of screen on mobile, bottom on desktop -->
-  <div id="install-banner" style="
-    display:none; position:fixed;
-    /* mobile: top bar */
-    top: 8px; bottom: auto;
-    left: 50%; transform: translateX(-50%);
-    background:#1a365d; border:1px solid #2c5282; border-radius:12px;
-    padding:10px 14px; gap:10px; align-items:center; z-index:9999;
-    font-size:0.82rem; color:#e2e8f0; box-shadow:0 4px 20px rgba(0,0,0,0.5);
-    max-width:340px; width:calc(100% - 24px);
-  ">
-    <span>🐍 Install <strong>MyPy Tutor</strong> for offline access</span>
-    <button id="install-btn" style="background:#3182ce;color:#fff;border:none;border-radius:8px;padding:7px 14px;font-size:0.82rem;font-weight:600;cursor:pointer;white-space:nowrap;min-height:36px;">Install</button>
-    <button id="install-dismiss" style="background:transparent;color:#718096;border:none;font-size:1.1rem;cursor:pointer;padding:0 4px;">✕</button>
   </div>
 
 </body>
