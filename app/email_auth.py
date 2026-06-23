@@ -38,7 +38,7 @@ EMAIL_PORT    = int(os.getenv("EMAIL_PORT", "587"))
 EMAIL_USER    = os.getenv("EMAIL_USER",   "")
 EMAIL_PASS    = os.getenv("EMAIL_PASS",   "")
 EMAIL_FROM    = os.getenv("EMAIL_FROM",   "MyPy Tutor <noreply@mypytutor.com>")
-APP_URL       = os.getenv("APP_URL",      "https://mypy-tutor.onrender.com")
+APP_URL       = os.getenv("APP_URL",      "https://mypytutor.onrender.com")
 SESSION_SECRET = os.getenv("SESSION_SECRET", "change-me-in-production-32-chars-min")
 
 _token_serializer = URLSafeTimedSerializer(SESSION_SECRET)
