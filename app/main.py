@@ -196,6 +196,15 @@ async def health() -> dict:
 # ---------------------------------------------------------------------------
 
 
+@app.get("/auth/config")
+async def auth_config() -> dict:
+    """Return public auth configuration — safe to expose to frontend."""
+    return {
+        "google_client_id": _os.getenv("GOOGLE_CLIENT_ID", ""),
+        "google_enabled": bool(_os.getenv("GOOGLE_CLIENT_ID", "")),
+    }
+
+
 @app.post("/auth/google", response_model=AuthResponse)
 async def auth_google(request: GoogleAuthRequest) -> AuthResponse:
     """Verify Google id_token, create/update user, return session token."""
