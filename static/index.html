@@ -584,31 +584,8 @@
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #2d3748; border-radius: 3px; }
 
-    /* ── Floating Feedback Button ── */
-    #feedback-fab {
-      position: fixed;
-      /* On mobile: top-right corner, away from send button */
-      top: 70px; right: 10px;
-      background: #9f7aea; color: #fff;
-      border: none; border-radius: 999px;
-      padding: 8px 12px; font-size: 0.75rem; font-weight: 700;
-      cursor: pointer; z-index: 800;
-      box-shadow: 0 2px 10px rgba(159,122,234,0.4);
-      display: flex; align-items: center; gap: 5px;
-      transition: transform 0.15s, opacity 0.15s;
-      white-space: nowrap;
-      max-width: 110px; /* compact on mobile */
-    }
-    #feedback-fab:hover { transform: scale(1.05); opacity: 0.92; }
-    /* On desktop: bottom-right, well above nav */
-    @media (min-width: 640px) {
-      #feedback-fab {
-        top: auto;
-        bottom: 32px; right: 20px;
-        padding: 10px 16px; font-size: 0.82rem;
-        max-width: none;
-      }
-    }
+    /* ── Floating Feedback Button — hidden, moved to sidebar ── */
+    #feedback-fab { display: none !important; }
 
     /* ── Feedback Modal ── */
     #feedback-modal-overlay {
@@ -840,9 +817,6 @@
       </div>
     </div>
     <div class="header-right">
-      <select id="topic-select" aria-label="Browse topics">
-        <option value="">— Topics —</option>
-      </select>
       <select id="level-select" aria-label="Your level">
         <option value="beginner">🟢 Beginner</option>
         <option value="intermediate">🟡 Mid</option>
@@ -923,6 +897,16 @@
       <div class="sidebar-section">
         <h4>Recent Topics</h4>
         <div id="recent-topics"><span style="font-size:0.78rem;color:#4a5568">None yet.</span></div>
+      </div>
+
+      <!-- Feedback button in sidebar -->
+      <div class="sidebar-section" style="margin-top:auto;padding-top:8px;border-top:1px solid #2d3748;">
+        <button onclick="openFeedbackModal(); closeSidebar();"
+          style="display:flex;align-items:center;gap:8px;width:100%;background:#9f7aea;color:#fff;
+                 border:none;border-radius:10px;padding:11px 14px;font-size:0.86rem;font-weight:700;
+                 cursor:pointer;transition:opacity 0.15s;min-height:44px;">
+          💬 Send Feedback
+        </button>
       </div>
     </div>
 
@@ -1334,7 +1318,7 @@
     const chatContainer    = document.getElementById('chat-container');
     const messageInput     = document.getElementById('message-input');
     const sendBtn          = document.getElementById('send-btn');
-    const topicSelect      = document.getElementById('topic-select');
+    const topicSelect      = document.getElementById('topic-select-mobile'); // header select removed; use sidebar one
     const levelSelect      = document.getElementById('level-select');
     const clearBtn         = document.getElementById('clear-btn');
     const codeEditorToggle = document.getElementById('code-editor-toggle');
@@ -1421,17 +1405,19 @@
       try {
         const res  = await fetch('/topics');
         const data = await res.json();
+        const sidebarSel = document.getElementById('topic-select-mobile');
+        const quizSel    = document.getElementById('quiz-topic-select');
         data.topics.forEach(t => {
-          // Header select (desktop)
-          const o1 = document.createElement('option');
-          o1.value = t; o1.textContent = t;
-          topicSelect.appendChild(o1);
-          // Sidebar select (mobile)
-          const o2 = o1.cloneNode(true);
-          document.getElementById('topic-select-mobile').appendChild(o2);
-          // Quiz select
-          const o3 = o1.cloneNode(true);
-          document.getElementById('quiz-topic-select').appendChild(o3);
+          if (sidebarSel) {
+            const o = document.createElement('option');
+            o.value = t; o.textContent = t;
+            sidebarSel.appendChild(o);
+          }
+          if (quizSel) {
+            const o = document.createElement('option');
+            o.value = t; o.textContent = t;
+            quizSel.appendChild(o);
+          }
         });
       } catch (_) {}
     }
@@ -1442,8 +1428,8 @@
       switchPanel('chat');
       setTimeout(() => messageInput.focus(), 50);
     }
-    topicSelect.addEventListener('change', () => { handleTopicSelect(topicSelect.value); topicSelect.value = ''; });
-    document.getElementById('topic-select-mobile').addEventListener('change', e => {
+    // Single listener on the sidebar topic select
+    document.getElementById('topic-select-mobile')?.addEventListener('change', e => {
       handleTopicSelect(e.target.value); e.target.value = '';
     });
 
