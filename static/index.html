@@ -17,12 +17,12 @@
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
   <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png" />
 
-  <!-- CDN scripts — defer for faster page load -->
-  <script defer src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- CDN scripts — synchronous (marked + hljs used immediately in inline script) -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
-  <!-- Google Identity Services -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <!-- Google Identity Services — async only, not needed at load -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- Google Analytics GA4 — async, non-blocking -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-6NDGZ4LNQD"></script>
