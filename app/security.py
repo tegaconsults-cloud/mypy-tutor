@@ -47,7 +47,7 @@ COURSE_NAME_RE    = re.compile(r"^[a-zA-Z0-9_\-]{1,80}$")
 TOPIC_RE          = re.compile(r"^[a-zA-Z0-9 _\-&/]{1,100}$")
 
 # Free tier daily prompt limit
-FREE_DAILY_LIMIT = 10
+FREE_DAILY_LIMIT = 20
 
 # ---------------------------------------------------------------------------
 # In-memory rate limit store
@@ -83,7 +83,7 @@ _daily_prompt_store: dict[str, tuple[str, int]] = {}
 
 def check_free_prompt_limit(learner_id: str, ip: str) -> tuple[bool, int]:
     """
-    Check if a free-tier user has exceeded their 10 prompts/day limit.
+    Check if a free-tier user has exceeded their 20 prompts/day limit.
     Returns (allowed: bool, used_count: int).
     Key is learner_id if not 'default', otherwise ip.
     """
