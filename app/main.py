@@ -669,6 +669,10 @@ async def request_validation_handler(request: Request, exc: RequestValidationErr
 
 @app.exception_handler(400)
 async def bad_request_handler(request: Request, exc: Exception) -> JSONResponse:
+    # Pass through the real detail message if it's an HTTPException
+    detail = getattr(exc, 'detail', None)
+    if isinstance(detail, str):
+        return JSONResponse(status_code=400, content={"error": detail})
     return JSONResponse(status_code=400, content={"error": "Bad request"})
 
 @app.exception_handler(404)
