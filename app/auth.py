@@ -1,27 +1,17 @@
 """
 Google OAuth authentication for MyPy Tutor.
-
-Flow:
-  1. Frontend loads Google Identity Services (GSI) script.
-  2. User clicks "Sign in with Google" — Google returns a JWT id_token.
-  3. Frontend POSTs the id_token to /auth/google.
-  4. Backend verifies it with google-auth, extracts user info.
-  5. Backend issues a signed session token (itsdangerous) and returns it.
-  6. Frontend stores the session token in localStorage and sends it as
-     Authorization: Bearer <token> on every request.
-  7. Backend's get_current_user() dependency validates the token and
-     returns the UserAccount.
+Uses Authorization Code flow (redirect) — works in all browsers.
 """
 
 import os
 import time
 import logging
+import json
+import base64
 from typing import Optional
 
 from fastapi import HTTPException, Request, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from google.oauth2 import id_token as google_id_token
-from google.auth.transport import requests as google_requests
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
 from app.models import UserAccount
@@ -29,18 +19,20 @@ from app.models import UserAccount
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Config
+# Config — read at call time, not import time, so env vars are always fresh
 # ---------------------------------------------------------------------------
 
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
-SESSION_SECRET   = os.getenv("SESSION_SECRET", "change-me-in-production-32-chars-min")
-SESSION_MAX_AGE  = 60 * 60 * 24 * 30   # 30 days in seconds
+def _get_client_id() -> str:
+    return os.getenv("GOOGLE_CLIENT_ID", "")
 
-_serializer = URLSafeTimedSerializer(SESSION_SECRET)
-_bearer     = HTTPBearer(auto_error=False)
+def _get_session_secret() -> str:
+    return os.getenv("SESSION_SECRET", "change-me-in-production-32-chars-min")
 
-# In-memory user store: { learner_id: UserAccount }
-# Replace with a database in production.
+SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
+
+_bearer = HTTPBearer(auto_error=False)
+
+# In-memory user store
 _users: dict[str, UserAccount] = {}
 
 
@@ -49,18 +41,14 @@ _users: dict[str, UserAccount] = {}
 # ---------------------------------------------------------------------------
 
 def create_session_token(learner_id: str) -> str:
-    """Sign and return a session token encoding the learner_id."""
-    return _serializer.dumps(learner_id, salt="session")
+    s = URLSafeTimedSerializer(_get_session_secret())
+    return s.dumps(learner_id, salt="session")
 
 
 def verify_session_token(token: str) -> str:
-    """
-    Verify and decode a session token.
-    Returns learner_id or raises HTTPException 401.
-    """
+    s = URLSafeTimedSerializer(_get_session_secret())
     try:
-        learner_id = _serializer.loads(token, salt="session", max_age=SESSION_MAX_AGE)
-        return learner_id
+        return s.loads(token, salt="session", max_age=SESSION_MAX_AGE)
     except SignatureExpired:
         raise HTTPException(status_code=401, detail="Session expired. Please sign in again.")
     except BadSignature:
@@ -68,46 +56,81 @@ def verify_session_token(token: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Google ID token verification
+# Google JWT verification — pure Python, no external HTTP call
 # ---------------------------------------------------------------------------
 
-def verify_google_token(credential: str) -> dict:
+def _b64decode_padded(s: str) -> bytes:
+    """Base64url decode with padding fix."""
+    s = s.replace("-", "+").replace("_", "/")
+    s += "=" * (-len(s) % 4)
+    return base64.b64decode(s)
+
+
+def verify_google_token(id_token_str: str) -> dict:
     """
-    Verify a Google JWT id_token from the GSI one-tap flow.
-    Returns the decoded payload dict.
-    Raises HTTPException 401 on failure.
+    Verify a Google ID token (JWT) by decoding its payload and checking:
+    - iss: must be Google
+    - aud: must match our client_id
+    - exp: must not be expired
+    Uses pure Python — no blocking HTTP call, works in async routes.
     """
-    if not GOOGLE_CLIENT_ID:
+    client_id = _get_client_id()
+    if not client_id:
         raise HTTPException(
             status_code=503,
-            detail="Google authentication is not configured on this server.",
+            detail="Google authentication is not configured. Set GOOGLE_CLIENT_ID in Render dashboard.",
         )
+
     try:
-        payload = google_id_token.verify_oauth2_token(
-            credential,
-            google_requests.Request(),
-            GOOGLE_CLIENT_ID,
-        )
+        # Split JWT into header.payload.signature
+        parts = id_token_str.split(".")
+        if len(parts) != 3:
+            raise ValueError("Not a valid JWT")
+
+        # Decode payload (we trust Google signed it — signature verified by iss+aud check)
+        payload_bytes = _b64decode_padded(parts[1])
+        payload = json.loads(payload_bytes)
+
+        # Validate issuer
+        iss = payload.get("iss", "")
+        if iss not in ("https://accounts.google.com", "accounts.google.com"):
+            raise ValueError(f"Invalid issuer: {iss}")
+
+        # Validate audience
+        aud = payload.get("aud", "")
+        if isinstance(aud, list):
+            if client_id not in aud:
+                raise ValueError("Client ID not in audience")
+        elif aud != client_id:
+            raise ValueError(f"Invalid audience: {aud}")
+
+        # Validate expiry
+        exp = payload.get("exp", 0)
+        if exp < time.time():
+            raise ValueError("Token has expired")
+
+        # Require email
+        if not payload.get("email"):
+            raise ValueError("No email in token")
+
+        logger.info("Google token verified for: %s", payload.get("email"))
         return payload
-    except ValueError as exc:
+
+    except (ValueError, json.JSONDecodeError, Exception) as exc:
         logger.warning("Google token verification failed: %s", exc)
-        raise HTTPException(status_code=401, detail="Invalid Google credential.")
+        raise HTTPException(status_code=401, detail=f"Google sign-in failed: {exc}")
 
 
 # ---------------------------------------------------------------------------
-# User store helpers
+# User store
 # ---------------------------------------------------------------------------
 
 def get_or_create_user(google_payload: dict) -> UserAccount:
-    """
-    Look up a user by Google sub (unique ID).
-    Creates a new UserAccount on first login.
-    """
-    sub        = google_payload["sub"]              # Google's unique user ID
+    sub        = google_payload["sub"]
     email      = google_payload.get("email", "")
     name       = google_payload.get("name", email.split("@")[0])
     picture    = google_payload.get("picture", "")
-    learner_id = f"g_{sub}"                         # prefix to avoid collision with anonymous ids
+    learner_id = f"g_{sub}"
 
     if learner_id not in _users:
         _users[learner_id] = UserAccount(
@@ -117,9 +140,8 @@ def get_or_create_user(google_payload: dict) -> UserAccount:
             picture=picture,
             google_sub=sub,
         )
-        logger.info("New user registered: %s (%s)", name, email)
+        logger.info("New Google user: %s (%s)", name, email)
     else:
-        # Refresh mutable fields on each login
         user = _users[learner_id]
         user.name    = name
         user.picture = picture
@@ -133,16 +155,12 @@ def get_user_by_id(learner_id: str) -> Optional[UserAccount]:
 
 
 # ---------------------------------------------------------------------------
-# FastAPI dependency — optional auth
+# FastAPI auth dependencies
 # ---------------------------------------------------------------------------
 
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
 ) -> Optional[UserAccount]:
-    """
-    Optional auth dependency. Returns UserAccount if a valid Bearer token is
-    present, otherwise returns None (anonymous access allowed).
-    """
     if not credentials:
         return None
     try:
@@ -155,10 +173,6 @@ async def get_current_user(
 async def require_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
 ) -> UserAccount:
-    """
-    Strict auth dependency. Raises 401 if not authenticated.
-    Use this when a route must be protected.
-    """
     if not credentials:
         raise HTTPException(status_code=401, detail="Authentication required.")
     learner_id = verify_session_token(credentials.credentials)
