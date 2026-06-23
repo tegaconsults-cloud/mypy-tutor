@@ -10,7 +10,7 @@ services:
       - key: SESSION_SECRET
         sync: false          # random 32+ char string for session tokens
       - key: GOOGLE_CLIENT_ID
-        sync: false          # optional: Google OAuth client ID
+        sync: false          # 1004333813545-qf73fbefpcttph7b2jqbngnu370ra4uu.apps.googleusercontent.com
       - key: EMAIL_HOST
         value: smtp.gmail.com
       - key: EMAIL_PORT
