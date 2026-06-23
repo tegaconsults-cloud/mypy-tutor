@@ -122,6 +122,7 @@ class TopicProgress(BaseModel):
 
 class LearnerProfile(BaseModel):
     learner_id:           str
+    tier:                 str       = "free"     # "free" | "tier1" | "tier2" | "tier3"
     level:                str       = "beginner"
     xp:                   int       = 0
     badges:               list[str] = []
@@ -130,6 +131,8 @@ class LearnerProfile(BaseModel):
     current_course:       str | None = None
     current_course_step:  int        = 0
     completed_projects:   list[str]  = []
+    daily_prompts_used:   int        = 0
+    last_prompt_date:     str        = ""
 
 
 # ---------------------------------------------------------------------------

@@ -91,12 +91,14 @@ CERT_CONFIGS = {
         "border_style":    "double",
         "ribbon_text":     "BASIC",
         "description": (
-            "has successfully completed the <strong>Basic Python Programming</strong> course, "
-            "demonstrating foundational knowledge in Python syntax, data types, loops, "
-            "functions, and exception handling."
+            "has successfully completed the <strong>Basic Python Programming</strong> course track, "
+            "passed a 20-question proctored examination with a minimum score of 60%, "
+            "and demonstrated foundational knowledge in Python syntax, data types, loops, "
+            "functions, and exception handling through 3 practical coding assessments."
         ),
         "skills": ["Variables & Data Types", "Loops & Conditionals", "Functions",
                    "Exception Handling", "Basic Data Structures"],
+        "exam_details": "20-question MCQ exam · 60% pass mark · 60 min · 3 coding problems",
     },
     "advanced": {
         "title":       "Certificate of Achievement",
@@ -108,12 +110,14 @@ CERT_CONFIGS = {
         "border_style":    "solid",
         "ribbon_text":     "ADVANCED",
         "description": (
-            "has successfully completed the <strong>Advanced Python Programming</strong> course, "
-            "demonstrating proficiency in object-oriented programming, data structures, "
-            "algorithms, APIs, and software design patterns."
+            "has successfully completed the <strong>Advanced Python Programming</strong> course track, "
+            "passed a 35-question proctored examination (MCQ + short answer) with a minimum score of 65%, "
+            "and demonstrated proficiency in OOP, data structures, algorithms, APIs, and "
+            "software design through 5 intermediate-level coding assessments."
         ),
         "skills": ["OOP & Inheritance", "Data Structures & Algorithms",
                    "REST APIs", "File Handling", "Modules & Packages"],
+        "exam_details": "35-question exam (MCQ + short answer) · 65% pass mark · 90 min · 5 coding problems",
     },
     "executive": {
         "title":       "Executive Masters Certificate",
@@ -126,12 +130,14 @@ CERT_CONFIGS = {
         "ribbon_text":     "EXECUTIVE MASTERS",
         "description": (
             "has successfully completed the <strong>Executive Masters Programme in Python & AI Engineering</strong>, "
-            "demonstrating expert-level mastery of Python, prompt engineering, "
-            "AI integration, system design, and professional software development."
+            "passed a comprehensive 50-question proctored examination (MCQ + code review + essay) "
+            "with a minimum score of 70%, and demonstrated expert-level mastery through 8 advanced "
+            "real-world coding challenges, prompt engineering, AI integration, and system design."
         ),
         "skills": ["Advanced Python Mastery", "Prompt Engineering",
                    "AI Integration & APIs", "System Design", "Professional Dev Practices",
                    "Coding Assessment — Distinction"],
+        "exam_details": "50-question comprehensive exam · 70% pass mark · 3 hours · 8 advanced coding challenges",
     },
 }
 
@@ -342,6 +348,7 @@ def generate_certificate_html(
         <strong>Certificate ID:</strong> {cert_id}<br/>
         <strong>Issue Date:</strong> {date_str}<br/>
         <strong>MyPy Tutor</strong> · mypytutor.onrender.com<br/>
+        <strong>Examination:</strong> {cfg.get('exam_details', cfg['ribbon_text'])}<br/>
         <strong>Level:</strong> {cfg['ribbon_text']}
       </div>
 

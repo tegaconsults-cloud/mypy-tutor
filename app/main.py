@@ -38,6 +38,8 @@ from app.security import (
     validate_learner_id, validate_level,
     validate_course_name, validate_topic,
     validate_chat_request,
+    check_free_prompt_limit, increment_free_prompt_count, get_free_prompt_count,
+    _get_ip,
 )
 from app.auth import (
     verify_google_token, get_or_create_user,
@@ -106,9 +108,26 @@ app.add_middleware(SecurityMiddleware)
 # ---------------------------------------------------------------------------
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest) -> ChatResponse:
+async def chat(request: ChatRequest, req: Request) -> ChatResponse:
     # Input validation (size, level, learner_id, history)
     validate_chat_request(request.message, request.history, request.level, request.learner_id)
+
+    # Free-tier daily prompt limit check
+    profile = get_profile(request.learner_id)
+    if profile.tier == "free":
+        ip = _get_ip(req)
+        allowed, used = check_free_prompt_limit(request.learner_id, ip)
+        if not allowed:
+            return JSONResponse(
+                status_code=402,
+                content={
+                    "error": "free_limit_reached",
+                    "message": "You've used your 10 free daily prompts. Upgrade to Premium to continue learning!",
+                    "used": used,
+                    "limit": 10,
+                },
+            )
+        increment_free_prompt_count(request.learner_id, ip)
 
     intent = classify_intent(request.message)
 
@@ -290,6 +309,29 @@ async def get_certificate(
     if level not in CERT_CONFIGS:
         raise HTTPException(status_code=400, detail="Invalid certificate level. Use: basic, advanced, or executive")
 
+    # Tier gate: check learner tier before issuing certificate
+    profile = get_profile(learner_id)
+    CERT_TIER_REQUIRED = {
+        "basic":     {"tier1", "tier2", "tier3"},
+        "advanced":  {"tier2", "tier3"},
+        "executive": {"tier3"},
+    }
+    allowed_tiers = CERT_TIER_REQUIRED.get(level, set())
+    if profile.tier not in allowed_tiers:
+        tier_names = {"basic": "Pro Learner (Tier 1)", "advanced": "Career Builder (Tier 2)", "executive": "Elite (Tier 3)"}
+        return HTMLResponse(
+            content=f"""<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Upgrade Required</title>
+            <style>body{{font-family:sans-serif;background:#0f1117;color:#e2e8f0;display:flex;align-items:center;justify-content:center;height:100vh;text-align:center;padding:20px}}
+            .box{{background:#1a202c;border:1px solid #2d3748;border-radius:14px;padding:40px;max-width:420px}}
+            h2{{color:#f6ad55;margin-bottom:12px}}p{{color:#a0aec0;line-height:1.6;margin-bottom:20px}}
+            a{{background:#3182ce;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:700}}</style></head>
+            <body><div class="box"><h2>🔒 Upgrade Required</h2>
+            <p>The <strong>{level.title()}</strong> Certificate requires the <strong>{tier_names.get(level, 'Premium')}</strong> plan.</p>
+            <p>Upgrade today to unlock certificates, unlimited prompts, and all courses.</p>
+            <a href="https://paystack.shop/pay/vt_re4d3h52" target="_blank">💳 Upgrade Now</a></div></body></html>""",
+            status_code=402,
+        )
+
     # Sanitise name — max 80 chars, strip HTML
     import re as _re
     clean_name = _re.sub(r'[<>&"\']', '', name).strip()[:80] or "Learner"
@@ -324,6 +366,24 @@ async def get_progress(learner_id: str) -> ProgressResponse:
         completed_projects=profile.completed_projects,
         topic_progress=profile.topic_progress,
     )
+
+
+# ---------------------------------------------------------------------------
+# /prompts/count — return daily free prompt usage
+# ---------------------------------------------------------------------------
+
+@app.get("/prompts/count")
+async def prompts_count(learner_id: str = "default", req: Request = None) -> dict:
+    validate_learner_id(learner_id)
+    ip = _get_ip(req) if req else "unknown"
+    count = get_free_prompt_count(learner_id, ip)
+    profile = get_profile(learner_id)
+    return {
+        "used": count,
+        "limit": 10,
+        "tier": profile.tier,
+        "is_limited": profile.tier == "free",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -362,6 +422,42 @@ async def start_course(learner_id: str, course_name: str) -> dict:
         raise HTTPException(status_code=404, detail="Course not found.")
 
     profile = get_profile(learner_id)
+
+    # Tier-gate: free users cannot start courses
+    if profile.tier == "free":
+        return JSONResponse(
+            status_code=402,
+            content={
+                "error": "free_limit_reached",
+                "message": "Courses require a Premium plan. Upgrade to Pro Learner or higher to access all courses!",
+            },
+        )
+
+    # Tier 1 can only access beginner courses
+    TIER1_COURSES = {
+        "python-fundamentals", "python-strings",
+        "python-collections", "python-control-flow",
+    }
+    TIER2_COURSES = TIER1_COURSES | {
+        "python-functions-advanced", "python-oop", "python-modules-stdlib",
+    }
+    if profile.tier == "tier1" and course_name not in TIER1_COURSES:
+        return JSONResponse(
+            status_code=402,
+            content={
+                "error": "free_limit_reached",
+                "message": "This course requires Career Builder (Tier 2) or Elite (Tier 3). Upgrade to unlock!",
+            },
+        )
+    if profile.tier == "tier2" and course_name not in TIER2_COURSES:
+        return JSONResponse(
+            status_code=402,
+            content={
+                "error": "free_limit_reached",
+                "message": "This course requires the Elite plan (Tier 3). Upgrade to unlock all advanced courses!",
+            },
+        )
+
     profile.current_course      = course_name
     profile.current_course_step = 1
 
