@@ -157,13 +157,19 @@ def register_email(email: str, name: str, password_hash: str) -> tuple[bool, str
 
     sent = _send_email(email, "Confirm your MyPy Tutor account", html_body, text_body)
 
-    if not sent and not EMAIL_USER:
-        # Dev mode: auto-confirm if email not configured
-        return confirm_email_token(token)
+    if not sent:
+        if not EMAIL_USER:
+            # Dev mode only: auto-confirm when email is not configured locally
+            logger.warning("DEV MODE: auto-confirming %s (no email configured)", email)
+            return confirm_email_token(token)
+        else:
+            # Email IS configured but send failed — don't auto-confirm in production
+            del _pending[email]   # clean up
+            return False, "Failed to send confirmation email. Please try again in a moment."
 
     return True, (
-        "Account created! Check your inbox for a confirmation email. "
-        "Please confirm to start learning."
+        f"✅ Confirmation email sent to {email}! "
+        "Please check your inbox (and spam folder) and click the link to activate your account."
     )
 
 

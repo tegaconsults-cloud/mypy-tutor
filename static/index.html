@@ -24,6 +24,15 @@
   <!-- Google Identity Services — loaded only when GOOGLE_CLIENT_ID is set -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 
+  <!-- Google Analytics GA4 -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-6NDGZ4LNQD"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-6NDGZ4LNQD');
+  </script>
+
   <style>
     /* ── Reset & base ── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -571,6 +580,72 @@
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #2d3748; border-radius: 3px; }
 
+    /* ── Floating Feedback Button ── */
+    #feedback-fab {
+      position: fixed; bottom: 76px; right: 16px;
+      background: #9f7aea; color: #fff;
+      border: none; border-radius: 999px;
+      padding: 10px 16px; font-size: 0.82rem; font-weight: 700;
+      cursor: pointer; z-index: 800;
+      box-shadow: 0 4px 16px rgba(159,122,234,0.4);
+      display: flex; align-items: center; gap: 6px;
+      transition: transform 0.15s, opacity 0.15s;
+      white-space: nowrap;
+    }
+    #feedback-fab:hover { transform: scale(1.05); opacity: 0.92; }
+    @media (min-width: 640px) { #feedback-fab { bottom: 24px; } }
+
+    /* ── Feedback Modal ── */
+    #feedback-modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7); z-index: 1000;
+      align-items: center; justify-content: center; padding: 16px;
+    }
+    #feedback-modal-overlay.open { display: flex; }
+    #feedback-modal {
+      background: #1a202c; border: 1px solid #2d3748; border-radius: 18px;
+      padding: 28px 24px; width: 100%; max-width: 420px;
+      display: flex; flex-direction: column; gap: 14px;
+      position: relative; max-height: 90vh; overflow-y: auto;
+    }
+    #feedback-modal h3 { color: #90cdf4; font-size: 1rem; }
+    #feedback-modal-close {
+      position: absolute; top: 14px; right: 16px;
+      background: transparent; border: none; color: #718096;
+      font-size: 1.2rem; cursor: pointer;
+    }
+    .fb-label { font-size: 0.8rem; color: #718096; margin-bottom: 4px; }
+    .star-row { display: flex; gap: 6px; }
+    .star-btn {
+      background: #2d3748; border: none; color: #718096;
+      font-size: 1.4rem; cursor: pointer; border-radius: 6px;
+      padding: 4px 8px; transition: all 0.12s;
+    }
+    .star-btn.active { background: #744210; color: #f6ad55; }
+    .star-btn:hover { background: #4a5568; color: #fbd38d; }
+    .fb-textarea {
+      background: #0f1117; border: 1px solid #2d3748; color: #e2e8f0;
+      border-radius: 8px; padding: 10px 12px; font-size: 0.88rem;
+      resize: vertical; min-height: 80px; max-height: 160px;
+      outline: none; font-family: inherit; width: 100%;
+      transition: border-color 0.15s;
+    }
+    .fb-textarea:focus { border-color: #9f7aea; }
+    .fb-textarea::placeholder { color: #4a5568; }
+    .fb-checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 0.84rem; color: #a0aec0; }
+    .fb-submit-btn {
+      width: 100%; background: #9f7aea; color: #fff; border: none;
+      border-radius: 10px; padding: 12px; font-size: 0.93rem;
+      font-weight: 700; cursor: pointer; transition: opacity 0.15s;
+      min-height: 46px;
+    }
+    .fb-submit-btn:hover:not(:disabled) { opacity: 0.88; }
+    .fb-submit-btn:disabled { opacity: 0.5; cursor: default; }
+    .fb-success { background: #1c3a26; border: 1px solid #276749; color: #68d391; border-radius: 8px; padding: 10px 14px; font-size: 0.84rem; text-align: center; display: none; }
+    .fb-success.visible { display: block; }
+    .fb-error-msg { color: #fc8181; font-size: 0.82rem; display: none; text-align: center; }
+    .fb-error-msg.visible { display: block; }
+
     /* ── Auth button & user chip ── */
     #auth-btn {
       display: flex; align-items: center; gap: 7px;
@@ -737,7 +812,9 @@
   <header>
     <div class="header-left">
       <button id="menu-btn" aria-label="Open menu">☰</button>
-      <div class="logo">🐍 MyPy Tutor</div>
+      <div class="logo">
+        <img src="/icons/logo.svg" alt="MyPy Tutor" height="36" style="vertical-align:middle;max-width:160px;object-fit:contain;" />
+      </div>
       <div id="desktop-nav">
         <button class="nav-tab active" data-panel="chat">💬 Chat</button>
         <button class="nav-tab" data-panel="courses">📚 Courses</button>
@@ -1088,6 +1165,87 @@
         <div class="tier-note">
           All prices in Nigerian Naira (₦). Cancel anytime. No hidden fees.<br/>
           Early-access waitlist opens soon — keep learning to earn a founding member discount.
+        </div>
+
+        <!-- ── Certification Plans (one-time) ── -->
+        <div style="margin-top:8px;">
+          <div style="text-align:center;margin-bottom:14px;">
+            <div style="font-size:1rem;font-weight:700;color:#e2e8f0;">🎓 Certification Plans <span style="font-size:0.72rem;color:#718096;font-weight:400;">(One-Time Payment)</span></div>
+            <div style="font-size:0.78rem;color:#718096;margin-top:4px;">Enrol in a full course track, sit the exam, and earn a verified certificate from Teamsamikoko Global Academy.</div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;">
+
+            <!-- Basic Cert Plan -->
+            <div style="background:#1a202c;border:2px solid #3182ce;border-top:4px solid #3182ce;border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:10px;">
+              <div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;background:#1a365d;color:#63b3ed;border-radius:999px;padding:3px 10px;width:fit-content;">Basic</div>
+              <div style="font-size:1rem;font-weight:700;color:#e2e8f0;">Python Fundamentals Certificate</div>
+              <div style="font-size:1.7rem;font-weight:800;color:#e2e8f0;">₦30,000 <span style="font-size:0.72rem;font-weight:400;color:#718096;">one-time</span></div>
+              <ul style="list-style:none;display:flex;flex-direction:column;gap:6px;font-size:0.82rem;color:#a0aec0;flex:1;">
+                <li>📚 4 beginner courses (43 lessons)</li>
+                <li>📝 20-question multiple choice exam</li>
+                <li>🖥️ 3 coding practice problems (beginner)</li>
+                <li>⏱️ 60 min time limit</li>
+                <li>✅ Pass mark: 60% — retake once free</li>
+                <li>🎓 Basic Certificate (PDF) on pass</li>
+                <li>🏅 Teamsamikoko Global Academy seal</li>
+              </ul>
+              <a href="https://paystack.shop/pay/vt_re4d3h52" target="_blank" rel="noopener"
+                style="display:block;text-align:center;background:#2b6cb0;color:#fff;text-decoration:none;font-weight:700;font-size:0.88rem;padding:11px;border-radius:8px;transition:opacity 0.15s;"
+                onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">
+                💳 Enrol — ₦30,000
+              </a>
+            </div>
+
+            <!-- Advanced Cert Plan -->
+            <div style="background:#1a202c;border:2px solid #9f7aea;border-top:4px solid #9f7aea;border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:10px;position:relative;">
+              <div style="position:absolute;top:-11px;right:14px;background:#9f7aea;color:#fff;font-size:0.65rem;font-weight:700;text-transform:uppercase;padding:3px 10px;border-radius:999px;">Most Popular</div>
+              <div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;background:#322659;color:#b794f4;border-radius:999px;padding:3px 10px;width:fit-content;">Advanced</div>
+              <div style="font-size:1rem;font-weight:700;color:#e2e8f0;">Python Advanced Certificate</div>
+              <div style="font-size:1.7rem;font-weight:800;color:#e2e8f0;">₦50,000 <span style="font-size:0.72rem;font-weight:400;color:#718096;">one-time</span></div>
+              <ul style="list-style:none;display:flex;flex-direction:column;gap:6px;font-size:0.82rem;color:#a0aec0;flex:1;">
+                <li>📚 7 courses — beginner + intermediate (86 lessons)</li>
+                <li>📝 35-question exam (MCQ + short answer)</li>
+                <li>🖥️ 5 coding problems (intermediate difficulty)</li>
+                <li>⏱️ 90 min time limit</li>
+                <li>✅ Pass mark: 65% — retake once free</li>
+                <li>🎓 Advanced Certificate (PDF) on pass</li>
+                <li>💼 Portfolio project included</li>
+                <li>🏅 Teamsamikoko Global Academy seal</li>
+              </ul>
+              <a href="https://paystack.shop/pay/vt_re4d3h52" target="_blank" rel="noopener"
+                style="display:block;text-align:center;background:#6b46c1;color:#fff;text-decoration:none;font-weight:700;font-size:0.88rem;padding:11px;border-radius:8px;transition:opacity 0.15s;"
+                onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">
+                💳 Enrol — ₦50,000
+              </a>
+            </div>
+
+            <!-- Executive Masters Cert Plan -->
+            <div style="background:#1a202c;border:2px solid #f6ad55;border-top:4px solid #f6ad55;border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:10px;">
+              <div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;background:#7b3a00;color:#f6ad55;border-radius:999px;padding:3px 10px;width:fit-content;">Executive Masters</div>
+              <div style="font-size:1rem;font-weight:700;color:#e2e8f0;">Python &amp; AI Engineering Masters</div>
+              <div style="font-size:1.7rem;font-weight:800;color:#e2e8f0;">₦80,000 <span style="font-size:0.72rem;font-weight:400;color:#718096;">one-time</span></div>
+              <ul style="list-style:none;display:flex;flex-direction:column;gap:6px;font-size:0.82rem;color:#a0aec0;flex:1;">
+                <li>📚 All 12 courses (153 lessons)</li>
+                <li>📝 50-question comprehensive exam (MCQ + code review + essay)</li>
+                <li>🖥️ 8 real-world coding challenges (advanced)</li>
+                <li>⏱️ 3-hour time limit</li>
+                <li>✅ Pass mark: 70% — one supervised retake</li>
+                <li>🎓 Executive Masters Certificate (PDF)</li>
+                <li>💼 Full portfolio + LinkedIn export</li>
+                <li>🎙️ Mock interview prep session</li>
+                <li>🏅 Teamsamikoko Global Academy seal</li>
+              </ul>
+              <a href="https://paystack.shop/pay/vt_re4d3h52" target="_blank" rel="noopener"
+                style="display:block;text-align:center;background:#c05621;color:#fff;text-decoration:none;font-weight:700;font-size:0.88rem;padding:11px;border-radius:8px;transition:opacity 0.15s;"
+                onmouseover="this.style.opacity='0.88'" onmouseout="this.style.opacity='1'">
+                💳 Enrol — ₦80,000
+              </a>
+            </div>
+
+          </div>
+          <div style="text-align:center;font-size:0.73rem;color:#4a5568;margin-top:10px;">
+            All certification exams are AI-proctored. Certificate issued within 24hrs of passing. Prices in Nigerian Naira (₦).
+          </div>
         </div>
 
         <!-- ── Payment methods ── -->
@@ -1878,6 +2036,95 @@
       window.open(url, '_blank', 'width=1000,height=720,noopener,noreferrer');
     }
 
+    // ── Upgrade Modal ─────────────────────────────────────────────────────────
+    function showUpgradeModal(message) {
+      const overlay = document.getElementById('upgrade-modal-overlay');
+      if (overlay) {
+        document.getElementById('upgrade-modal-msg').textContent =
+          message || 'Upgrade to Premium to get unlimited prompts, all courses, certificates, and more.';
+        overlay.classList.add('open');
+      }
+    }
+    function closeUpgradeModal() {
+      const overlay = document.getElementById('upgrade-modal-overlay');
+      if (overlay) overlay.classList.remove('open');
+    }
+
+    // ── Prompt counter ────────────────────────────────────────────────────────
+    async function refreshPromptCount() {
+      try {
+        const res = await fetch(`/prompts/count?learner_id=${getLearnerId()}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const bar = document.getElementById('prompt-counter-bar');
+        const txt = document.getElementById('prompt-counter-text');
+        if (!bar || !txt) return;
+        if (data.tier === 'free') {
+          bar.style.display = 'flex';
+          const remaining = Math.max(0, data.limit - data.used);
+          txt.textContent = `Free plan: ${data.used}/${data.limit} prompts used today${remaining === 0 ? ' — Upgrade for unlimited!' : ` (${remaining} remaining)`}`;
+          txt.style.color = remaining === 0 ? '#fc8181' : remaining <= 3 ? '#f6ad55' : '#718096';
+        } else {
+          bar.style.display = 'none';
+        }
+      } catch (_) {}
+    }
+
+    // ── Feedback modal functions ──────────────────────────────────────────────
+    const _fbStars = { overall: 0, clarity: 0, helpfulness: 0 };
+
+    function openFeedbackModal() {
+      document.getElementById('feedback-modal-overlay').classList.add('open');
+      document.getElementById('fb-success-msg').classList.remove('visible');
+      document.getElementById('fb-error-msg').classList.remove('visible');
+    }
+    function closeFeedbackModal() {
+      document.getElementById('feedback-modal-overlay').classList.remove('open');
+    }
+    function handleFeedbackOverlayClick(e) {
+      if (e.target === document.getElementById('feedback-modal-overlay')) closeFeedbackModal();
+    }
+    function setStars(field, val) {
+      _fbStars[field] = val;
+      const row = document.getElementById('star-' + field);
+      if (!row) return;
+      row.querySelectorAll('.star-btn').forEach(btn => {
+        btn.classList.toggle('active', parseInt(btn.dataset.val) <= val);
+      });
+    }
+    async function submitFeedback() {
+      if (_fbStars.overall === 0) {
+        alert('Please rate your overall experience.');
+        return;
+      }
+      const btn = document.getElementById('fb-submit-btn');
+      btn.disabled = true; btn.textContent = 'Sending…';
+      try {
+        const res = await fetch('/feedback/survey', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            learner_id: getLearnerId(),
+            overall:    _fbStars.overall,
+            clarity:    _fbStars.clarity || _fbStars.overall,
+            helpfulness: _fbStars.helpfulness || _fbStars.overall,
+            suggestion:  document.getElementById('fb-suggestion').value.trim(),
+            would_recommend: document.getElementById('fb-recommend').checked,
+          }),
+        });
+        if (res.ok) {
+          document.getElementById('fb-success-msg').classList.add('visible');
+          setTimeout(closeFeedbackModal, 3000);
+        } else {
+          document.getElementById('fb-error-msg').classList.add('visible');
+        }
+      } catch (_) {
+        document.getElementById('fb-error-msg').classList.add('visible');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Send Feedback';
+      }
+    }
+
     // ── Init ──────────────────────────────────────────────────────────────────
     loadTopics();
     loadHistory();
@@ -2003,6 +2250,78 @@
         By signing in you agree to our Terms of Service.<br/>
         Your progress is saved securely to your account.
       </div>
+    </div>
+  </div>
+
+  <!-- ── Floating Feedback Button ── -->
+  <button id="feedback-fab" onclick="openFeedbackModal()" aria-label="Send feedback">
+    💬 Feedback
+  </button>
+
+  <!-- ── Feedback Modal ── -->
+  <div id="feedback-modal-overlay" onclick="handleFeedbackOverlayClick(event)">
+    <div id="feedback-modal" role="dialog" aria-modal="true" aria-labelledby="fb-modal-title">
+      <button id="feedback-modal-close" onclick="closeFeedbackModal()" aria-label="Close">✕</button>
+      <h3 id="fb-modal-title">💬 Share Your Feedback</h3>
+      <p style="font-size:0.8rem;color:#718096;margin-top:-6px">Help us improve MyPy Tutor. Takes 30 seconds.</p>
+
+      <!-- Overall rating -->
+      <div>
+        <div class="fb-label">Overall experience <span style="color:#fc8181">*</span></div>
+        <div class="star-row" id="star-overall">
+          <button class="star-btn" data-val="1" onclick="setStars('overall',1)">⭐</button>
+          <button class="star-btn" data-val="2" onclick="setStars('overall',2)">⭐</button>
+          <button class="star-btn" data-val="3" onclick="setStars('overall',3)">⭐</button>
+          <button class="star-btn" data-val="4" onclick="setStars('overall',4)">⭐</button>
+          <button class="star-btn" data-val="5" onclick="setStars('overall',5)">⭐</button>
+        </div>
+      </div>
+
+      <!-- Clarity -->
+      <div>
+        <div class="fb-label">Clarity of explanations</div>
+        <div class="star-row" id="star-clarity">
+          <button class="star-btn" data-val="1" onclick="setStars('clarity',1)">⭐</button>
+          <button class="star-btn" data-val="2" onclick="setStars('clarity',2)">⭐</button>
+          <button class="star-btn" data-val="3" onclick="setStars('clarity',3)">⭐</button>
+          <button class="star-btn" data-val="4" onclick="setStars('clarity',4)">⭐</button>
+          <button class="star-btn" data-val="5" onclick="setStars('clarity',5)">⭐</button>
+        </div>
+      </div>
+
+      <!-- Helpfulness -->
+      <div>
+        <div class="fb-label">How helpful was Sir. Tega?</div>
+        <div class="star-row" id="star-helpfulness">
+          <button class="star-btn" data-val="1" onclick="setStars('helpfulness',1)">⭐</button>
+          <button class="star-btn" data-val="2" onclick="setStars('helpfulness',2)">⭐</button>
+          <button class="star-btn" data-val="3" onclick="setStars('helpfulness',3)">⭐</button>
+          <button class="star-btn" data-val="4" onclick="setStars('helpfulness',4)">⭐</button>
+          <button class="star-btn" data-val="5" onclick="setStars('helpfulness',5)">⭐</button>
+        </div>
+      </div>
+
+      <!-- Suggestion -->
+      <div>
+        <div class="fb-label">Suggestions or comments (optional)</div>
+        <textarea id="fb-suggestion" class="fb-textarea"
+          placeholder="What can we improve? What do you love? Any feature requests?"></textarea>
+      </div>
+
+      <!-- Recommend -->
+      <label class="fb-checkbox-row">
+        <input type="checkbox" id="fb-recommend" checked style="width:16px;height:16px;accent-color:#9f7aea;cursor:pointer;" />
+        I would recommend MyPy Tutor to others
+      </label>
+
+      <!-- Messages -->
+      <div id="fb-success-msg" class="fb-success">🙏 Thank you! Your feedback has been sent to our team.</div>
+      <div id="fb-error-msg" class="fb-error-msg">Something went wrong. Please try again.</div>
+
+      <!-- Submit -->
+      <button id="fb-submit-btn" class="fb-submit-btn" onclick="submitFeedback()">
+        Send Feedback
+      </button>
     </div>
   </div>
 

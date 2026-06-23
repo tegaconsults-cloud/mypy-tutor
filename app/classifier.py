@@ -35,7 +35,6 @@ INTENT_KEYWORDS: dict[str, list[str]] = {
         "slice", "slicing", "indexing", "mutable", "immutable",
         "shallow copy", "deep copy", "garbage collection",
         "gil", "global interpreter lock",
-        # W3Schools additions
         "syntax", "comment", "casting", "boolean", "operator",
         "string method", "string format", "f-string", "escape character",
         "list method", "list comprehension", "tuple", "set", "dictionary",
@@ -49,7 +48,6 @@ INTENT_KEYWORDS: dict[str, list[str]] = {
         "linked list", "stack", "queue", "hash table", "binary tree",
         "graph", "sorting algorithm", "searching algorithm",
         "prompt engineering", "ai integration",
-        # More W3Schools topics
         "match statement", "range", "array", "iterator",
         "date", "pip", "none", "user input", "virtual environment",
         "self parameter", "class property", "class method", "inner class",

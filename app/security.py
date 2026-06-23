@@ -46,6 +46,9 @@ LEARNER_ID_RE     = re.compile(r"^[a-zA-Z0-9_\-]{1,64}$")
 COURSE_NAME_RE    = re.compile(r"^[a-zA-Z0-9_\-]{1,80}$")
 TOPIC_RE          = re.compile(r"^[a-zA-Z0-9 _\-&/]{1,100}$")
 
+# Free tier daily prompt limit
+FREE_DAILY_LIMIT = 10
+
 # ---------------------------------------------------------------------------
 # In-memory rate limit store
 # ---------------------------------------------------------------------------
@@ -66,6 +69,59 @@ def _check_rate(store: dict, ip: str, limit: int, window: int) -> bool:
         return False
     dq.append(now)
     return True
+
+
+# ---------------------------------------------------------------------------
+# Free-tier daily prompt counter (per learner_id OR ip, whichever is provided)
+# ---------------------------------------------------------------------------
+
+import datetime as _dt
+
+# { key -> (date_str, count) }
+_daily_prompt_store: dict[str, tuple[str, int]] = {}
+
+
+def check_free_prompt_limit(learner_id: str, ip: str) -> tuple[bool, int]:
+    """
+    Check if a free-tier user has exceeded their 10 prompts/day limit.
+    Returns (allowed: bool, used_count: int).
+    Key is learner_id if not 'default', otherwise ip.
+    """
+    key = learner_id if learner_id and learner_id != "default" else ip
+    today = _dt.date.today().isoformat()
+    existing = _daily_prompt_store.get(key)
+    if existing is None or existing[0] != today:
+        # New day or first time
+        _daily_prompt_store[key] = (today, 0)
+        return True, 0
+    _, count = existing
+    if count >= FREE_DAILY_LIMIT:
+        return False, count
+    return True, count
+
+
+def increment_free_prompt_count(learner_id: str, ip: str) -> int:
+    """Increment the daily prompt counter. Returns new count."""
+    key = learner_id if learner_id and learner_id != "default" else ip
+    today = _dt.date.today().isoformat()
+    existing = _daily_prompt_store.get(key)
+    if existing is None or existing[0] != today:
+        _daily_prompt_store[key] = (today, 1)
+        return 1
+    date_str, count = existing
+    new_count = count + 1
+    _daily_prompt_store[key] = (date_str, new_count)
+    return new_count
+
+
+def get_free_prompt_count(learner_id: str, ip: str) -> int:
+    """Get current daily prompt count for a learner/IP."""
+    key = learner_id if learner_id and learner_id != "default" else ip
+    today = _dt.date.today().isoformat()
+    existing = _daily_prompt_store.get(key)
+    if existing is None or existing[0] != today:
+        return 0
+    return existing[1]
 
 
 # ---------------------------------------------------------------------------
@@ -112,11 +168,11 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         response.headers["Permissions-Policy"]        = "geolocation=(), microphone=(), camera=()"
         response.headers["Content-Security-Policy"]   = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; "
+            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://accounts.google.com https://www.googletagmanager.com https://www.google-analytics.com; "
             "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
             "font-src 'self' https://cdnjs.cloudflare.com; "
-            "img-src 'self' data:; "
-            "connect-src 'self'; "
+            "img-src 'self' data: https://www.google-analytics.com https://www.googletagmanager.com; "
+            "connect-src 'self' https://www.google-analytics.com https://analytics.google.com https://region1.google-analytics.com; "
             "worker-src 'self';"
         )
         # Remove server fingerprint
