@@ -1053,24 +1053,32 @@ import datetime
 async def admin_list_users(request: Request) -> dict:
     _require_admin(request)
     from app.progress import _store as ls
-    from app.email_auth import _confirmed
+    from app.db import get_all_confirmed_emails
+    # Load all email accounts from SQLite (persistent)
+    try:
+        db_emails = get_all_confirmed_emails()
+    except Exception:
+        from app.email_auth import _confirmed
+        db_emails = [{"email": e, "name": u["name"], "learner_id": u["learner_id"]}
+                     for e, u in _confirmed.items()]
+
     users = []
     for lid, profile in ls.items():
         users.append({
-            "learner_id":   lid,
-            "tier":         profile.tier,
-            "level":        profile.level,
-            "xp":           profile.xp,
-            "topics_seen":  len(profile.topics_seen),
-            "courses_done": len(profile.completed_projects),
-            "badges":       len(profile.badges),
+            "learner_id":    lid,
+            "tier":          profile.tier,
+            "level":         profile.level,
+            "xp":            profile.xp,
+            "topics_seen":   len(profile.topics_seen),
+            "courses_done":  len(profile.completed_projects),
+            "badges":        len(profile.badges),
             "current_course": profile.current_course,
         })
-    email_users = [{"email": e, "name": u["name"], "type": "email"}
-                   for e, u in _confirmed.items()]
+    email_users = [{"email": r["email"], "name": r["name"],
+                    "learner_id": r["learner_id"], "type": "email"}
+                   for r in db_emails]
     return {"learner_profiles": users, "email_accounts": email_users,
             "total": len(users), "email_signups": len(email_users)}
-
 
 @app.get("/admin/users/{learner_id}")
 async def admin_user_detail(learner_id: str, request: Request) -> dict:
