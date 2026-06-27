@@ -217,9 +217,31 @@ _certs: list[CertRecord] = []
 def log_certificate(cert_id: str, learner_id: str, learner_name: str, level: str) -> None:
     _certs.append(CertRecord(cert_id=cert_id, learner_id=learner_id,
                               learner_name=learner_name, level=level))
+    try:
+        from app.db import save_certificate_db
+        save_certificate_db(cert_id, learner_id, learner_name, level)
+    except Exception:
+        pass
 
 
 def get_certificates() -> list[CertRecord]:
+    # Try SQLite first for persistence
+    try:
+        from app.db import get_certificates_db
+        rows = get_certificates_db()
+        if rows:
+            result = []
+            for r in rows:
+                result.append(CertRecord(
+                    cert_id=r["cert_id"],
+                    learner_id=r["learner_id"],
+                    learner_name=r["learner_name"],
+                    level=r["level"],
+                    issued_at=r.get("issued_at_ts", time.time()),
+                ))
+            return result
+    except Exception:
+        pass
     return sorted(_certs, key=lambda c: c.issued_at, reverse=True)
 
 
@@ -239,6 +261,12 @@ def log_activity(learner_id: str, action: str, detail: str = "") -> None:
     })
     if len(_activity_log) > 2000:
         _activity_log.pop(0)
+    # Also persist to SQLite
+    try:
+        from app.db import log_activity_db
+        log_activity_db(learner_id, action, detail)
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------

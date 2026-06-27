@@ -1,11 +1,11 @@
 """
-In-memory learner progress store.
-On Render free tier there is no persistent disk, so progress lives in memory
-per-process (survives restarts only if the process stays up).
-Swap _store for Redis/SQLite in production for true persistence.
+Learner progress store — backed by SQLite for persistence across restarts.
+Memory cache (_store) is used for fast reads; SQLite is the source of truth.
 """
 
+import json
 from app.models import LearnerProfile, TopicProgress
+from app.db import load_profile, save_profile_db
 
 _store: dict[str, LearnerProfile] = {}
 
@@ -31,13 +31,60 @@ BADGES = {
 
 
 def get_profile(learner_id: str) -> LearnerProfile:
-    if learner_id not in _store:
-        _store[learner_id] = LearnerProfile(learner_id=learner_id)
-    return _store[learner_id]
+    """Load from cache, then SQLite, then create new."""
+    if learner_id in _store:
+        return _store[learner_id]
+    # Try loading from SQLite
+    row = load_profile(learner_id)
+    if row:
+        # Reconstruct topic_progress from JSON
+        tp_raw = json.loads(row.get("topic_progress", "{}"))
+        topic_progress = {
+            k: TopicProgress(**v) if isinstance(v, dict) else v
+            for k, v in tp_raw.items()
+        }
+        profile = LearnerProfile(
+            learner_id=learner_id,
+            tier=row.get("tier", "free"),
+            level=row.get("level", "beginner"),
+            xp=row.get("xp", 0),
+            badges=json.loads(row.get("badges", "[]")),
+            topics_seen=json.loads(row.get("topics_seen", "[]")),
+            topic_progress=topic_progress,
+            current_course=row.get("current_course"),
+            current_course_step=row.get("course_step", 0),
+            completed_projects=json.loads(row.get("completed_projects", "[]")),
+            daily_prompts_used=row.get("daily_prompts_used", 0),
+            last_prompt_date=row.get("last_prompt_date", ""),
+        )
+        _store[learner_id] = profile
+        return profile
+    # Create new profile
+    profile = LearnerProfile(learner_id=learner_id)
+    _store[learner_id] = profile
+    return profile
 
 
 def save_profile(profile: LearnerProfile) -> None:
+    """Save to memory cache and SQLite."""
     _store[profile.learner_id] = profile
+    # Serialize topic_progress for SQLite
+    tp_dict = {
+        k: v.model_dump() for k, v in profile.topic_progress.items()
+    }
+    save_profile_db(profile.learner_id, {
+        "tier":              profile.tier,
+        "level":             profile.level,
+        "xp":                profile.xp,
+        "badges":            profile.badges,
+        "topics_seen":       profile.topics_seen,
+        "topic_progress":    tp_dict,
+        "current_course":    profile.current_course,
+        "current_course_step": profile.current_course_step,
+        "completed_projects": profile.completed_projects,
+        "daily_prompts_used": profile.daily_prompts_used,
+        "last_prompt_date":  profile.last_prompt_date,
+    })
 
 
 def _award_badge(profile: LearnerProfile, key: str) -> str | None:

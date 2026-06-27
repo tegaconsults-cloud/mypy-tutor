@@ -45,14 +45,30 @@ _token_serializer = URLSafeTimedSerializer(SESSION_SECRET)
 CONFIRM_MAX_AGE   = 60 * 60 * 24   # 24 hours
 
 # ---------------------------------------------------------------------------
-# In-memory stores
+# In-memory stores (backed by SQLite via db.py)
 # ---------------------------------------------------------------------------
 
-# { email -> UserEmailAccount }
-_pending:   dict[str, dict] = {}   # awaiting confirmation
-_confirmed: dict[str, dict] = {}   # confirmed users
-# { learner_id -> UserEmailAccount }
-_by_id:     dict[str, dict] = {}
+# { email -> dict } — populated from SQLite on first access
+_pending:   dict[str, dict] = {}   # awaiting confirmation (not in SQLite yet)
+_confirmed: dict[str, dict] = {}   # confirmed users (cached from SQLite)
+_by_id:     dict[str, dict] = {}   # { learner_id -> user_dict }
+
+
+def _load_confirmed_from_db() -> None:
+    """Load confirmed accounts from SQLite into memory on startup."""
+    try:
+        from app.db import get_all_confirmed_emails
+        for row in get_all_confirmed_emails():
+            email = row["email"]
+            lid   = row["learner_id"]
+            user  = {"name": row["name"], "email": email,
+                     "learner_id": lid, "password_hash": row["password_hash"],
+                     "token": row.get("token", "")}
+            _confirmed[email] = user
+            _by_id[lid] = user
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning("DB load failed: %s", e)
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +219,20 @@ def confirm_email_token(token: str) -> tuple[bool, str]:
     _confirmed[email]              = user_data
     _by_id[user_data["learner_id"]] = user_data
     del _pending[email]
+
+    # Persist to SQLite
+    try:
+        from app.db import save_email_account, confirm_email_db
+        save_email_account(
+            email=email,
+            name=user_data["name"],
+            learner_id=user_data["learner_id"],
+            password_hash=user_data["password_hash"],
+            token=user_data.get("token", ""),
+            confirmed=True,
+        )
+    except Exception as exc:
+        logger.warning("DB save failed for confirmed user: %s", exc)
 
     # Send welcome email
     _send_welcome(user_data["name"], email)

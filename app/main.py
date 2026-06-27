@@ -73,6 +73,13 @@ except ValueError as exc:
     logger.error("Startup error: %s", exc)
     raise
 
+# Initialize SQLite database and load persisted user data
+from app.db import init_db
+from app.email_auth import _load_confirmed_from_db
+init_db()
+_load_confirmed_from_db()
+logger.info("Database ready")
+
 app = FastAPI(
     title="MyPy Tutor",
     version="2.0.0",
@@ -1133,8 +1140,14 @@ async def admin_terminate_user(learner_id: str, request: Request) -> dict:
 @app.get("/admin/activity")
 async def admin_activity(request: Request) -> dict:
     _require_admin(request)
-    from app.admin import _activity_log
-    return {"activity": list(reversed(_activity_log[-200:]))}
+    # Load from SQLite for persistent history, fall back to memory
+    try:
+        from app.db import get_activity_log
+        activity = get_activity_log(200)
+    except Exception:
+        from app.admin import _activity_log
+        activity = list(reversed(_activity_log[-200:]))
+    return {"activity": activity}
 
 
 @app.post("/admin/announce")
