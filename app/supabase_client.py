@@ -279,6 +279,69 @@ def sb_save_certificate(cert_id: str, learner_id: str,
 
 
 # ---------------------------------------------------------------------------
+# Email accounts  (survives Render ephemeral restarts)
+# ---------------------------------------------------------------------------
+
+def sb_upsert_email_account(email: str, learner_id: str,
+                              full_name: str, password_hash: str) -> None:
+    """
+    Store a confirmed email account in Supabase.
+    Called every time an account is confirmed or password is updated.
+    password_hash is SHA-256 — never plain text.
+    """
+    sb = get_supabase()
+    if not sb:
+        return
+    try:
+        sb.table("email_accounts").upsert({
+            "email":         email.lower(),
+            "learner_id":    learner_id,
+            "full_name":     full_name,
+            "password_hash": password_hash,
+            "confirmed":     True,
+        }, on_conflict="email").execute()
+        logger.debug("sb_upsert_email_account: %s", email)
+    except Exception as exc:
+        logger.warning("sb_upsert_email_account failed for %s: %s", email, exc)
+
+
+def sb_update_email_password(email: str, new_hash: str) -> None:
+    """Update only the password_hash in Supabase after a reset."""
+    sb = get_supabase()
+    if not sb:
+        return
+    try:
+        sb.table("email_accounts").update({
+            "password_hash": new_hash,
+        }).eq("email", email.lower()).execute()
+    except Exception as exc:
+        logger.warning("sb_update_email_password failed for %s: %s", email, exc)
+
+
+def sb_load_all_email_accounts() -> list[dict]:
+    """
+    Fetch all confirmed email accounts from Supabase.
+    Called on startup to repopulate SQLite + in-memory cache
+    when the Render ephemeral filesystem has been wiped.
+    Returns list of dicts with: email, learner_id, full_name, password_hash.
+    """
+    sb = get_supabase()
+    if not sb:
+        return []
+    try:
+        res = (
+            sb.table("email_accounts")
+            .select("email,learner_id,full_name,password_hash,confirmed")
+            .eq("confirmed", True)
+            .execute()
+        )
+        return res.data or []
+    except Exception as exc:
+        logger.warning("sb_load_all_email_accounts failed: %s", exc)
+        return []
+
+
+# ---------------------------------------------------------------------------
 # Payments
 # ---------------------------------------------------------------------------
 

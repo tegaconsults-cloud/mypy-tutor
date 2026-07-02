@@ -104,6 +104,27 @@ create table if not exists payments (
 );
 
 -- ─────────────────────────────────────────────
+-- EMAIL ACCOUNTS  (email/password sign-ups)
+-- Stores confirmed accounts so they survive Render restarts.
+-- password_hash is SHA-256 — never store plain text.
+-- ─────────────────────────────────────────────
+create table if not exists email_accounts (
+  email         text primary key,
+  learner_id    text not null,
+  full_name     text not null default '',
+  password_hash text not null,
+  confirmed     boolean not null default true,
+  created_at    timestamptz default now(),
+  updated_at    timestamptz default now()
+);
+
+create index if not exists idx_email_accounts_learner on email_accounts(learner_id);
+
+create trigger email_accounts_updated_at
+  before update on email_accounts
+  for each row execute procedure set_updated_at();
+
+-- ─────────────────────────────────────────────
 -- ROW LEVEL SECURITY (RLS)
 -- Learners can only read their own data.
 -- Service role key bypasses RLS (backend always uses service role).

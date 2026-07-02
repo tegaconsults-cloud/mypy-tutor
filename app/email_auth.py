@@ -55,20 +55,71 @@ _by_id:     dict[str, dict] = {}   # { learner_id -> user_dict }
 
 
 def _load_confirmed_from_db() -> None:
-    """Load confirmed accounts from SQLite into memory on startup."""
+    """
+    Load confirmed accounts into memory on startup.
+    Priority:
+      1. SQLite (fast, local — populated from previous runtime)
+      2. Supabase (permanent cloud — repopulates SQLite if it was wiped by Render restart)
+    """
+    loaded = 0
     try:
         from app.db import get_all_confirmed_emails
         for row in get_all_confirmed_emails():
             email = row["email"]
             lid   = row["learner_id"]
-            user  = {"name": row["name"], "email": email,
-                     "learner_id": lid, "password_hash": row["password_hash"],
-                     "token": row.get("token", "")}
+            user  = {
+                "name":          row["name"],
+                "email":         email,
+                "learner_id":    lid,
+                "password_hash": row["password_hash"],
+                "token":         row.get("token", ""),
+            }
             _confirmed[email] = user
-            _by_id[lid] = user
+            _by_id[lid]       = user
+            loaded += 1
     except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning("DB load failed: %s", e)
+        logger.warning("SQLite load failed: %s", e)
+
+    if loaded > 0:
+        logger.info("Loaded %d confirmed accounts from SQLite", loaded)
+        return  # SQLite is intact — no need to hit Supabase
+
+    # SQLite is empty (Render ephemeral restart wiped the disk).
+    # Recover from Supabase and repopulate SQLite at the same time.
+    logger.info("SQLite empty — recovering email accounts from Supabase…")
+    try:
+        from app.supabase_client import sb_load_all_email_accounts
+        from app.db import save_email_account
+        accounts = sb_load_all_email_accounts()
+        recovered = 0
+        for acct in accounts:
+            email = acct.get("email", "").lower()
+            lid   = acct.get("learner_id", "")
+            name  = acct.get("full_name", "")
+            pw    = acct.get("password_hash", "")
+            if not email or not lid:
+                continue
+            user = {
+                "name":          name,
+                "email":         email,
+                "learner_id":    lid,
+                "password_hash": pw,
+                "token":         "",
+            }
+            _confirmed[email] = user
+            _by_id[lid]       = user
+            # Repopulate SQLite so subsequent reads are fast
+            try:
+                save_email_account(
+                    email=email, name=name, learner_id=lid,
+                    password_hash=pw, token="", confirmed=True,
+                )
+            except Exception as db_exc:
+                logger.debug("SQLite repopulate failed for %s: %s", email, db_exc)
+            recovered += 1
+        logger.info("Recovered %d email accounts from Supabase", recovered)
+    except Exception as exc:
+        logger.warning("Supabase email recovery failed (non-fatal): %s", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -222,7 +273,7 @@ def confirm_email_token(token: str) -> tuple[bool, str]:
 
     # Persist to SQLite
     try:
-        from app.db import save_email_account, confirm_email_db
+        from app.db import save_email_account
         save_email_account(
             email=email,
             name=user_data["name"],
@@ -232,7 +283,19 @@ def confirm_email_token(token: str) -> tuple[bool, str]:
             confirmed=True,
         )
     except Exception as exc:
-        logger.warning("DB save failed for confirmed user: %s", exc)
+        logger.warning("SQLite save failed for confirmed user: %s", exc)
+
+    # Mirror to Supabase — survives Render ephemeral restarts
+    try:
+        from app.supabase_client import sb_upsert_email_account
+        sb_upsert_email_account(
+            email=email,
+            learner_id=user_data["learner_id"],
+            full_name=user_data["name"],
+            password_hash=user_data["password_hash"],
+        )
+    except Exception as exc:
+        logger.warning("Supabase email account sync failed: %s", exc)
 
     # Send welcome email
     _send_welcome(user_data["name"], email)
@@ -521,6 +584,13 @@ def confirm_password_reset(token: str, new_password: str) -> tuple[bool, str]:
         lid = _confirmed[email].get("learner_id")
         if lid and lid in _by_id:
             _by_id[lid]["password_hash"] = new_hash
+
+    # Mirror updated password_hash to Supabase
+    try:
+        from app.supabase_client import sb_update_email_password
+        sb_update_email_password(email, new_hash)
+    except Exception as exc:
+        logger.warning("Supabase password update failed: %s", exc)
 
     logger.info("Password reset successful for %s", email)
     return True, "Password updated successfully! You can now sign in with your new password."
