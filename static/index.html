@@ -1768,7 +1768,18 @@
     clearBtn.addEventListener('click', () => {
       if (!confirm('Clear all chat history?')) return;
       history = [];
-      try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem('mpt_conv_id');   // start fresh conversation
+      } catch (_) {}
+      // Ask server to create a new conversation thread
+      const lid = getLearnerId();
+      if (lid !== 'default') {
+        fetch(`/conversations/${lid}/new`, { method: 'POST' })
+          .then(r => r.json())
+          .then(d => { if (d.conversation_id) localStorage.setItem('mpt_conv_id', d.conversation_id); })
+          .catch(() => {});
+      }
       chatContainer.innerHTML = `<div class="welcome"><h2>Hi, I'm Sir. Tega 🐍</h2><p>Your best AI/ML &amp; Python Tutor. Ask me anything about Python!</p></div>`;
     });
 
@@ -1800,6 +1811,7 @@
             history: history.slice(0, -1).map(m => ({ role: m.role, content: m.content.slice(0, 10000) })),
             learner_id: getLearnerId(),
             level: getLevel(),
+            conversation_id: localStorage.getItem('mpt_conv_id') || null,
           }),
         });
         loadingEl.remove();
@@ -1817,6 +1829,10 @@
           return;
         }
         const data = await res.json();
+        // Persist conversation_id so the next message continues the same thread
+        if (data.conversation_id) {
+          localStorage.setItem('mpt_conv_id', data.conversation_id);
+        }
         const msgEl = appendMessage('assistant', data.content, data.intent);
         if (data.xp_gained) {
           const xpEl = document.createElement('div');
@@ -2122,12 +2138,28 @@
       refreshSidebar();
       refreshPromptCount();
 
+      // ── Restore Supabase conversation on login ─────────────────────────────
+      // If no local conversation_id, get/create one from server so Sir. Tega
+      // remembers where the learner left off.
+      if (!localStorage.getItem('mpt_conv_id') && data.learner_id !== 'default') {
+        fetch(`/conversations/${data.learner_id}`)
+          .then(r => r.ok ? r.json() : null)
+          .then(d => {
+            if (d && d.conversations && d.conversations.length > 0) {
+              const latestConv = d.conversations[0];
+              localStorage.setItem('mpt_conv_id', latestConv.id);
+            }
+          })
+          .catch(() => {});
+      }
+
       // Close auth modal if open
       closeAuthModal();
     }
 
     function signOut() {
       localStorage.removeItem(SESSION_KEY);
+      localStorage.removeItem('mpt_conv_id');  // clear conversation on sign-out
       currentUser = null;
       window._learnerId = 'default';
       document.getElementById('auth-btn').style.display = 'flex';

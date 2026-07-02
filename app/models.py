@@ -90,21 +90,23 @@ class Message(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    message:    str          = Field(..., min_length=1, max_length=4_000)
-    history:    list[Message]= Field(default=[], max_length=20)
-    learner_id: str          = Field(default="default", min_length=1, max_length=64,
-                                     pattern=r"^[a-zA-Z0-9_\-]+$")
-    level:      Literal["beginner", "intermediate", "advanced"] = "beginner"
+    message:         str          = Field(..., min_length=1, max_length=4_000)
+    history:         list[Message]= Field(default=[], max_length=20)
+    learner_id:      str          = Field(default="default", min_length=1, max_length=64,
+                                          pattern=r"^[a-zA-Z0-9_\-]+$")
+    level:           Literal["beginner", "intermediate", "advanced"] = "beginner"
+    conversation_id: str | None   = None   # Supabase conversation UUID; None = auto-resolve
 
 
 class ChatResponse(BaseModel):
-    intent:     str
-    content:    str
-    topic:      str | None = None
-    level:      str        = "beginner"
-    xp_gained:  int        = 0
-    badge:      str | None = None
-    ask_survey: bool       = False   # True every 5 interactions → frontend shows survey
+    intent:          str
+    content:         str
+    topic:           str | None  = None
+    level:           str         = "beginner"
+    xp_gained:       int         = 0
+    badge:           str | None  = None
+    ask_survey:      bool        = False
+    conversation_id: str | None  = None   # echoed back so frontend can persist it
 
 
 # ---------------------------------------------------------------------------
