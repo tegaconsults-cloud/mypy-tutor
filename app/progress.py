@@ -66,9 +66,8 @@ def get_profile(learner_id: str) -> LearnerProfile:
 
 
 def save_profile(profile: LearnerProfile) -> None:
-    """Save to memory cache, SQLite, and Supabase (dual-write)."""
+    """Save to memory cache + SQLite (sync). Supabase sync is a background fire-and-forget."""
     _store[profile.learner_id] = profile
-    # Serialize topic_progress for SQLite
     tp_dict = {
         k: v.model_dump() for k, v in profile.topic_progress.items()
     }
@@ -86,10 +85,15 @@ def save_profile(profile: LearnerProfile) -> None:
         "last_prompt_date":  profile.last_prompt_date,
     }
     save_profile_db(profile.learner_id, profile_data)
-    # Mirror to Supabase (non-blocking — failure never crashes the app)
+    # Supabase sync — fire in a daemon thread so it never blocks the event loop
     try:
         from app.supabase_client import sb_sync_progress
-        sb_sync_progress(profile.learner_id, profile_data)
+        import threading
+        threading.Thread(
+            target=sb_sync_progress,
+            args=(profile.learner_id, profile_data),
+            daemon=True,
+        ).start()
     except Exception:
         pass
 

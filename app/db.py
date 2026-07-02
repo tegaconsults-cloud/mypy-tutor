@@ -128,6 +128,26 @@ def init_db() -> None:
             sent_at         REAL DEFAULT (unixepoch())
         );
 
+        -- ── Performance indexes ──────────────────────────────────────────────
+        -- These turn full table scans into fast index lookups on hot columns.
+        CREATE INDEX IF NOT EXISTS idx_prompt_history_learner
+            ON prompt_history (learner_id, id);
+        CREATE INDEX IF NOT EXISTS idx_quiz_attempts_learner
+            ON quiz_attempts (learner_id);
+        CREATE INDEX IF NOT EXISTS idx_activity_log_learner
+            ON activity_log (learner_id, id);
+        CREATE INDEX IF NOT EXISTS idx_assignments_learner
+            ON assignments (learner_id);
+        CREATE INDEX IF NOT EXISTS idx_invoices_learner
+            ON invoices (learner_id);
+        CREATE INDEX IF NOT EXISTS idx_referral_uses_code
+            ON referral_uses (code);
+        CREATE INDEX IF NOT EXISTS idx_coupons_active
+            ON coupons (active, plan);
+        CREATE INDEX IF NOT EXISTS idx_payments_email
+            ON payments (user_email);
+        
+
         -- Password reset tokens
         CREATE TABLE IF NOT EXISTS password_resets (
             token           TEXT PRIMARY KEY,
@@ -462,16 +482,17 @@ def save_prompt_history(learner_id: str, role: str, content: str,
             "INSERT INTO prompt_history (learner_id,role,content,intent,topic) VALUES (?,?,?,?,?)",
             (learner_id, role, content[:4000], intent[:50], topic[:100])
         )
-        # Keep only last N messages per learner
+        # Efficient trim: delete oldest rows beyond the limit using a subquery
+        # that only touches this learner's rows via the composite index.
         conn.execute("""
         DELETE FROM prompt_history
-        WHERE learner_id=? AND id NOT IN (
+        WHERE learner_id = ? AND id <= (
             SELECT id FROM prompt_history
-            WHERE learner_id=?
+            WHERE learner_id = ?
             ORDER BY id DESC
-            LIMIT ?
+            LIMIT 1 OFFSET ?
         )
-        """, (learner_id, learner_id, PROMPT_HISTORY_LIMIT))
+        """, (learner_id, learner_id, PROMPT_HISTORY_LIMIT - 1))
 
 
 def get_prompt_history(learner_id: str, limit: int = 20) -> list[dict]:

@@ -10,7 +10,7 @@ import logging
 import re
 import os as _os
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, BackgroundTasks
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse
@@ -145,7 +145,8 @@ app.add_middleware(SecurityMiddleware)
 # ---------------------------------------------------------------------------
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest, req: Request) -> ChatResponse:
+async def chat(request: ChatRequest, req: Request,
+               background_tasks: BackgroundTasks) -> ChatResponse:
     validate_chat_request(request.message, request.history, request.level, request.learner_id)
 
     profile = get_profile(request.learner_id)
@@ -205,11 +206,19 @@ async def chat(request: ChatRequest, req: Request) -> ChatResponse:
     log_activity(request.learner_id, f"chat:{intent}",
                  f"topic={detected_topic or '—'} | msg={request.message[:80]}")
 
-    # ── Persist — SQLite (always) + Supabase (when configured) ─────────
+    # ── Persist: SQLite (sync, fast local) ────────────────────────────────
     save_prompt_history(request.learner_id, "user",      request.message, intent, detected_topic or "")
     save_prompt_history(request.learner_id, "assistant", content,         intent, detected_topic or "")
-    sb_save_message(conv_id, request.learner_id, "user",      request.message, intent, detected_topic or "")
-    sb_save_message(conv_id, request.learner_id, "assistant", content,         intent, detected_topic or "")
+
+    # ── Supabase writes are background tasks — never block the response ────
+    background_tasks.add_task(
+        sb_save_message, conv_id, request.learner_id, "user",
+        request.message, intent, detected_topic or ""
+    )
+    background_tasks.add_task(
+        sb_save_message, conv_id, request.learner_id, "assistant",
+        content, intent, detected_topic or ""
+    )
 
     ask_survey = increment_interaction(request.learner_id)
 

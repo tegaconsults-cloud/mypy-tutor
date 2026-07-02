@@ -18,12 +18,12 @@
   <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
   <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png" />
 
-  <!-- CDN scripts — synchronous (marked + hljs used immediately in inline script) -->
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- CDN scripts — defer so they don't block first paint -->
+  <script defer src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
-  <!-- Google Identity Services — async only, not needed at load -->
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+  <!-- Google Identity Services — async only -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <!-- Google Analytics GA4 — async, non-blocking -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-6NDGZ4LNQD"></script>
@@ -1345,17 +1345,27 @@
     const sidebar          = document.getElementById('sidebar');
     const sidebarOverlay   = document.getElementById('sidebar-overlay');
 
-    // ── marked.js ─────────────────────────────────────────────────────────────
-    marked.setOptions({ breaks: true, gfm: true });
-    const renderer = new marked.Renderer();
-    renderer.code = function(code, language) {
-      const lang    = (typeof code === 'object') ? code.lang : language;
-      const content = (typeof code === 'object') ? code.text : code;
-      const validLang = lang && hljs.getLanguage(lang) ? lang : 'python';
-      const highlighted = hljs.highlight(content, { language: validLang }).value;
-      return `<div class="code-wrapper"><pre><code class="hljs language-${validLang}">${highlighted}</code></pre><button class="copy-btn" data-code="${escAttr(content)}">Copy</button></div>`;
-    };
-    marked.use({ renderer });
+    // ── marked.js + hljs — deferred scripts, init after DOM ready ────────────
+    // Scripts are defer'd so they load in parallel but execute after HTML parse.
+    // We guard calls with a readiness check so the first message still renders.
+    let _libsReady = false;
+    function _initLibs() {
+      if (_libsReady || typeof marked === 'undefined' || typeof hljs === 'undefined') return;
+      _libsReady = true;
+      marked.setOptions({ breaks: true, gfm: true });
+      const renderer = new marked.Renderer();
+      renderer.code = function(code, language) {
+        const lang    = (typeof code === 'object') ? code.lang : language;
+        const content = (typeof code === 'object') ? code.text : code;
+        const validLang = lang && hljs.getLanguage(lang) ? lang : 'python';
+        const highlighted = hljs.highlight(content, { language: validLang }).value;
+        return `<div class="code-wrapper"><pre><code class="hljs language-${validLang}">${highlighted}</code></pre><button class="copy-btn" data-code="${escAttr(content)}">Copy</button></div>`;
+      };
+      marked.use({ renderer });
+    }
+    // Attempt init now (if scripts somehow already loaded) and also on load
+    document.addEventListener('DOMContentLoaded', _initLibs);
+    window.addEventListener('load', _initLibs);
 
     function escAttr(str) {
       return str.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -1479,11 +1489,27 @@
     }
 
     // ── Refresh sidebar ───────────────────────────────────────────────────────
-    async function refreshSidebar() {
+    // Cache progress for 30 s to avoid a fetch on every single chat message.
+    let _progressCache = null;
+    let _progressCacheTs = 0;
+    const _PROGRESS_TTL = 30_000; // ms
+
+    async function _fetchProgress(force = false) {
+      const now = Date.now();
+      if (!force && _progressCache && (now - _progressCacheTs) < _PROGRESS_TTL) {
+        return _progressCache;
+      }
+      const res = await fetch(`/progress/${getLearnerId()}`);
+      if (!res.ok) return _progressCache || null;
+      _progressCache  = await res.json();
+      _progressCacheTs = now;
+      return _progressCache;
+    }
+
+    async function refreshSidebar(force = false) {
       try {
-        const res = await fetch(`/progress/${getLearnerId()}`);
-        if (!res.ok) return;
-        const p = await res.json();
+        const p = await _fetchProgress(force);
+        if (!p) return;
         updateXPBar(p.xp, p.level, p.badges);
 
         if (p.knowledge_gaps.length) {
@@ -1518,9 +1544,9 @@
     // ── Progress panel ────────────────────────────────────────────────────────
     async function refreshProgress() {
       try {
-        const res = await fetch(`/progress/${getLearnerId()}`);
-        if (!res.ok) return;
-        const p = await res.json();
+        // Force-fetch fresh data when user explicitly opens progress panel
+        const p = await _fetchProgress(true);
+        if (!p) return;
         document.getElementById('stat-xp').textContent = p.xp;
         document.getElementById('stat-level').textContent = p.level.charAt(0).toUpperCase()+p.level.slice(1);
         document.getElementById('stat-topics').textContent = p.topics_seen.length;
@@ -1685,7 +1711,7 @@
           else if (!data.correct && btn.textContent === answer) btn.classList.add('wrong');
         });
         const rb = document.getElementById('quiz-result-box');
-        rb.innerHTML = marked.parse(data.explanation) + `<div class="xp-toast" style="margin-top:8px">+${data.xp_gained} XP</div>`;
+        rb.innerHTML = (typeof marked !== 'undefined' ? marked.parse(data.explanation) : data.explanation) + `<div class="xp-toast" style="margin-top:8px">+${data.xp_gained} XP</div>`;
         rb.classList.add('visible');
         document.getElementById('next-quiz-btn').classList.add('visible');
         refreshSidebar();
@@ -1712,8 +1738,14 @@
       }
       const bubble = document.createElement('div');
       bubble.className = 'bubble';
-      if (role === 'user' || role === 'error') bubble.textContent = text;
-      else bubble.innerHTML = marked.parse(text);
+      if (role === 'user' || role === 'error') {
+        bubble.textContent = text;
+      } else {
+        _initLibs();  // ensure marked + hljs are ready (deferred scripts)
+        bubble.innerHTML = (typeof marked !== 'undefined')
+          ? marked.parse(text)
+          : text.replace(/\n/g, '<br>');  // fallback if still loading
+      }
       wrapper.appendChild(bubble);
       chatContainer.appendChild(wrapper);
       scrollToBottom();

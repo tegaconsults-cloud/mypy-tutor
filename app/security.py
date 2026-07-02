@@ -53,9 +53,18 @@ FREE_DAILY_LIMIT = 20
 # In-memory rate limit store
 # ---------------------------------------------------------------------------
 
-# { ip: deque of timestamps }
+# { ip: deque of timestamps } — capped at 10k unique IPs to prevent memory growth
 _general_store: dict[str, deque] = defaultdict(deque)
 _llm_store:     dict[str, deque] = defaultdict(deque)
+_RATE_STORE_MAX = 10_000   # evict oldest IPs when over this size
+
+
+def _evict_rate_store(store: dict) -> None:
+    """Drop the 20% oldest entries when the store exceeds capacity."""
+    if len(store) > _RATE_STORE_MAX:
+        evict_count = _RATE_STORE_MAX // 5
+        for key in list(store.keys())[:evict_count]:
+            store.pop(key, None)
 
 
 def _check_rate(store: dict, ip: str, limit: int, window: int) -> bool:
@@ -68,6 +77,7 @@ def _check_rate(store: dict, ip: str, limit: int, window: int) -> bool:
     if len(dq) >= limit:
         return False
     dq.append(now)
+    _evict_rate_store(store)
     return True
 
 
@@ -91,7 +101,11 @@ def check_free_prompt_limit(learner_id: str, ip: str) -> tuple[bool, int]:
     today = _dt.date.today().isoformat()
     existing = _daily_prompt_store.get(key)
     if existing is None or existing[0] != today:
-        # New day or first time
+        # New day or first time — evict yesterday's stale keys while we're here
+        if len(_daily_prompt_store) > 5000:
+            stale = [k for k, (d, _) in _daily_prompt_store.items() if d != today]
+            for k in stale:
+                del _daily_prompt_store[k]
         _daily_prompt_store[key] = (today, 0)
         return True, 0
     _, count = existing
