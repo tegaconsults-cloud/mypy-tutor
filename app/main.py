@@ -90,6 +90,7 @@ from app.supabase_client import (
     sb_upsert_profile, sb_get_or_create_conversation,
     sb_save_message, sb_load_messages, sb_load_all_conversations,
     sb_save_certificate, sb_save_payment, sb_update_tier, sb_enabled,
+    sb_load_all_email_accounts,
 )
 
 logger = logging.getLogger(__name__)
@@ -1780,9 +1781,12 @@ async def supabase_status() -> dict:
 
 def _recover_from_supabase() -> None:
     """
-    On startup: if SQLite is empty (Render ephemeral restart), pull profiles
-    from Supabase so the app has data immediately without waiting for users
-    to re-login.
+    On startup: if SQLite is empty (Render ephemeral restart), pull both
+    learner progress AND email accounts from Supabase so the app has full
+    data immediately — users can log in and resume learning without delay.
+
+    Email account recovery is handled inside _load_confirmed_from_db()
+    (called just before this). This function handles learner progress only.
     """
     if not sb_enabled():
         return
@@ -1791,11 +1795,10 @@ def _recover_from_supabase() -> None:
     import json
     try:
         sb = get_supabase()
-        # Only recover if local DB is empty
         if get_all_learners():
-            logger.info("SQLite has data — skipping Supabase recovery")
+            logger.info("SQLite learner_profiles intact — skipping Supabase progress recovery")
             return
-        logger.info("SQLite empty — recovering profiles from Supabase…")
+        logger.info("Recovering learner progress from Supabase…")
         res = sb.table("learner_progress").select("*").limit(500).execute()
         recovered = 0
         for row in (res.data or []):
@@ -1816,9 +1819,9 @@ def _recover_from_supabase() -> None:
                 "last_prompt_date":   "",
             })
             recovered += 1
-        logger.info("Recovered %d learner profiles from Supabase", recovered)
+        logger.info("Recovered %d learner progress records from Supabase", recovered)
     except Exception as exc:
-        logger.warning("Supabase recovery failed (non-fatal): %s", exc)
+        logger.warning("Supabase progress recovery failed (non-fatal): %s", exc)
 
 
 # Run recovery at startup (after DB is initialised)
