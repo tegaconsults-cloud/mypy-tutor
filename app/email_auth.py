@@ -410,3 +410,117 @@ def sign_in_email(email: str, password: str) -> tuple[bool, Optional[dict], str]
 
 def get_email_user_by_id(learner_id: str) -> Optional[dict]:
     return _by_id.get(learner_id)
+
+
+# ---------------------------------------------------------------------------
+# Password reset flow
+# ---------------------------------------------------------------------------
+
+RESET_MAX_AGE = 60 * 60  # 1 hour
+
+
+def request_password_reset(email: str) -> tuple[bool, str]:
+    """
+    Generate a password reset token and send reset email.
+    Always returns success message (no email enumeration).
+    """
+    email = email.lower().strip()
+    user  = _confirmed.get(email)
+
+    if user:
+        token = _token_serializer.dumps(email, salt="pw-reset")
+        try:
+            from app.db import save_reset_token
+            save_reset_token(token, email)
+        except Exception as exc:
+            logger.warning("Could not save reset token to DB: %s", exc)
+
+        reset_url  = f"{APP_URL}/?auth=reset&token={token}"
+        first_name = user.get("name", "Learner").split()[0]
+
+        html_body = f"""<!DOCTYPE html>
+<html>
+<body style="font-family:Arial,sans-serif;background:#0f1117;color:#e2e8f0;padding:32px;">
+  <div style="max-width:520px;margin:0 auto;background:#1a202c;border-radius:16px;
+              padding:32px;border:1px solid #2d3748;">
+    <h1 style="color:#63b3ed;font-size:1.4rem;margin-bottom:8px;">🐍 MyPy Tutor</h1>
+    <h2 style="color:#e2e8f0;font-size:1.1rem;margin-bottom:16px;">Reset your password</h2>
+    <p style="color:#a0aec0;line-height:1.6;">Hi <strong style="color:#e2e8f0;">{first_name}</strong>,</p>
+    <p style="color:#a0aec0;line-height:1.6;margin-top:8px;">
+      We received a request to reset the password for your MyPy Tutor account.
+      Click the button below to set a new password.
+    </p>
+    <a href="{reset_url}"
+       style="display:inline-block;margin-top:24px;background:#e53e3e;color:#fff;
+              padding:12px 28px;border-radius:10px;text-decoration:none;
+              font-weight:bold;font-size:0.95rem;">
+      🔑 Reset My Password
+    </a>
+    <p style="color:#4a5568;font-size:0.78rem;margin-top:24px;line-height:1.5;">
+      This link expires in <strong>1 hour</strong>. If you didn't request a password reset,
+      you can safely ignore this email — your password will not change.
+    </p>
+    <hr style="border:none;border-top:1px solid #2d3748;margin:20px 0;">
+    <p style="color:#4a5568;font-size:0.75rem;">
+      MyPy Tutor · Teamsamikoko Global Academy
+    </p>
+  </div>
+</body>
+</html>"""
+
+        text_body = (
+            f"Hi {first_name},\n\n"
+            f"Reset your MyPy Tutor password by visiting:\n{reset_url}\n\n"
+            f"This link expires in 1 hour.\n\n"
+            f"If you didn't request this, ignore this email.\n\n"
+            f"— MyPy Tutor Team"
+        )
+        _send_email(email, "Reset your MyPy Tutor password", html_body, text_body)
+
+    # Always return success (prevents email enumeration attacks)
+    return True, (
+        "If an account exists for that email, a reset link has been sent. "
+        "Please check your inbox and spam folder."
+    )
+
+
+def confirm_password_reset(token: str, new_password: str) -> tuple[bool, str]:
+    """
+    Validate reset token and update password.
+    Returns (success, message).
+    """
+    if len(new_password) < 8:
+        return False, "Password must be at least 8 characters."
+
+    # Validate token signature first (fast, no DB needed)
+    try:
+        email = _token_serializer.loads(token, salt="pw-reset", max_age=RESET_MAX_AGE)
+    except SignatureExpired:
+        return False, "Reset link has expired. Please request a new one."
+    except BadSignature:
+        return False, "Invalid reset link."
+
+    email = email.lower().strip()
+
+    # Check DB: token must not have been used already
+    try:
+        from app.db import load_reset_token, mark_reset_token_used, update_password_hash
+        record = load_reset_token(token)
+        if not record:
+            return False, "This reset link has already been used or is invalid."
+        mark_reset_token_used(token)
+        new_hash = hash_password(new_password)
+        update_password_hash(email, new_hash)
+    except Exception as exc:
+        logger.error("Password reset DB error: %s", exc)
+        return False, "Could not update password. Please try again."
+
+    # Update in-memory cache
+    if email in _confirmed:
+        _confirmed[email]["password_hash"] = new_hash
+        lid = _confirmed[email].get("learner_id")
+        if lid and lid in _by_id:
+            _by_id[lid]["password_hash"] = new_hash
+
+    logger.info("Password reset successful for %s", email)
+    return True, "Password updated successfully! You can now sign in with your new password."
