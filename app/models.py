@@ -133,6 +133,8 @@ class LearnerProfile(BaseModel):
     completed_projects:   list[str]  = []
     daily_prompts_used:   int        = 0
     last_prompt_date:     str        = ""
+    email:                str        = ""   # real email — stored from auth for admin
+    display_name:         str        = ""   # user's real name from auth
 
 
 # ---------------------------------------------------------------------------
