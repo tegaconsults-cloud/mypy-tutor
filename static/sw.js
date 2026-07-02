@@ -10,11 +10,10 @@
 const CACHE_VERSION = 'mypy-tutor-v3';
 const OFFLINE_URL   = '/';
 
-// App shell to pre-cache on install
+// App shell to pre-cache on install — do NOT include sw.js itself
 const PRECACHE_URLS = [
   '/',
   '/manifest.json',
-  '/sw.js',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
   'https://cdn.jsdelivr.net/npm/marked/marked.min.js',
