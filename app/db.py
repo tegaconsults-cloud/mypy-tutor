@@ -127,6 +127,111 @@ def init_db() -> None:
             sent_to         INTEGER DEFAULT 0,
             sent_at         REAL DEFAULT (unixepoch())
         );
+
+        -- Password reset tokens
+        CREATE TABLE IF NOT EXISTS password_resets (
+            token           TEXT PRIMARY KEY,
+            email           TEXT NOT NULL,
+            created_at      REAL DEFAULT (unixepoch()),
+            used            INTEGER DEFAULT 0
+        );
+
+        -- Conversation / prompt history (last 50 per user)
+        CREATE TABLE IF NOT EXISTS prompt_history (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            learner_id      TEXT NOT NULL,
+            role            TEXT NOT NULL,
+            content         TEXT NOT NULL,
+            intent          TEXT DEFAULT '',
+            topic           TEXT DEFAULT '',
+            ts              REAL DEFAULT (unixepoch())
+        );
+
+        -- Quiz attempts (full record per attempt)
+        CREATE TABLE IF NOT EXISTS quiz_attempts (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            learner_id      TEXT NOT NULL,
+            topic           TEXT NOT NULL,
+            question        TEXT NOT NULL,
+            answer          TEXT NOT NULL,
+            correct         INTEGER DEFAULT 0,
+            score           INTEGER DEFAULT 0,
+            ts              REAL DEFAULT (unixepoch())
+        );
+
+        -- Assignments (per-learner submission + review)
+        CREATE TABLE IF NOT EXISTS assignments (
+            id              TEXT PRIMARY KEY,
+            learner_id      TEXT NOT NULL,
+            title           TEXT NOT NULL,
+            description     TEXT NOT NULL,
+            course          TEXT DEFAULT '',
+            status          TEXT DEFAULT 'pending',
+            submission      TEXT DEFAULT '',
+            feedback        TEXT DEFAULT '',
+            score           INTEGER DEFAULT 0,
+            submitted_at    REAL,
+            reviewed_at     REAL,
+            created_at      REAL DEFAULT (unixepoch())
+        );
+
+        -- Referral codes
+        CREATE TABLE IF NOT EXISTS referrals (
+            code            TEXT PRIMARY KEY,
+            owner_id        TEXT NOT NULL,
+            owner_email     TEXT NOT NULL,
+            uses            INTEGER DEFAULT 0,
+            max_uses        INTEGER DEFAULT 50,
+            reward_tier     TEXT DEFAULT 'tier1',
+            created_at      REAL DEFAULT (unixepoch())
+        );
+
+        -- Referral usage tracking
+        CREATE TABLE IF NOT EXISTS referral_uses (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            code            TEXT NOT NULL,
+            used_by_email   TEXT NOT NULL,
+            used_by_id      TEXT NOT NULL,
+            discount_pct    INTEGER DEFAULT 20,
+            ts              REAL DEFAULT (unixepoch())
+        );
+
+        -- Coupon codes
+        CREATE TABLE IF NOT EXISTS coupons (
+            code            TEXT PRIMARY KEY,
+            discount_pct    INTEGER NOT NULL,
+            discount_flat   REAL DEFAULT 0,
+            plan            TEXT DEFAULT 'any',
+            max_uses        INTEGER DEFAULT 100,
+            uses            INTEGER DEFAULT 0,
+            expires_at      REAL DEFAULT 0,
+            active          INTEGER DEFAULT 1,
+            created_at      REAL DEFAULT (unixepoch())
+        );
+
+        -- Coupon usage log
+        CREATE TABLE IF NOT EXISTS coupon_uses (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            code            TEXT NOT NULL,
+            learner_id      TEXT NOT NULL,
+            email           TEXT NOT NULL,
+            amount_saved    REAL DEFAULT 0,
+            ts              REAL DEFAULT (unixepoch())
+        );
+
+        -- Payment invoices
+        CREATE TABLE IF NOT EXISTS invoices (
+            id              TEXT PRIMARY KEY,
+            payment_id      TEXT NOT NULL,
+            learner_id      TEXT NOT NULL,
+            email           TEXT NOT NULL,
+            name            TEXT NOT NULL,
+            plan            TEXT NOT NULL,
+            amount          REAL NOT NULL,
+            currency        TEXT DEFAULT 'NGN',
+            issued_at       REAL DEFAULT (unixepoch()),
+            due_date        TEXT DEFAULT ''
+        );
         """)
     logger.info("Database initialised at %s", DB_PATH)
 
@@ -304,5 +409,361 @@ def get_certificates_db() -> list[dict]:
     for r in rows:
         d = dict(r)
         d["issued_at"] = _dt.datetime.fromtimestamp(d["issued_at"]).isoformat()
+        result.append(d)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Password reset
+# ---------------------------------------------------------------------------
+
+def save_reset_token(token: str, email: str) -> None:
+    with get_db() as conn:
+        # Invalidate any existing tokens for this email first
+        conn.execute("DELETE FROM password_resets WHERE email=?", (email.lower(),))
+        conn.execute(
+            "INSERT INTO password_resets (token,email) VALUES (?,?)",
+            (token, email.lower())
+        )
+
+
+def load_reset_token(token: str) -> dict | None:
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM password_resets WHERE token=? AND used=0", (token,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def mark_reset_token_used(token: str) -> None:
+    with get_db() as conn:
+        conn.execute("UPDATE password_resets SET used=1 WHERE token=?", (token,))
+
+
+def update_password_hash(email: str, new_hash: str) -> None:
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE email_accounts SET password_hash=? WHERE email=?",
+            (new_hash, email.lower())
+        )
+
+
+# ---------------------------------------------------------------------------
+# Prompt / conversation history
+# ---------------------------------------------------------------------------
+
+PROMPT_HISTORY_LIMIT = 50   # keep last 50 messages per user
+
+
+def save_prompt_history(learner_id: str, role: str, content: str,
+                         intent: str = "", topic: str = "") -> None:
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO prompt_history (learner_id,role,content,intent,topic) VALUES (?,?,?,?,?)",
+            (learner_id, role, content[:4000], intent[:50], topic[:100])
+        )
+        # Keep only last N messages per learner
+        conn.execute("""
+        DELETE FROM prompt_history
+        WHERE learner_id=? AND id NOT IN (
+            SELECT id FROM prompt_history
+            WHERE learner_id=?
+            ORDER BY id DESC
+            LIMIT ?
+        )
+        """, (learner_id, learner_id, PROMPT_HISTORY_LIMIT))
+
+
+def get_prompt_history(learner_id: str, limit: int = 20) -> list[dict]:
+    import datetime as _dt
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM prompt_history WHERE learner_id=? ORDER BY id DESC LIMIT ?",
+            (learner_id, limit)
+        ).fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["ts"] = _dt.datetime.fromtimestamp(d["ts"]).strftime("%Y-%m-%d %H:%M:%S")
+        result.append(d)
+    return list(reversed(result))   # chronological order
+
+
+# ---------------------------------------------------------------------------
+# Quiz attempts
+# ---------------------------------------------------------------------------
+
+def save_quiz_attempt(learner_id: str, topic: str, question: str,
+                       answer: str, correct: bool, score: int) -> None:
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO quiz_attempts (learner_id,topic,question,answer,correct,score) VALUES (?,?,?,?,?,?)",
+            (learner_id, topic, question[:500], answer[:300], int(correct), score)
+        )
+
+
+def get_quiz_attempts(learner_id: str, limit: int = 50) -> list[dict]:
+    import datetime as _dt
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM quiz_attempts WHERE learner_id=? ORDER BY id DESC LIMIT ?",
+            (learner_id, limit)
+        ).fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["ts"] = _dt.datetime.fromtimestamp(d["ts"]).strftime("%Y-%m-%d %H:%M:%S")
+        result.append(d)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Assignments
+# ---------------------------------------------------------------------------
+
+def create_assignment_db(assignment_id: str, learner_id: str, title: str,
+                          description: str, course: str = "") -> None:
+    with get_db() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO assignments (id,learner_id,title,description,course) VALUES (?,?,?,?,?)",
+            (assignment_id, learner_id, title, description, course)
+        )
+
+
+def submit_assignment_db(assignment_id: str, learner_id: str, submission: str) -> bool:
+    import time as _t
+    with get_db() as conn:
+        cur = conn.execute(
+            "UPDATE assignments SET submission=?, status='submitted', submitted_at=? "
+            "WHERE id=? AND learner_id=?",
+            (submission[:8000], _t.time(), assignment_id, learner_id)
+        )
+    return cur.rowcount > 0
+
+
+def review_assignment_db(assignment_id: str, feedback: str, score: int) -> bool:
+    import time as _t
+    with get_db() as conn:
+        cur = conn.execute(
+            "UPDATE assignments SET feedback=?, score=?, status='reviewed', reviewed_at=? WHERE id=?",
+            (feedback[:2000], score, _t.time(), assignment_id)
+        )
+    return cur.rowcount > 0
+
+
+def get_assignments_db(learner_id: str) -> list[dict]:
+    import datetime as _dt
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM assignments WHERE learner_id=? ORDER BY created_at DESC",
+            (learner_id,)
+        ).fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        for ts_field in ("submitted_at", "reviewed_at", "created_at"):
+            if d.get(ts_field):
+                d[ts_field] = _dt.datetime.fromtimestamp(d[ts_field]).strftime("%Y-%m-%d %H:%M")
+        result.append(d)
+    return result
+
+
+def get_all_assignments_db() -> list[dict]:
+    """Admin: return all assignments across all learners."""
+    import datetime as _dt
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM assignments ORDER BY created_at DESC LIMIT 500"
+        ).fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        for ts_field in ("submitted_at", "reviewed_at", "created_at"):
+            if d.get(ts_field):
+                try:
+                    d[ts_field] = _dt.datetime.fromtimestamp(float(d[ts_field])).strftime("%Y-%m-%d %H:%M")
+                except Exception:
+                    pass
+        result.append(d)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Referral codes
+# ---------------------------------------------------------------------------
+
+def create_referral_code(code: str, owner_id: str, owner_email: str,
+                          max_uses: int = 50, reward_tier: str = "tier1") -> None:
+    with get_db() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO referrals (code,owner_id,owner_email,max_uses,reward_tier) VALUES (?,?,?,?,?)",
+            (code.upper(), owner_id, owner_email.lower(), max_uses, reward_tier)
+        )
+
+
+def get_referral_code(code: str) -> dict | None:
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM referrals WHERE code=?", (code.upper(),)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def use_referral_code(code: str, used_by_email: str, used_by_id: str,
+                       discount_pct: int = 20) -> bool:
+    """Record a referral use. Returns False if code is exhausted or invalid."""
+    ref = get_referral_code(code)
+    if not ref or ref["uses"] >= ref["max_uses"]:
+        return False
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE referrals SET uses=uses+1 WHERE code=?", (code.upper(),)
+        )
+        conn.execute(
+            "INSERT INTO referral_uses (code,used_by_email,used_by_id,discount_pct) VALUES (?,?,?,?)",
+            (code.upper(), used_by_email.lower(), used_by_id, discount_pct)
+        )
+    return True
+
+
+def get_referral_uses(code: str) -> list[dict]:
+    import datetime as _dt
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM referral_uses WHERE code=? ORDER BY id DESC",
+            (code.upper(),)
+        ).fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["ts"] = _dt.datetime.fromtimestamp(d["ts"]).strftime("%Y-%m-%d %H:%M")
+        result.append(d)
+    return result
+
+
+def get_learner_referral_code(owner_id: str) -> dict | None:
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM referrals WHERE owner_id=?", (owner_id,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
+# ---------------------------------------------------------------------------
+# Coupon codes
+# ---------------------------------------------------------------------------
+
+def create_coupon_db(code: str, discount_pct: int, discount_flat: float = 0,
+                      plan: str = "any", max_uses: int = 100,
+                      expires_at: float = 0) -> None:
+    with get_db() as conn:
+        conn.execute("""
+        INSERT OR REPLACE INTO coupons
+          (code,discount_pct,discount_flat,plan,max_uses,expires_at)
+        VALUES (?,?,?,?,?,?)
+        """, (code.upper(), discount_pct, discount_flat, plan, max_uses, expires_at))
+
+
+def validate_coupon_db(code: str, plan: str = "any") -> dict | None:
+    """
+    Returns coupon dict if valid and applicable to plan, else None.
+    Checks: active, not expired, uses < max_uses, plan matches.
+    """
+    import time as _t
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM coupons WHERE code=? AND active=1", (code.upper(),)
+        ).fetchone()
+    if not row:
+        return None
+    c = dict(row)
+    if c["expires_at"] and c["expires_at"] > 0 and _t.time() > c["expires_at"]:
+        return None
+    if c["uses"] >= c["max_uses"]:
+        return None
+    if c["plan"] not in ("any", plan):
+        return None
+    return c
+
+
+def use_coupon_db(code: str, learner_id: str, email: str, amount_saved: float) -> None:
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE coupons SET uses=uses+1 WHERE code=?", (code.upper(),)
+        )
+        conn.execute(
+            "INSERT INTO coupon_uses (code,learner_id,email,amount_saved) VALUES (?,?,?,?)",
+            (code.upper(), learner_id, email.lower(), amount_saved)
+        )
+
+
+def get_all_coupons_db() -> list[dict]:
+    import datetime as _dt, time as _t
+    with get_db() as conn:
+        rows = conn.execute("SELECT * FROM coupons ORDER BY created_at DESC").fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["expired"] = bool(d["expires_at"] and d["expires_at"] > 0 and _t.time() > d["expires_at"])
+        if d["expires_at"]:
+            try:
+                d["expires_at_fmt"] = _dt.datetime.fromtimestamp(d["expires_at"]).strftime("%Y-%m-%d")
+            except Exception:
+                d["expires_at_fmt"] = ""
+        result.append(d)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Invoices
+# ---------------------------------------------------------------------------
+
+def create_invoice_db(invoice_id: str, payment_id: str, learner_id: str,
+                       email: str, name: str, plan: str, amount: float,
+                       currency: str = "NGN") -> None:
+    with get_db() as conn:
+        conn.execute("""
+        INSERT OR IGNORE INTO invoices
+          (id,payment_id,learner_id,email,name,plan,amount,currency)
+        VALUES (?,?,?,?,?,?,?,?)
+        """, (invoice_id, payment_id, learner_id, email.lower(), name, plan, amount, currency))
+
+
+def get_invoice_db(invoice_id: str) -> dict | None:
+    import datetime as _dt
+    with get_db() as conn:
+        row = conn.execute("SELECT * FROM invoices WHERE id=?", (invoice_id,)).fetchone()
+    if not row:
+        return None
+    d = dict(row)
+    d["issued_at_fmt"] = _dt.datetime.fromtimestamp(d["issued_at"]).strftime("%d %B %Y")
+    return d
+
+
+def get_invoices_by_learner(learner_id: str) -> list[dict]:
+    import datetime as _dt
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM invoices WHERE learner_id=? ORDER BY issued_at DESC",
+            (learner_id,)
+        ).fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["issued_at_fmt"] = _dt.datetime.fromtimestamp(d["issued_at"]).strftime("%d %B %Y")
+        result.append(d)
+    return result
+
+
+def get_all_invoices_db() -> list[dict]:
+    import datetime as _dt
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM invoices ORDER BY issued_at DESC LIMIT 500"
+        ).fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["issued_at_fmt"] = _dt.datetime.fromtimestamp(d["issued_at"]).strftime("%d %B %Y")
         result.append(d)
     return result

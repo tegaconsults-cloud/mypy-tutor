@@ -200,3 +200,63 @@ class ProgressResponse(BaseModel):
     current_course_step:  int
     completed_projects:   list[str]
     topic_progress:       dict[str, TopicProgress]
+
+
+# ---------------------------------------------------------------------------
+# Password reset models
+# ---------------------------------------------------------------------------
+
+class PasswordResetRequest(BaseModel):
+    email: str = Field(..., min_length=5, max_length=254,
+                       pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+class PasswordResetConfirm(BaseModel):
+    token:        str = Field(..., min_length=10, max_length=512)
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+
+# ---------------------------------------------------------------------------
+# Assignment models
+# ---------------------------------------------------------------------------
+
+class AssignmentSubmit(BaseModel):
+    learner_id: str = Field(..., min_length=1, max_length=64,
+                            pattern=r"^[a-zA-Z0-9_\-]+$")
+    submission: str = Field(..., min_length=1, max_length=8000)
+
+
+class AssignmentReview(BaseModel):
+    feedback: str = Field(..., min_length=1, max_length=2000)
+    score:    int = Field(..., ge=0, le=100)
+
+
+# ---------------------------------------------------------------------------
+# Coupon / referral models
+# ---------------------------------------------------------------------------
+
+class CouponValidate(BaseModel):
+    code:       str = Field(..., min_length=1, max_length=32)
+    plan:       str = Field(default="any", max_length=20)
+    learner_id: str = Field(default="default", max_length=64)
+    email:      str = Field(default="", max_length=254)
+
+
+class ReferralUse(BaseModel):
+    code:       str = Field(..., min_length=1, max_length=32)
+    learner_id: str = Field(..., min_length=1, max_length=64,
+                            pattern=r"^[a-zA-Z0-9_\-]+$")
+    email:      str = Field(..., min_length=5, max_length=254)
+
+
+# ---------------------------------------------------------------------------
+# Admin coupon creation model
+# ---------------------------------------------------------------------------
+
+class CouponCreate(BaseModel):
+    code:          str   = Field(..., min_length=2, max_length=32)
+    discount_pct:  int   = Field(..., ge=0, le=100)
+    discount_flat: float = Field(default=0.0, ge=0)
+    plan:          str   = Field(default="any", max_length=20)
+    max_uses:      int   = Field(default=100, ge=1)
+    expires_days:  int   = Field(default=0, ge=0)   # 0 = never expires

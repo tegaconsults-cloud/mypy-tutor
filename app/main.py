@@ -29,6 +29,9 @@ from app.models import (
     GoogleAuthRequest, AuthResponse,
     EmailSignUpRequest, EmailSignInRequest,
     MessageFeedback, SurveyFeedback, FeedbackSummary,
+    PasswordResetRequest, PasswordResetConfirm,
+    AssignmentSubmit, AssignmentReview,
+    CouponValidate, CouponCreate, ReferralUse,
 )
 from app.prompts import build_system_prompt
 from app.topics import get_topics
@@ -56,6 +59,7 @@ from app.feedback import (
 from app.email_auth import (
     register_email, confirm_email_token,
     sign_in_email, hash_password, get_email_user_by_id,
+    request_password_reset, confirm_password_reset,
 )
 from app.certificates import generate_certificate_html, get_cert_id, CERT_CONFIGS
 from app.admin import (
@@ -67,6 +71,20 @@ from app.admin import (
 from app.db import (
     init_db, upgrade_tier_db, get_all_confirmed_emails,
     get_activity_log, get_certificates_db,
+    # prompt history
+    save_prompt_history, get_prompt_history,
+    # quiz attempts
+    save_quiz_attempt, get_quiz_attempts,
+    # assignments
+    create_assignment_db, submit_assignment_db,
+    review_assignment_db, get_assignments_db, get_all_assignments_db,
+    # referrals
+    create_referral_code, get_referral_code, use_referral_code,
+    get_referral_uses, get_learner_referral_code,
+    # coupons
+    create_coupon_db, validate_coupon_db, use_coupon_db, get_all_coupons_db,
+    # invoices
+    create_invoice_db, get_invoice_db, get_invoices_by_learner, get_all_invoices_db,
 )
 
 logger = logging.getLogger(__name__)
@@ -169,6 +187,10 @@ async def chat(request: ChatRequest, req: Request) -> ChatResponse:
 
     log_activity(request.learner_id, f"chat:{intent}",
                  f"topic={detected_topic or '—'} | msg={request.message[:80]}")
+
+    # Persist prompt history (user message + AI response)
+    save_prompt_history(request.learner_id, "user", request.message, intent, detected_topic or "")
+    save_prompt_history(request.learner_id, "assistant", content, intent, detected_topic or "")
 
     ask_survey = increment_interaction(request.learner_id)
 
@@ -603,6 +625,9 @@ async def evaluate_quiz_answer(request: QuizAnswerRequest) -> QuizAnswerResponse
     correct = "correct: true" in content.lower()
     score   = 100 if correct else 0
     xp, _   = record_quiz(request.learner_id, request.topic, score)
+    # Persist full quiz attempt record
+    save_quiz_attempt(request.learner_id, request.topic,
+                      request.question, request.answer, correct, score)
     return QuizAnswerResponse(correct=correct, explanation=content, score=score, xp_gained=xp)
 
 
@@ -731,10 +756,16 @@ async def paystack_webhook(request: Request) -> dict:
                 "tier2": "Career Builder (₦10,000/mo)",
                 "tier3": "Elite (₦20,000/mo)",
             }.get(tier, tier)
-            add_payment(email, customer.get("name", email), amount_ngn, plan_label, "paystack")
+            payment = add_payment(email, customer.get("name", email), amount_ngn, plan_label, "paystack")
             log_activity(learner_id, "payment:webhook",
                          f"Paystack charge.success | tier={tier} | ₦{amount_ngn:.0f}")
-            logger.info("Paystack webhook: upgraded %s → %s", email, tier)
+
+            # Auto-generate invoice
+            import secrets as _sec
+            invoice_id = f"INV-{_sec.token_hex(5).upper()}"
+            create_invoice_db(invoice_id, payment.id, learner_id, email,
+                              customer.get("name", email), plan_label, amount_ngn)
+            logger.info("Paystack webhook: upgraded %s → %s | invoice=%s", email, tier, invoice_id)
 
     return {"ok": True}
 
@@ -1199,6 +1230,421 @@ async def admin_files_list(request: Request) -> dict:
                 files.append({"path": path, "size": size})
     files.sort(key=lambda x: x["path"])
     return {"files": files, "total": len(files)}
+
+
+# ---------------------------------------------------------------------------
+# PASSWORD RESET routes
+# ---------------------------------------------------------------------------
+
+@app.post("/auth/forgot-password")
+async def forgot_password(body: PasswordResetRequest) -> dict:
+    """Send a password-reset email. Always returns 200 to prevent enumeration."""
+    ok, message = request_password_reset(body.email)
+    return {"ok": True, "message": message}
+
+
+@app.post("/auth/reset-password")
+async def reset_password_route(body: PasswordResetConfirm) -> dict:
+    """Validate token and set new password."""
+    ok, message = confirm_password_reset(body.token, body.new_password)
+    if not ok:
+        raise HTTPException(status_code=400, detail=message)
+    return {"ok": True, "message": message}
+
+
+# ---------------------------------------------------------------------------
+# PROMPT HISTORY routes
+# ---------------------------------------------------------------------------
+
+@app.get("/history/{learner_id}")
+async def prompt_history(learner_id: str, limit: int = 20) -> dict:
+    validate_learner_id(learner_id)
+    limit   = max(1, min(limit, 50))
+    history = get_prompt_history(learner_id, limit)
+    return {"learner_id": learner_id, "history": history, "count": len(history)}
+
+
+@app.get("/history/{learner_id}/quiz")
+async def quiz_history(learner_id: str, limit: int = 50) -> dict:
+    validate_learner_id(learner_id)
+    attempts = get_quiz_attempts(learner_id, min(limit, 100))
+    total    = len(attempts)
+    correct  = sum(1 for a in attempts if a.get("correct"))
+    return {
+        "learner_id": learner_id,
+        "attempts":   attempts,
+        "total":      total,
+        "correct":    correct,
+        "accuracy":   round(correct / total * 100, 1) if total else 0.0,
+    }
+
+
+# ---------------------------------------------------------------------------
+# ASSIGNMENTS routes
+# ---------------------------------------------------------------------------
+
+@app.post("/assignments/generate")
+async def generate_assignment(learner_id: str, topic: str) -> dict:
+    validate_learner_id(learner_id)
+    validate_topic(topic)
+    import secrets as _sec
+    profile = get_profile(learner_id)
+
+    system_prompt = build_system_prompt("exercise", topic=topic, level=profile.level)
+    messages = [{"role": "user", "content": (
+        f"Create a detailed coding assignment on '{topic}'. "
+        f"Include: title, clear description, requirements (3-5 bullet points), "
+        f"expected output, and evaluation criteria. Format it clearly."
+    )}]
+    try:
+        content = get_completion(system_prompt, messages)
+    except Exception as exc:
+        logger.error("Assignment gen error: %s", exc)
+        raise HTTPException(status_code=502, detail="AI service error. Please try again.")
+
+    assignment_id = _sec.token_hex(8).upper()
+    title = f"{topic} — Coding Assignment"
+    create_assignment_db(assignment_id, learner_id, title, content)
+    log_activity(learner_id, "assignment:generated", f"topic={topic}")
+    return {"assignment_id": assignment_id, "learner_id": learner_id,
+            "topic": topic, "title": title, "content": content}
+
+
+@app.post("/assignments/{assignment_id}/submit")
+async def submit_assignment(assignment_id: str, body: AssignmentSubmit) -> dict:
+    validate_learner_id(body.learner_id)
+    ok = submit_assignment_db(assignment_id, body.learner_id, body.submission)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Assignment not found.")
+    log_activity(body.learner_id, "assignment:submitted", f"id={assignment_id}")
+    return {"ok": True, "message": "Assignment submitted successfully."}
+
+
+@app.post("/assignments/{assignment_id}/review")
+async def ai_review_assignment(assignment_id: str, learner_id: str) -> dict:
+    validate_learner_id(learner_id)
+    assignments = get_assignments_db(learner_id)
+    assignment  = next((a for a in assignments if a["id"] == assignment_id), None)
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found.")
+    if not assignment.get("submission"):
+        raise HTTPException(status_code=400, detail="No submission to review yet.")
+
+    system_prompt = build_system_prompt("debug", topic=assignment["title"])
+    messages = [{"role": "user", "content": (
+        f"Review this Python assignment submission and provide:\n"
+        f"1. A score out of 100\n"
+        f"2. Detailed feedback (strengths, weaknesses, corrections)\n"
+        f"3. Specific improvement suggestions with code examples\n\n"
+        f"Assignment: {assignment['description'][:500]}\n\n"
+        f"Submission:\n{assignment['submission'][:3000]}\n\n"
+        f"End your response with exactly: SCORE: <number>"
+    )}]
+    try:
+        content = get_completion(system_prompt, messages)
+    except Exception as exc:
+        logger.error("Assignment review error: %s", exc)
+        raise HTTPException(status_code=502, detail="AI service error. Please try again.")
+
+    score_match = re.search(r"SCORE:\s*(\d+)", content)
+    score       = int(score_match.group(1)) if score_match else 70
+    score       = max(0, min(100, score))
+
+    review_assignment_db(assignment_id, content, score)
+    log_activity(learner_id, "assignment:reviewed", f"id={assignment_id} score={score}")
+    return {"ok": True, "feedback": content, "score": score}
+
+
+@app.get("/assignments/{learner_id}")
+async def list_assignments(learner_id: str) -> dict:
+    validate_learner_id(learner_id)
+    assignments = get_assignments_db(learner_id)
+    return {"learner_id": learner_id, "assignments": assignments, "total": len(assignments)}
+
+
+# ---------------------------------------------------------------------------
+# LESSON RESOURCES
+# ---------------------------------------------------------------------------
+
+_LESSON_RESOURCES: dict[str, list[dict]] = {
+    "Python Intro & Get Started":    [{"type":"docs",    "label":"Python.org Official Docs",         "url":"https://docs.python.org/3/tutorial/"},
+                                      {"type":"video",   "label":"Python in 100 Seconds (Fireship)", "url":"https://www.youtube.com/watch?v=x7X9w_GIm1s"}],
+    "Python Syntax":                 [{"type":"docs",    "label":"W3Schools Python Syntax",           "url":"https://www.w3schools.com/python/python_syntax.asp"}],
+    "Python Variables":              [{"type":"docs",    "label":"W3Schools Variables",               "url":"https://www.w3schools.com/python/python_variables.asp"},
+                                      {"type":"article", "label":"Real Python — Variables",           "url":"https://realpython.com/python-variables/"}],
+    "Python Data Types":             [{"type":"docs",    "label":"W3Schools Data Types",              "url":"https://www.w3schools.com/python/python_datatypes.asp"}],
+    "Python Strings":                [{"type":"docs",    "label":"W3Schools Strings",                 "url":"https://www.w3schools.com/python/python_strings.asp"},
+                                      {"type":"article", "label":"Real Python — Strings",             "url":"https://realpython.com/python-strings/"}],
+    "Python Lists":                  [{"type":"docs",    "label":"W3Schools Lists",                   "url":"https://www.w3schools.com/python/python_lists.asp"}],
+    "Python Dictionaries":           [{"type":"docs",    "label":"W3Schools Dictionaries",            "url":"https://www.w3schools.com/python/python_dictionaries.asp"}],
+    "Python Functions":              [{"type":"docs",    "label":"W3Schools Functions",               "url":"https://www.w3schools.com/python/python_functions.asp"},
+                                      {"type":"article", "label":"Real Python — Functions",           "url":"https://realpython.com/defining-your-own-python-function/"}],
+    "Classes and Objects":           [{"type":"docs",    "label":"W3Schools OOP",                     "url":"https://www.w3schools.com/python/python_classes.asp"},
+                                      {"type":"article", "label":"Real Python — OOP",                 "url":"https://realpython.com/python3-object-oriented-programming/"}],
+    "Python Inheritance":            [{"type":"docs",    "label":"W3Schools Inheritance",             "url":"https://www.w3schools.com/python/python_inheritance.asp"}],
+    "Python RegEx":                  [{"type":"docs",    "label":"W3Schools RegEx",                   "url":"https://www.w3schools.com/python/python_regex.asp"},
+                                      {"type":"tool",    "label":"Regex101 — Live tester",            "url":"https://regex101.com/"}],
+    "File Handling":                 [{"type":"docs",    "label":"W3Schools File Handling",           "url":"https://www.w3schools.com/python/python_file_handling.asp"}],
+    "Python JSON":                   [{"type":"docs",    "label":"W3Schools JSON",                    "url":"https://www.w3schools.com/python/python_json.asp"}],
+    "NumPy Intro & Getting Started": [{"type":"docs",    "label":"NumPy Official Docs",               "url":"https://numpy.org/doc/stable/"},
+                                      {"type":"docs",    "label":"W3Schools NumPy",                   "url":"https://www.w3schools.com/python/numpy/default.asp"}],
+    "Pandas Intro & Getting Started":[{"type":"docs",    "label":"Pandas Official Docs",              "url":"https://pandas.pydata.org/docs/"},
+                                      {"type":"docs",    "label":"W3Schools Pandas",                  "url":"https://www.w3schools.com/python/pandas/default.asp"}],
+    "DSA Intro":                     [{"type":"docs",    "label":"W3Schools DSA",                     "url":"https://www.w3schools.com/dsa/"},
+                                      {"type":"article", "label":"Big-O Cheat Sheet",                 "url":"https://www.bigocheatsheet.com/"}],
+}
+_DEFAULT_RESOURCES = [
+    {"type":"docs",  "label":"Python Official Documentation", "url":"https://docs.python.org/3/"},
+    {"type":"docs",  "label":"W3Schools Python Tutorial",     "url":"https://www.w3schools.com/python/"},
+    {"type":"tool",  "label":"Python Tutor — Visualiser",     "url":"https://pythontutor.com/"},
+]
+
+
+@app.get("/lessons/resources")
+async def lesson_resources(topic: str = "") -> dict:
+    resources = _LESSON_RESOURCES.get(topic, _DEFAULT_RESOURCES)
+    return {"topic": topic, "resources": resources, "count": len(resources)}
+
+
+# ---------------------------------------------------------------------------
+# COUPON routes
+# ---------------------------------------------------------------------------
+
+@app.post("/coupons/validate")
+async def validate_coupon(body: CouponValidate) -> dict:
+    coupon = validate_coupon_db(body.code, body.plan)
+    if not coupon:
+        raise HTTPException(status_code=404, detail="Coupon is invalid, expired, or not applicable.")
+    return {
+        "valid":         True,
+        "code":          coupon["code"],
+        "discount_pct":  coupon["discount_pct"],
+        "discount_flat": coupon["discount_flat"],
+        "plan":          coupon["plan"],
+        "uses_left":     coupon["max_uses"] - coupon["uses"],
+    }
+
+
+@app.post("/coupons/apply")
+async def apply_coupon(body: CouponValidate) -> dict:
+    if not body.learner_id or not body.email:
+        raise HTTPException(status_code=400, detail="learner_id and email required.")
+    coupon = validate_coupon_db(body.code, body.plan)
+    if not coupon:
+        raise HTTPException(status_code=404, detail="Coupon is invalid or exhausted.")
+    savings = coupon["discount_flat"] if coupon["discount_flat"] else 0.0
+    use_coupon_db(body.code, body.learner_id, body.email, savings)
+    log_activity(body.learner_id, "coupon:applied", f"code={body.code}")
+    return {"ok": True, "discount_pct": coupon["discount_pct"],
+            "discount_flat": coupon["discount_flat"], "message": "Coupon applied!"}
+
+
+# ---------------------------------------------------------------------------
+# REFERRAL routes
+# ---------------------------------------------------------------------------
+
+@app.get("/referral/{learner_id}")
+async def get_my_referral(learner_id: str) -> dict:
+    validate_learner_id(learner_id)
+    existing = get_learner_referral_code(learner_id)
+    if existing:
+        uses = get_referral_uses(existing["code"])
+        return {"code": existing["code"], "uses": existing["uses"],
+                "max_uses": existing["max_uses"], "recent_uses": uses[:10]}
+    import secrets as _sec
+    code    = _sec.token_hex(4).upper()
+    profile = get_profile(learner_id)
+    email   = profile.email or learner_id
+    create_referral_code(code, learner_id, email)
+    return {"code": code, "uses": 0, "max_uses": 50, "recent_uses": []}
+
+
+@app.post("/referral/use")
+async def use_referral(body: ReferralUse) -> dict:
+    ref = get_referral_code(body.code)
+    if not ref or ref["uses"] >= ref["max_uses"]:
+        raise HTTPException(status_code=404, detail="Referral code is invalid or exhausted.")
+    ok = use_referral_code(body.code, body.email, body.learner_id, discount_pct=20)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Could not apply referral code.")
+    log_activity(body.learner_id, "referral:used", f"code={body.code}")
+    return {"ok": True, "discount_pct": 20,
+            "message": "Referral applied! You get 20% off your first subscription."}
+
+
+# ---------------------------------------------------------------------------
+# INVOICE routes
+# ---------------------------------------------------------------------------
+
+@app.get("/invoice/{invoice_id}", response_class=HTMLResponse)
+async def get_invoice(invoice_id: str) -> HTMLResponse:
+    inv = get_invoice_db(invoice_id)
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found.")
+    return HTMLResponse(content=_render_invoice(inv))
+
+
+@app.get("/invoices/{learner_id}")
+async def list_invoices(learner_id: str) -> dict:
+    validate_learner_id(learner_id)
+    invoices = get_invoices_by_learner(learner_id)
+    return {"learner_id": learner_id, "invoices": invoices, "total": len(invoices)}
+
+
+def _render_invoice(inv: dict) -> str:
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Invoice #{inv['id']} — MyPy Tutor</title>
+  <style>
+    @media print{{.no-print{{display:none}}body{{padding:0}}}}
+    *{{box-sizing:border-box;margin:0;padding:0}}
+    body{{font-family:Arial,Helvetica,sans-serif;background:#f9fafb;color:#1a202c;padding:40px 20px}}
+    .invoice{{max-width:700px;margin:0 auto;background:#fff;border-radius:12px;
+              box-shadow:0 4px 20px rgba(0,0,0,.08);overflow:hidden}}
+    .hdr{{background:linear-gradient(135deg,#0d2b6e,#1a3f9a);color:#fff;
+          padding:32px 40px;display:flex;justify-content:space-between;align-items:flex-start}}
+    .hdr h1{{font-size:1.5rem;margin-bottom:4px}}
+    .hdr p{{font-size:0.75rem;opacity:.75;margin-top:3px}}
+    .badge{{background:rgba(255,255,255,.2);padding:6px 14px;border-radius:20px;
+            font-size:0.78rem;font-weight:700;letter-spacing:.06em}}
+    .body{{padding:36px 40px}}
+    .meta{{display:flex;justify-content:space-between;margin-bottom:24px}}
+    .status{{display:inline-block;background:#c6f6d5;color:#276749;padding:3px 12px;
+             border-radius:20px;font-size:0.78rem;font-weight:700}}
+    hr{{border:none;border-top:1px solid #e2e8f0;margin:20px 0}}
+    .line{{display:flex;justify-content:space-between;font-size:0.9rem;padding:8px 0}}
+    .total{{display:flex;justify-content:space-between;font-size:1.1rem;
+            font-weight:700;color:#0d2b6e}}
+    .ftr{{background:#f7fafc;border-top:1px solid #e2e8f0;padding:20px 40px;
+          text-align:center;font-size:0.75rem;color:#718096}}
+    .pbtn{{display:block;margin:20px auto;padding:10px 28px;background:#0d2b6e;
+           color:#fff;border:none;border-radius:8px;font-size:0.9rem;cursor:pointer}}
+  </style>
+</head>
+<body>
+<div class="invoice">
+  <div class="hdr">
+    <div>
+      <div style="font-size:1.8rem;margin-bottom:6px">🐍</div>
+      <h1>MyPy Tutor</h1>
+      <p>Powered by TeamTega Technologies Limited</p>
+      <p>Certified by Teamsamikoko Global Academy · Reg No: 3508656</p>
+    </div>
+    <div style="text-align:right">
+      <div class="badge">INVOICE</div>
+      <p style="margin-top:10px;font-size:0.85rem;opacity:.9">#{inv['id']}</p>
+      <p style="font-size:0.75rem;opacity:.75">{inv.get('issued_at_fmt','')}</p>
+    </div>
+  </div>
+  <div class="body">
+    <div class="meta">
+      <div>
+        <p style="font-size:.72rem;color:#718096;text-transform:uppercase;
+                  letter-spacing:.08em;margin-bottom:6px">Bill To</p>
+        <p style="font-weight:700;font-size:.95rem">{inv['name']}</p>
+        <p style="color:#718096;font-size:.85rem">{inv['email']}</p>
+      </div>
+      <div style="text-align:right">
+        <span class="status">✅ PAID</span>
+        <p style="margin-top:8px;font-size:.78rem;color:#718096">
+          Payment ID: {inv['payment_id']}</p>
+      </div>
+    </div>
+    <hr/>
+    <div style="font-size:.75rem;color:#718096;text-transform:uppercase;
+                letter-spacing:.06em;padding-bottom:8px;border-bottom:1px solid #e2e8f0;
+                margin-bottom:12px;display:flex;justify-content:space-between">
+      <span>Description</span><span>Amount</span>
+    </div>
+    <div class="line">
+      <span>{inv['plan']}</span>
+      <span style="font-weight:700">₦{inv['amount']:,.0f}</span>
+    </div>
+    <hr/>
+    <div class="total">
+      <span>Total Paid</span>
+      <span>₦{inv['amount']:,.0f} {inv['currency']}</span>
+    </div>
+    <p style="margin-top:24px;font-size:.8rem;color:#718096;line-height:1.6">
+      Thank you for investing in your Python education. This invoice is proof of
+      payment for the MyPy Tutor subscription/certification listed above.
+    </p>
+  </div>
+  <div class="ftr">
+    <p>MyPy Tutor · mypytutor.onrender.com</p>
+    <p style="margin-top:4px">TeamTega Technologies Limited · Teamsamikoko Global Academy</p>
+    <p style="margin-top:4px;font-style:italic">"Learn Smarter. Code Better. Build the Future."</p>
+  </div>
+</div>
+<button class="pbtn no-print" onclick="window.print()">🖨️ Print / Save as PDF</button>
+</body>
+</html>"""
+
+
+# ---------------------------------------------------------------------------
+# Admin routes for new features
+# ---------------------------------------------------------------------------
+
+@app.get("/admin/assignments")
+async def admin_all_assignments(request: Request) -> dict:
+    _require_admin(request)
+    assignments = get_all_assignments_db()
+    return {
+        "assignments": assignments,
+        "total":       len(assignments),
+        "pending":     sum(1 for a in assignments if a["status"] == "pending"),
+        "submitted":   sum(1 for a in assignments if a["status"] == "submitted"),
+        "reviewed":    sum(1 for a in assignments if a["status"] == "reviewed"),
+    }
+
+
+@app.post("/admin/assignments/{assignment_id}/review")
+async def admin_review_assignment(assignment_id: str,
+                                   body: AssignmentReview,
+                                   request: Request) -> dict:
+    _require_admin(request)
+    ok = review_assignment_db(assignment_id, body.feedback, body.score)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Assignment not found.")
+    return {"ok": True, "message": f"Assignment reviewed. Score: {body.score}/100"}
+
+
+@app.get("/admin/coupons")
+async def admin_coupons(request: Request) -> dict:
+    _require_admin(request)
+    return {"coupons": get_all_coupons_db()}
+
+
+@app.post("/admin/coupons/create")
+async def admin_create_coupon(body: CouponCreate, request: Request) -> dict:
+    _require_admin(request)
+    import time as _t
+    expires_at = _t.time() + body.expires_days * 86400 if body.expires_days else 0
+    create_coupon_db(body.code, body.discount_pct, body.discount_flat,
+                     body.plan, body.max_uses, expires_at)
+    return {"ok": True, "code": body.code.upper(),
+            "discount_pct": body.discount_pct,
+            "message": f"Coupon {body.code.upper()} created."}
+
+
+@app.get("/admin/invoices")
+async def admin_invoices(request: Request) -> dict:
+    _require_admin(request)
+    invoices      = get_all_invoices_db()
+    total_revenue = sum(i["amount"] for i in invoices)
+    return {"invoices": invoices, "total": len(invoices), "total_revenue": total_revenue}
+
+
+@app.get("/admin/history/{learner_id}")
+async def admin_learner_history(learner_id: str, request: Request) -> dict:
+    _require_admin(request)
+    validate_learner_id(learner_id)
+    history  = get_prompt_history(learner_id, 50)
+    attempts = get_quiz_attempts(learner_id, 50)
+    return {"learner_id": learner_id,
+            "prompt_history": history, "quiz_attempts": attempts}
 
 
 # ---------------------------------------------------------------------------

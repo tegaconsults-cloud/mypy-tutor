@@ -1965,6 +1965,71 @@
         btn.disabled = false; btn.textContent = 'Sign In';
       }
     }
+
+    // ── Forgot Password ───────────────────────────────────────────────────────
+    function showForgotPassword(e) {
+      e.preventDefault();
+      document.getElementById('auth-signin-form').style.display = 'none';
+      document.getElementById('auth-forgot-form').style.display = 'flex';
+      document.getElementById('auth-modal-error').style.display = 'none';
+    }
+
+    async function handleForgotPassword() {
+      const email = document.getElementById('forgot-email').value.trim();
+      const btn   = document.getElementById('forgot-submit-btn');
+      if (!email) { _setAuthError('Please enter your email address.'); return; }
+      btn.disabled = true; btn.textContent = 'Sending…';
+      document.getElementById('auth-modal-error').style.display = 'none';
+      try {
+        const res  = await fetch('/auth/forgot-password', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ email }),
+        });
+        const data = await res.json();
+        const msg  = document.getElementById('auth-success-msg');
+        msg.textContent = data.message || 'Reset link sent! Check your inbox.';
+        msg.style.display = 'block';
+        document.getElementById('auth-forgot-form').style.display = 'none';
+      } catch (err) {
+        _setAuthError('Network error. Please try again.');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Send Reset Link';
+      }
+    }
+
+    // ── Reset Password (token from URL) ────────────────────────────────────────
+    async function handleResetPassword() {
+      const pw1 = document.getElementById('reset-password').value;
+      const pw2 = document.getElementById('reset-password2').value;
+      const btn = document.getElementById('reset-submit-btn');
+      if (pw1.length < 8) { _setAuthError('Password must be at least 8 characters.'); return; }
+      if (pw1 !== pw2) { _setAuthError('Passwords do not match.'); return; }
+      const token = new URLSearchParams(window.location.search).get('token') ||
+                    (window._resetToken || '');
+      if (!token) { _setAuthError('Invalid reset link.'); return; }
+      btn.disabled = true; btn.textContent = 'Updating…';
+      try {
+        const res  = await fetch('/auth/reset-password', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ token, new_password: pw1 }),
+        });
+        const data = await res.json();
+        if (!res.ok) { _setAuthError(data.error || data.detail || 'Failed.'); return; }
+        const msg = document.getElementById('auth-success-msg');
+        msg.textContent = '✅ ' + (data.message || 'Password updated! You can now sign in.');
+        msg.style.display = 'block';
+        document.getElementById('auth-reset-form').style.display = 'none';
+        // Clean URL
+        window.history.replaceState({}, '', '/');
+        setTimeout(() => switchAuthTab('signin'), 2000);
+      } catch (err) {
+        _setAuthError('Network error. Please try again.');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Set New Password';
+      }
+    }
     function toggleUserDropdown() {
       document.getElementById('user-dropdown').classList.toggle('open');
     }
@@ -2261,16 +2326,33 @@
       const params = new URLSearchParams(window.location.search);
       const authStatus = params.get('auth');
       const msg = params.get('msg');
+      const token = params.get('token');
+
+      // ── Password reset link ────────────────────────────────────────────────
+      if (authStatus === 'reset' && token) {
+        window._resetToken = token;
+        window.history.replaceState({}, '', '/');
+        // Open auth modal and show reset form
+        setTimeout(() => {
+          openAuthModal();
+          document.getElementById('auth-signin-form').style.display  = 'none';
+          document.getElementById('auth-signup-form').style.display  = 'none';
+          document.getElementById('auth-forgot-form').style.display  = 'none';
+          document.getElementById('auth-reset-form').style.display   = 'flex';
+          document.getElementById('tab-signin').style.display        = 'none';
+          document.getElementById('tab-signup').style.display        = 'none';
+        }, 300);
+        return;
+      }
+
       if (authStatus && msg) {
         const decoded = msg.replace(/\+/g, ' ');
         if (authStatus === 'confirmed') {
-          // Show success toast
           const toast = document.createElement('div');
           toast.style.cssText = 'position:fixed;top:70px;left:50%;transform:translateX(-50%);background:#276749;color:#68d391;border-radius:12px;padding:12px 20px;font-size:0.9rem;font-weight:600;z-index:9999;max-width:90vw;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.4)';
           toast.textContent = '✅ ' + decoded;
           document.body.appendChild(toast);
           setTimeout(() => toast.remove(), 6000);
-          // Open sign-in modal after a brief delay
           setTimeout(() => { openAuthModal(); switchAuthTab('signin'); }, 800);
         } else {
           const toast = document.createElement('div');
@@ -2279,7 +2361,6 @@
           document.body.appendChild(toast);
           setTimeout(() => toast.remove(), 6000);
         }
-        // Clean the URL
         window.history.replaceState({}, '', '/');
       }
     })();
@@ -2346,6 +2427,37 @@
         <input type="email" id="signin-email" placeholder="Email address" autocomplete="email" autocapitalize="none"/>
         <input type="password" id="signin-password" placeholder="Password" autocomplete="current-password"/>
         <button class="auth-submit-btn" id="signin-submit-btn" onclick="handleEmailSignIn()">Sign In</button>
+        <p style="text-align:center;margin-top:8px;">
+          <a href="#" onclick="showForgotPassword(event)"
+             style="color:#63b3ed;font-size:0.82rem;text-decoration:none;">
+            Forgot password?
+          </a>
+        </p>
+      </div>
+
+      <!-- Forgot Password form -->
+      <div id="auth-forgot-form" class="auth-form" style="display:none">
+        <p style="color:#a0aec0;font-size:0.85rem;text-align:center;margin-bottom:8px;">
+          Enter your email and we'll send a reset link.
+        </p>
+        <input type="email" id="forgot-email" placeholder="Email address" autocomplete="email" autocapitalize="none"/>
+        <button class="auth-submit-btn" id="forgot-submit-btn" onclick="handleForgotPassword()">Send Reset Link</button>
+        <p style="text-align:center;margin-top:8px;">
+          <a href="#" onclick="switchAuthTab('signin');document.getElementById('auth-forgot-form').style.display='none';document.getElementById('auth-signin-form').style.display='flex';"
+             style="color:#63b3ed;font-size:0.82rem;text-decoration:none;">
+            ← Back to Sign In
+          </a>
+        </p>
+      </div>
+
+      <!-- Reset Password form (shown when ?auth=reset in URL) -->
+      <div id="auth-reset-form" class="auth-form" style="display:none">
+        <p style="color:#a0aec0;font-size:0.85rem;text-align:center;margin-bottom:8px;">
+          Choose a new password (min 8 characters).
+        </p>
+        <input type="password" id="reset-password" placeholder="New password" autocomplete="new-password"/>
+        <input type="password" id="reset-password2" placeholder="Confirm new password" autocomplete="new-password"/>
+        <button class="auth-submit-btn" id="reset-submit-btn" onclick="handleResetPassword()">Set New Password</button>
       </div>
 
       <!-- Sign Up form -->
