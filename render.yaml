@@ -27,4 +27,10 @@ services:
         value: https://mypytutor.onrender.com
       - key: PAYSTACK_SECRET_KEY
         sync: false          # Paystack secret key — set in Render dashboard
+      - key: SUPABASE_URL
+        sync: false          # https://<project-ref>.supabase.co
+      - key: SUPABASE_ANON_KEY
+        sync: false          # Supabase publishable anon key
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false          # Supabase service role key (server-side only)
     autoDeploy: true

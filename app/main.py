@@ -86,6 +86,11 @@ from app.db import (
     # invoices
     create_invoice_db, get_invoice_db, get_invoices_by_learner, get_all_invoices_db,
 )
+from app.supabase_client import (
+    sb_upsert_profile, sb_get_or_create_conversation,
+    sb_save_message, sb_load_messages, sb_load_all_conversations,
+    sb_save_certificate, sb_save_payment, sb_update_tier, sb_enabled,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -167,11 +172,22 @@ async def chat(request: ChatRequest, req: Request) -> ChatResponse:
 
     system_prompt = build_system_prompt(intent, topic=topic, level=request.level, is_gap_topic=is_gap)
 
-    messages = [{"role": m.role, "content": m.content} for m in request.history]
-    messages.append({"role": "user", "content": request.message})
+    # ── Resolve conversation_id ──────────────────────────────────────────
+    conv_id = request.conversation_id or sb_get_or_create_conversation(request.learner_id)
+    if not conv_id:
+        conv_id = f"local_{request.learner_id}"
+
+    # ── Build message list ───────────────────────────────────────────────
+    # If client sends no history AND Supabase is up, load last 10 turns
+    # so Sir. Tega continues exactly where the learner left off.
+    history_messages = [{"role": m.role, "content": m.content} for m in request.history]
+    if not history_messages and sb_enabled():
+        sb_history = sb_load_messages(conv_id, limit=10)
+        history_messages = [{"role": m["role"], "content": m["content"]} for m in sb_history]
+    history_messages.append({"role": "user", "content": request.message})
 
     try:
-        content = get_completion(system_prompt, messages)
+        content = get_completion(system_prompt, history_messages)
     except Exception as exc:
         exc_type = type(exc).__name__.lower()
         if any(k in exc_type for k in ("ratelimit", "timeout", "serviceunavailable")):
@@ -188,9 +204,11 @@ async def chat(request: ChatRequest, req: Request) -> ChatResponse:
     log_activity(request.learner_id, f"chat:{intent}",
                  f"topic={detected_topic or '—'} | msg={request.message[:80]}")
 
-    # Persist prompt history (user message + AI response)
-    save_prompt_history(request.learner_id, "user", request.message, intent, detected_topic or "")
-    save_prompt_history(request.learner_id, "assistant", content, intent, detected_topic or "")
+    # ── Persist — SQLite (always) + Supabase (when configured) ─────────
+    save_prompt_history(request.learner_id, "user",      request.message, intent, detected_topic or "")
+    save_prompt_history(request.learner_id, "assistant", content,         intent, detected_topic or "")
+    sb_save_message(conv_id, request.learner_id, "user",      request.message, intent, detected_topic or "")
+    sb_save_message(conv_id, request.learner_id, "assistant", content,         intent, detected_topic or "")
 
     ask_survey = increment_interaction(request.learner_id)
 
@@ -202,6 +220,7 @@ async def chat(request: ChatRequest, req: Request) -> ChatResponse:
         xp_gained=xp,
         badge=badge,
         ask_survey=ask_survey,
+        conversation_id=conv_id,
     )
 
 # ---------------------------------------------------------------------------
@@ -287,6 +306,8 @@ async def auth_google_callback(code: str = None, error: str = None) -> JSONRespo
         payload = verify_google_token(id_token)
         user    = get_or_create_user(payload)
         token   = create_session_token(user.learner_id)
+        # Mirror to Supabase
+        sb_upsert_profile(user.learner_id, user.email, user.name)
 
         import urllib.parse as _up
         user_data = _up.quote(json.dumps({
@@ -308,11 +329,12 @@ async def auth_google(request: GoogleAuthRequest) -> AuthResponse:
     payload = verify_google_token(request.credential)
     user    = get_or_create_user(payload)
     token   = create_session_token(user.learner_id)
+    # Mirror to Supabase
+    sb_upsert_profile(user.learner_id, user.email, user.name)
     return AuthResponse(
         token=token, learner_id=user.learner_id,
         name=user.name, email=user.email, picture=user.picture,
     )
-
 
 @app.get("/auth/me", response_model=AuthResponse)
 async def auth_me(user=Depends(require_user)) -> AuthResponse:
@@ -333,6 +355,10 @@ async def auth_signup(request: EmailSignUpRequest) -> dict:
     success, message = register_email(request.email, request.name, pw_hash)
     if not success:
         raise HTTPException(status_code=400, detail=message)
+    # Mirror new user to Supabase profiles table
+    from app.email_auth import _make_learner_id
+    learner_id = _make_learner_id(request.email)
+    sb_upsert_profile(learner_id, request.email, request.name)
     return {"ok": True, "message": message}
 
 
@@ -426,6 +452,8 @@ async def get_certificate(
     clean_name = _re.sub(r'[<>&"\']', '', name).strip()[:80] or "Learner"
     cert_id    = get_cert_id(learner_id, level)
     log_certificate(cert_id, learner_id, clean_name, level)
+    # Mirror certificate to Supabase
+    sb_save_certificate(cert_id, learner_id, clean_name, level)
     html_doc   = generate_certificate_html(learner_name=clean_name, level=level, cert_id=cert_id)
     return HTMLResponse(content=html_doc)
 
@@ -765,6 +793,11 @@ async def paystack_webhook(request: Request) -> dict:
             invoice_id = f"INV-{_sec.token_hex(5).upper()}"
             create_invoice_db(invoice_id, payment.id, learner_id, email,
                               customer.get("name", email), plan_label, amount_ngn)
+            # Mirror payment to Supabase
+            sb_save_payment(payment.id, email, customer.get("name", email),
+                            amount_ngn, plan_label, "paystack")
+            # Sync updated tier to Supabase profile
+            sb_update_tier(learner_id, tier)
             logger.info("Paystack webhook: upgraded %s → %s | invoice=%s", email, tier, invoice_id)
 
     return {"ok": True}
@@ -1643,8 +1676,153 @@ async def admin_learner_history(learner_id: str, request: Request) -> dict:
     validate_learner_id(learner_id)
     history  = get_prompt_history(learner_id, 50)
     attempts = get_quiz_attempts(learner_id, 50)
+    # Also pull from Supabase if available
+    sb_msgs = sb_load_messages(f"local_{learner_id}", limit=50) if sb_enabled() else []
     return {"learner_id": learner_id,
-            "prompt_history": history, "quiz_attempts": attempts}
+            "prompt_history": history,
+            "supabase_messages": sb_msgs,
+            "quiz_attempts": attempts}
+
+
+# ---------------------------------------------------------------------------
+# SUPABASE — Conversation & history routes
+# ---------------------------------------------------------------------------
+
+@app.get("/conversations/{learner_id}")
+async def list_conversations(learner_id: str) -> dict:
+    """
+    Return all conversation sessions for a learner.
+    Pulls from Supabase when configured; falls back to SQLite prompt_history.
+    """
+    validate_learner_id(learner_id)
+    if sb_enabled():
+        convs = sb_load_all_conversations(learner_id)
+        return {"learner_id": learner_id, "conversations": convs,
+                "source": "supabase", "total": len(convs)}
+    # Fallback: group SQLite history by day
+    history = get_prompt_history(learner_id, 50)
+    return {"learner_id": learner_id,
+            "conversations": [{"id": f"local_{learner_id}", "messages": history}],
+            "source": "sqlite", "total": len(history)}
+
+
+@app.get("/conversations/{learner_id}/{conversation_id}")
+async def get_conversation(learner_id: str, conversation_id: str,
+                            limit: int = 50) -> dict:
+    """
+    Load all messages from a specific conversation.
+    Sir. Tega uses this to resume context on re-login.
+    """
+    validate_learner_id(learner_id)
+    if sb_enabled():
+        messages = sb_load_messages(conversation_id, limit=min(limit, 100))
+        return {"conversation_id": conversation_id,
+                "learner_id": learner_id,
+                "messages": messages,
+                "count": len(messages),
+                "source": "supabase"}
+    # Fallback to SQLite
+    history = get_prompt_history(learner_id, limit=min(limit, 50))
+    return {"conversation_id": conversation_id,
+            "learner_id": learner_id,
+            "messages": history,
+            "count": len(history),
+            "source": "sqlite"}
+
+
+@app.post("/conversations/{learner_id}/new")
+async def new_conversation(learner_id: str) -> dict:
+    """Start a fresh conversation (clears context window for Sir. Tega)."""
+    validate_learner_id(learner_id)
+    if sb_enabled():
+        import secrets as _sec
+        conv_id = _sec.token_hex(16)
+        from app.supabase_client import get_supabase
+        sb = get_supabase()
+        if sb:
+            try:
+                sb.table("conversations").insert({
+                    "id": conv_id, "learner_id": learner_id,
+                    "title": "New Conversation"
+                }).execute()
+            except Exception as exc:
+                logger.warning("New conversation insert failed: %s", exc)
+                conv_id = f"local_{_sec.token_hex(8)}"
+        return {"conversation_id": conv_id, "learner_id": learner_id}
+    import secrets as _sec
+    return {"conversation_id": f"local_{_sec.token_hex(8)}", "learner_id": learner_id}
+
+
+# ---------------------------------------------------------------------------
+# SUPABASE — Status & health check
+# ---------------------------------------------------------------------------
+
+@app.get("/supabase/status")
+async def supabase_status() -> dict:
+    """Check whether Supabase is configured and reachable."""
+    if not sb_enabled():
+        return {"enabled": False,
+                "message": "Supabase not configured. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in Render env vars."}
+    try:
+        from app.supabase_client import get_supabase
+        sb = get_supabase()
+        # Simple ping — list 1 row from profiles
+        sb.table("profiles").select("id").limit(1).execute()
+        return {"enabled": True, "status": "connected",
+                "url": _os.getenv("SUPABASE_URL", "")[:40] + "…"}
+    except Exception as exc:
+        return {"enabled": True, "status": "error", "detail": str(exc)[:120]}
+
+
+# ---------------------------------------------------------------------------
+# STARTUP — Supabase data recovery on Render restart
+# ---------------------------------------------------------------------------
+
+def _recover_from_supabase() -> None:
+    """
+    On startup: if SQLite is empty (Render ephemeral restart), pull profiles
+    from Supabase so the app has data immediately without waiting for users
+    to re-login.
+    """
+    if not sb_enabled():
+        return
+    from app.supabase_client import get_supabase
+    from app.db import get_all_learners, save_profile_db
+    import json
+    try:
+        sb = get_supabase()
+        # Only recover if local DB is empty
+        if get_all_learners():
+            logger.info("SQLite has data — skipping Supabase recovery")
+            return
+        logger.info("SQLite empty — recovering profiles from Supabase…")
+        res = sb.table("learner_progress").select("*").limit(500).execute()
+        recovered = 0
+        for row in (res.data or []):
+            lid = row.get("learner_id", "")
+            if not lid:
+                continue
+            save_profile_db(lid, {
+                "tier":               row.get("tier", "free"),
+                "level":              row.get("level", "beginner"),
+                "xp":                 row.get("xp", 0),
+                "badges":             json.loads(row.get("badges") or "[]"),
+                "topics_seen":        json.loads(row.get("topics_seen") or "[]"),
+                "topic_progress":     {},
+                "current_course":     row.get("current_course"),
+                "current_course_step":row.get("current_course_step", 0),
+                "completed_projects": json.loads(row.get("completed_projects") or "[]"),
+                "daily_prompts_used": 0,
+                "last_prompt_date":   "",
+            })
+            recovered += 1
+        logger.info("Recovered %d learner profiles from Supabase", recovered)
+    except Exception as exc:
+        logger.warning("Supabase recovery failed (non-fatal): %s", exc)
+
+
+# Run recovery at startup (after DB is initialised)
+_recover_from_supabase()
 
 
 # ---------------------------------------------------------------------------

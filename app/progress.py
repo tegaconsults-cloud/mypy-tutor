@@ -66,13 +66,13 @@ def get_profile(learner_id: str) -> LearnerProfile:
 
 
 def save_profile(profile: LearnerProfile) -> None:
-    """Save to memory cache and SQLite."""
+    """Save to memory cache, SQLite, and Supabase (dual-write)."""
     _store[profile.learner_id] = profile
     # Serialize topic_progress for SQLite
     tp_dict = {
         k: v.model_dump() for k, v in profile.topic_progress.items()
     }
-    save_profile_db(profile.learner_id, {
+    profile_data = {
         "tier":              profile.tier,
         "level":             profile.level,
         "xp":                profile.xp,
@@ -84,7 +84,14 @@ def save_profile(profile: LearnerProfile) -> None:
         "completed_projects": profile.completed_projects,
         "daily_prompts_used": profile.daily_prompts_used,
         "last_prompt_date":  profile.last_prompt_date,
-    })
+    }
+    save_profile_db(profile.learner_id, profile_data)
+    # Mirror to Supabase (non-blocking — failure never crashes the app)
+    try:
+        from app.supabase_client import sb_sync_progress
+        sb_sync_progress(profile.learner_id, profile_data)
+    except Exception:
+        pass
 
 
 def _award_badge(profile: LearnerProfile, key: str) -> str | None:
