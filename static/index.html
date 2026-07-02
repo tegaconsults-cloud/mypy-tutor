@@ -2034,17 +2034,29 @@
 
     function setLoggedIn(data) {
       currentUser = data;
-      // Show user chip, hide sign-in button
+      // Store session
+      localStorage.setItem(SESSION_KEY, data.token);
+      // Store user info for learner_id usage and admin visibility
+      localStorage.setItem('mpt_user_email', data.email || '');
+      localStorage.setItem('mpt_user_name', data.name || '');
+      localStorage.setItem('mpt_learner_id', data.learner_id || '');
+
+      // Update UI: show user chip, hide sign-in button
       document.getElementById('auth-btn').style.display = 'none';
       const chip = document.getElementById('user-chip');
       chip.style.display = 'flex';
-      document.getElementById('user-name').textContent = data.name.split(' ')[0];
+      document.getElementById('user-name').textContent = (data.name || data.email || '').split(' ')[0];
       const avatar = document.getElementById('user-avatar');
       if (data.picture) { avatar.src = data.picture; avatar.style.display = 'block'; }
       else { avatar.style.display = 'none'; }
-      // Update LEARNER_ID for all API calls using the authenticated ID
+
+      // Use authenticated learner_id for all API calls
       window._learnerId = data.learner_id;
       refreshSidebar();
+      refreshPromptCount();
+
+      // Close auth modal if open
+      closeAuthModal();
     }
 
     function signOut() {
@@ -2060,18 +2072,38 @@
       refreshSidebar();
     }
 
-    // Restore session on load
+    // Restore session on load — mandatory: if no valid session, show auth modal
     async function restoreSession() {
       const token = localStorage.getItem(SESSION_KEY);
-      if (!token) return;
+      if (!token) {
+        // No session — force sign-in modal immediately
+        openAuthModal();
+        return;
+      }
       try {
         const res = await fetch('/auth/me', {
           headers: { 'Authorization': 'Bearer ' + token }
         });
-        if (!res.ok) { localStorage.removeItem(SESSION_KEY); return; }
+        if (!res.ok) {
+          // Token expired or invalid — clear and force sign-in
+          localStorage.removeItem(SESSION_KEY);
+          openAuthModal();
+          return;
+        }
         const data = await res.json();
         setLoggedIn(data);
-      } catch (_) { localStorage.removeItem(SESSION_KEY); }
+      } catch (_) {
+        // Network error — allow anonymous use with degraded state
+        // but still show sign-in prompt as a toast
+        setTimeout(() => {
+          const t = document.createElement('div');
+          t.style.cssText = 'position:fixed;top:70px;left:50%;transform:translateX(-50%);background:#1a365d;color:#90cdf4;border:1px solid #2c5282;border-radius:10px;padding:10px 18px;font-size:0.84rem;z-index:9999;cursor:pointer;';
+          t.innerHTML = '🔐 Sign in to save your progress. <u>Sign In</u>';
+          t.onclick = () => { openAuthModal(); t.remove(); };
+          document.body.appendChild(t);
+          setTimeout(() => t.remove && t.remove(), 8000);
+        }, 2000);
+      }
     }
 
     // Override LEARNER_ID to use auth'd user when signed in
