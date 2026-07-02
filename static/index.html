@@ -1597,9 +1597,11 @@
         loadEl.remove();
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
-          // Free tier or upgrade required — show upgrade modal instead of error
-          if (res.status === 402 || data.error === 'free_limit_reached') {
-            showUpgradeModal(data.message || 'Courses require a Premium plan. Upgrade to start learning!');
+          // Upgrade required — redirect directly to payment page
+          if (res.status === 402 || data.error === 'upgrade_required' || data.error === 'free_limit_reached') {
+            const url = data.upgrade_url || 'https://paystack.shop/pay/vt_re4d3h52';
+            window.open(url, '_blank', 'noopener,noreferrer');
+            appendMessage('assistant', `🔒 **Upgrade Required**\n\n${data.message || 'This course requires a Premium plan.'}\n\n[💳 Click here to upgrade](${url})`);
             return;
           }
           appendMessage('error', data.error || data.detail || 'Could not start course.');

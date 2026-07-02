@@ -3,6 +3,9 @@ FastAPI application — MyPy Tutor (secured).
 Security layer: rate limiting, input validation, security headers, sanitised errors.
 """
 
+import datetime
+import hashlib
+import hmac
 import logging
 import re
 import os as _os
@@ -13,6 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi import Depends
+from pydantic import BaseModel as _BM
 
 from app.classifier import classify_intent
 from app.formatter import format_response
@@ -60,6 +64,10 @@ from app.admin import (
     invite_team_member, create_task, update_task_status, get_team, get_tasks,
     log_certificate, get_certificates, log_activity,
 )
+from app.db import (
+    init_db, upgrade_tier_db, get_all_confirmed_emails,
+    get_activity_log, get_certificates_db,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -73,8 +81,6 @@ except ValueError as exc:
     logger.error("Startup error: %s", exc)
     raise
 
-# Initialize SQLite database and load persisted user data
-from app.db import init_db
 from app.email_auth import _load_confirmed_from_db
 init_db()
 _load_confirmed_from_db()
@@ -83,21 +89,16 @@ logger.info("Database ready")
 app = FastAPI(
     title="MyPy Tutor",
     version="2.0.0",
-    # Disable docs in production to avoid leaking API schema
     docs_url=None,
     redoc_url=None,
     openapi_url=None,
 )
 
 # ---------------------------------------------------------------------------
-# Middleware — order matters: CORS first, then security
+# Middleware
 # ---------------------------------------------------------------------------
 
-# The frontend and backend are served from the SAME Render service (same origin),
-# so browser requests are never cross-origin. We allow the Render wildcard pattern
-# plus localhost for dev. Using allow_origins=["*"] would be unsafe for a separate
-# frontend, but here it's equivalent since our static files come from the same host.
-_RENDER_URL = _os.getenv("RENDER_EXTERNAL_URL", "")  # auto-set by Render
+_RENDER_URL = _os.getenv("RENDER_EXTERNAL_URL", "")
 _allowed_origins = list(filter(None, [
     _RENDER_URL,
     "http://localhost:8000",
@@ -107,25 +108,22 @@ _allowed_origins = list(filter(None, [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
-    allow_origin_regex=r"https://.*\.onrender\.com",  # covers any Render subdomain
+    allow_origin_regex=r"https://.*\.onrender\.com",
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
     allow_credentials=False,
 )
 
-# Rate limiting + security headers
 app.add_middleware(SecurityMiddleware)
 
 # ---------------------------------------------------------------------------
-# /chat — original + secured
+# /chat
 # ---------------------------------------------------------------------------
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, req: Request) -> ChatResponse:
-    # Input validation (size, level, learner_id, history)
     validate_chat_request(request.message, request.history, request.level, request.learner_id)
 
-    # Free-tier daily prompt limit check
     profile = get_profile(request.learner_id)
     if profile.tier == "free":
         ip = _get_ip(req)
@@ -145,13 +143,11 @@ async def chat(request: ChatRequest, req: Request) -> ChatResponse:
     intent = classify_intent(request.message)
 
     from app.formatter import _detect_topic
-    topic   = _detect_topic(request.message)
-    gaps    = get_knowledge_gaps(request.learner_id)
-    is_gap  = topic in gaps if topic else False
+    topic  = _detect_topic(request.message)
+    gaps   = get_knowledge_gaps(request.learner_id)
+    is_gap = topic in gaps if topic else False
 
-    system_prompt = build_system_prompt(
-        intent, topic=topic, level=request.level, is_gap_topic=is_gap
-    )
+    system_prompt = build_system_prompt(intent, topic=topic, level=request.level, is_gap_topic=is_gap)
 
     messages = [{"role": m.role, "content": m.content} for m in request.history]
     messages.append({"role": "user", "content": request.message})
@@ -163,20 +159,17 @@ async def chat(request: ChatRequest, req: Request) -> ChatResponse:
         if any(k in exc_type for k in ("ratelimit", "timeout", "serviceunavailable")):
             logger.warning("LLM unavailable: %s", exc)
             raise HTTPException(status_code=503, detail="LLM unavailable, please retry")
-        # Never leak raw exception details to the client
         logger.error("LLM error: %s", exc)
         raise HTTPException(status_code=502, detail="AI service error. Please try again.")
 
-    response_dict   = format_response(content, intent)
-    detected_topic  = response_dict.get("topic") or topic
-    xp, badge       = record_lesson(request.learner_id, detected_topic or "", intent)
-    profile         = get_profile(request.learner_id)
+    response_dict  = format_response(content, intent)
+    detected_topic = response_dict.get("topic") or topic
+    xp, badge      = record_lesson(request.learner_id, detected_topic or "", intent)
+    profile        = get_profile(request.learner_id)
 
-    # Log activity for admin monitoring
     log_activity(request.learner_id, f"chat:{intent}",
                  f"topic={detected_topic or '—'} | msg={request.message[:80]}")
 
-    # Check if it's time to ask for a full survey
     ask_survey = increment_interaction(request.learner_id)
 
     return ChatResponse(
@@ -189,9 +182,8 @@ async def chat(request: ChatRequest, req: Request) -> ChatResponse:
         ask_survey=ask_survey,
     )
 
-
 # ---------------------------------------------------------------------------
-# /topics — original, unchanged
+# /topics  /health
 # ---------------------------------------------------------------------------
 
 @app.get("/topics")
@@ -199,40 +191,30 @@ async def topics() -> dict:
     return {"topics": get_topics()}
 
 
-# ---------------------------------------------------------------------------
-# /health — original, unchanged
-# ---------------------------------------------------------------------------
-
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok"}
 
 
 # ---------------------------------------------------------------------------
-# Auth routes — Google OAuth
+# Auth — Google OAuth
 # ---------------------------------------------------------------------------
-
 
 @app.get("/auth/config")
 async def auth_config() -> dict:
-    """Return public auth configuration — safe to expose to frontend."""
     return {
         "google_client_id": _os.getenv("GOOGLE_CLIENT_ID", ""),
-        "google_enabled": bool(_os.getenv("GOOGLE_CLIENT_ID", "")),
+        "google_enabled":   bool(_os.getenv("GOOGLE_CLIENT_ID", "")),
     }
 
 
 @app.get("/auth/google/login")
 async def auth_google_login() -> JSONResponse:
-    """
-    Redirect user to Google OAuth consent screen.
-    Uses the Authorization Code flow — works in all browsers without cookies/popups.
-    """
     from fastapi.responses import RedirectResponse
     import urllib.parse
 
-    client_id  = _os.getenv("GOOGLE_CLIENT_ID", "")
-    app_url    = _os.getenv("APP_URL", "https://mypytutor.onrender.com")
+    client_id    = _os.getenv("GOOGLE_CLIENT_ID", "")
+    app_url      = _os.getenv("APP_URL", "https://mypytutor.onrender.com")
     redirect_uri = f"{app_url}/auth/google/callback"
 
     if not client_id:
@@ -251,23 +233,18 @@ async def auth_google_login() -> JSONResponse:
 
 @app.get("/auth/google/callback")
 async def auth_google_callback(code: str = None, error: str = None) -> JSONResponse:
-    """
-    Handle Google OAuth callback with authorization code.
-    Exchanges code for tokens, verifies ID token, creates/updates user.
-    """
     from fastapi.responses import RedirectResponse
     import urllib.parse, json
 
-    app_url      = _os.getenv("APP_URL", "https://mypytutor.onrender.com")
-    client_id    = _os.getenv("GOOGLE_CLIENT_ID", "")
-    client_secret= _os.getenv("GOOGLE_CLIENT_SECRET", "")
-    redirect_uri = f"{app_url}/auth/google/callback"
+    app_url       = _os.getenv("APP_URL", "https://mypytutor.onrender.com")
+    client_id     = _os.getenv("GOOGLE_CLIENT_ID", "")
+    client_secret = _os.getenv("GOOGLE_CLIENT_SECRET", "")
+    redirect_uri  = f"{app_url}/auth/google/callback"
 
     if error or not code:
         msg = urllib.parse.quote(error or "Google sign-in was cancelled")
         return RedirectResponse(url=f"/?auth=error&msg={msg}")
 
-    # Exchange code for tokens
     try:
         import httpx as _httpx
         async with _httpx.AsyncClient(timeout=10) as hc:
@@ -285,13 +262,10 @@ async def auth_google_callback(code: str = None, error: str = None) -> JSONRespo
             tokens   = token_res.json()
             id_token = tokens.get("id_token", "")
 
-        # Verify the ID token
         payload = verify_google_token(id_token)
         user    = get_or_create_user(payload)
         token   = create_session_token(user.learner_id)
 
-        # Pass session token back to frontend via URL fragment
-        # Frontend reads it, stores in localStorage, then cleans URL
         import urllib.parse as _up
         user_data = _up.quote(json.dumps({
             "token":      token,
@@ -309,29 +283,21 @@ async def auth_google_callback(code: str = None, error: str = None) -> JSONRespo
 
 @app.post("/auth/google", response_model=AuthResponse)
 async def auth_google(request: GoogleAuthRequest) -> AuthResponse:
-    """Verify Google id_token from GSI One-Tap (kept for compatibility)."""
     payload = verify_google_token(request.credential)
     user    = get_or_create_user(payload)
     token   = create_session_token(user.learner_id)
     return AuthResponse(
-        token=token,
-        learner_id=user.learner_id,
-        name=user.name,
-        email=user.email,
-        picture=user.picture,
+        token=token, learner_id=user.learner_id,
+        name=user.name, email=user.email, picture=user.picture,
     )
 
 
 @app.get("/auth/me", response_model=AuthResponse)
 async def auth_me(user=Depends(require_user)) -> AuthResponse:
-    """Return the currently authenticated user (validates session token)."""
-    token = create_session_token(user.learner_id)   # refreshed token
+    token = create_session_token(user.learner_id)
     return AuthResponse(
-        token=token,
-        learner_id=user.learner_id,
-        name=user.name,
-        email=user.email,
-        picture=user.picture,
+        token=token, learner_id=user.learner_id,
+        name=user.name, email=user.email, picture=user.picture,
     )
 
 
@@ -341,7 +307,6 @@ async def auth_me(user=Depends(require_user)) -> AuthResponse:
 
 @app.post("/auth/signup")
 async def auth_signup(request: EmailSignUpRequest) -> dict:
-    """Register with email + password. Sends confirmation email."""
     pw_hash = hash_password(request.password)
     success, message = register_email(request.email, request.name, pw_hash)
     if not success:
@@ -351,23 +316,18 @@ async def auth_signup(request: EmailSignUpRequest) -> dict:
 
 @app.post("/auth/signin", response_model=AuthResponse)
 async def auth_signin(request: EmailSignInRequest) -> AuthResponse:
-    """Sign in with email + password."""
     success, user_data, message = sign_in_email(request.email, request.password)
     if not success or not user_data:
         raise HTTPException(status_code=401, detail=message)
     token = create_session_token(user_data["learner_id"])
     return AuthResponse(
-        token=token,
-        learner_id=user_data["learner_id"],
-        name=user_data["name"],
-        email=user_data["email"],
-        picture="",
+        token=token, learner_id=user_data["learner_id"],
+        name=user_data["name"], email=user_data["email"], picture="",
     )
 
 
 @app.get("/auth/confirm")
 async def auth_confirm(token: str) -> JSONResponse:
-    """Handle email confirmation link click — redirects to frontend with result."""
     from fastapi.responses import RedirectResponse
     success, message = confirm_email_token(token)
     status = "confirmed" if success else "error"
@@ -381,7 +341,6 @@ async def auth_confirm(token: str) -> JSONResponse:
 
 @app.post("/feedback/message")
 async def message_feedback(fb: MessageFeedback) -> dict:
-    """Record a thumbs up/down on a single AI response."""
     validate_learner_id(fb.learner_id)
     record_message_feedback(fb)
     return {"ok": True}
@@ -389,7 +348,6 @@ async def message_feedback(fb: MessageFeedback) -> dict:
 
 @app.post("/feedback/survey")
 async def survey_feedback(fb: SurveyFeedback) -> dict:
-    """Record a full satisfaction survey response."""
     validate_learner_id(fb.learner_id)
     record_survey(fb)
     return {"ok": True, "message": "Thank you for your feedback! 🙏"}
@@ -397,14 +355,11 @@ async def survey_feedback(fb: SurveyFeedback) -> dict:
 
 @app.get("/feedback/summary", response_model=FeedbackSummary)
 async def feedback_summary() -> FeedbackSummary:
-    """Return aggregated feedback stats (admin use)."""
     return get_summary()
-
 
 # ---------------------------------------------------------------------------
 # Certificate routes
 # ---------------------------------------------------------------------------
-
 
 @app.get("/certificate/{level}", response_class=HTMLResponse)
 async def get_certificate(
@@ -412,15 +367,9 @@ async def get_certificate(
     name: str = "Learner",
     learner_id: str = "default",
 ) -> HTMLResponse:
-    """
-    Generate and return a printable HTML certificate.
-    level: basic | advanced | executive
-    """
-    # Validate level
     if level not in CERT_CONFIGS:
-        raise HTTPException(status_code=400, detail="Invalid certificate level. Use: basic, advanced, or executive")
+        raise HTTPException(status_code=400, detail="Invalid certificate level.")
 
-    # Tier gate: check learner tier before issuing certificate
     profile = get_profile(learner_id)
     CERT_TIER_REQUIRED = {
         "basic":     {"tier1", "tier2", "tier3"},
@@ -429,36 +378,38 @@ async def get_certificate(
     }
     allowed_tiers = CERT_TIER_REQUIRED.get(level, set())
     if profile.tier not in allowed_tiers:
-        tier_names = {"basic": "Pro Learner (Tier 1)", "advanced": "Career Builder (Tier 2)", "executive": "Elite (Tier 3)"}
+        tier_names = {
+            "basic":     "Pro Learner (Tier 1)",
+            "advanced":  "Career Builder (Tier 2)",
+            "executive": "Elite (Tier 3)",
+        }
         return HTMLResponse(
             content=f"""<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Upgrade Required</title>
-            <style>body{{font-family:sans-serif;background:#0f1117;color:#e2e8f0;display:flex;align-items:center;justify-content:center;height:100vh;text-align:center;padding:20px}}
+            <style>body{{font-family:sans-serif;background:#0f1117;color:#e2e8f0;display:flex;
+            align-items:center;justify-content:center;height:100vh;text-align:center;padding:20px}}
             .box{{background:#1a202c;border:1px solid #2d3748;border-radius:14px;padding:40px;max-width:420px}}
             h2{{color:#f6ad55;margin-bottom:12px}}p{{color:#a0aec0;line-height:1.6;margin-bottom:20px}}
-            a{{background:#3182ce;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:700}}</style></head>
+            a{{background:#3182ce;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;
+            font-weight:700}}</style></head>
             <body><div class="box"><h2>🔒 Upgrade Required</h2>
-            <p>The <strong>{level.title()}</strong> Certificate requires the <strong>{tier_names.get(level, 'Premium')}</strong> plan.</p>
-            <p>Upgrade today to unlock certificates, unlimited prompts, and all courses.</p>
-            <a href="https://paystack.shop/pay/vt_re4d3h52" target="_blank">💳 Upgrade Now</a></div></body></html>""",
+            <p>The <strong>{level.title()}</strong> Certificate requires
+            <strong>{tier_names.get(level,'Premium')}</strong>.</p>
+            <p>Upgrade to unlock certificates, unlimited prompts, and all courses.</p>
+            <a href="https://paystack.shop/pay/vt_re4d3h52" target="_blank">💳 Upgrade Now</a>
+            </div></body></html>""",
             status_code=402,
         )
 
-    # Sanitise name — max 80 chars, strip HTML
     import re as _re
     clean_name = _re.sub(r'[<>&"\']', '', name).strip()[:80] or "Learner"
-
-    cert_id  = get_cert_id(learner_id, level)
+    cert_id    = get_cert_id(learner_id, level)
     log_certificate(cert_id, learner_id, clean_name, level)
-    html_doc = generate_certificate_html(
-        learner_name=clean_name,
-        level=level,
-        cert_id=cert_id,
-    )
+    html_doc   = generate_certificate_html(learner_name=clean_name, level=level, cert_id=cert_id)
     return HTMLResponse(content=html_doc)
 
 
 # ---------------------------------------------------------------------------
-# /progress/{learner_id}
+# /progress  /prompts/count
 # ---------------------------------------------------------------------------
 
 @app.get("/progress/{learner_id}", response_model=ProgressResponse)
@@ -480,26 +431,16 @@ async def get_progress(learner_id: str) -> ProgressResponse:
     )
 
 
-# ---------------------------------------------------------------------------
-# /prompts/count — return daily free prompt usage
-# ---------------------------------------------------------------------------
-
 @app.get("/prompts/count")
 async def prompts_count(learner_id: str = "default", req: Request = None) -> dict:
     validate_learner_id(learner_id)
-    ip = _get_ip(req) if req else "unknown"
+    ip    = _get_ip(req) if req else "unknown"
     count = get_free_prompt_count(learner_id, ip)
     profile = get_profile(learner_id)
-    return {
-        "used": count,
-        "limit": 10,
-        "tier": profile.tier,
-        "is_limited": profile.tier == "free",
-    }
-
+    return {"used": count, "limit": 10, "tier": profile.tier, "is_limited": profile.tier == "free"}
 
 # ---------------------------------------------------------------------------
-# /courses
+# Courses
 # ---------------------------------------------------------------------------
 
 @app.get("/courses")
@@ -509,43 +450,24 @@ async def list_courses(level: str = "beginner") -> dict:
     return {
         "level": level,
         "courses": [
-            {
-                "name": c.name,
-                "description": c.description,
-                "level": c.level,
-                "total_steps": len(c.steps),
-            }
+            {"name": c.name, "description": c.description,
+             "level": c.level, "total_steps": len(c.steps)}
             for c in courses
         ],
     }
 
-
-# ---------------------------------------------------------------------------
-# /course/start
-# ---------------------------------------------------------------------------
 
 @app.post("/course/start")
 async def start_course(learner_id: str, course_name: str) -> dict:
     validate_learner_id(learner_id)
     validate_course_name(course_name)
 
-    course = get_course(course_name)
+    course  = get_course(course_name)
     if not course:
         raise HTTPException(status_code=404, detail="Course not found.")
 
     profile = get_profile(learner_id)
 
-    # Tier-gate: free users cannot start courses
-    if profile.tier == "free":
-        return JSONResponse(
-            status_code=402,
-            content={
-                "error": "free_limit_reached",
-                "message": "Courses require a Premium plan. Upgrade to Pro Learner or higher to access all courses!",
-            },
-        )
-
-    # Tier 1 can only access beginner courses
     TIER1_COURSES = {
         "python-fundamentals", "python-strings",
         "python-collections", "python-control-flow",
@@ -553,22 +475,25 @@ async def start_course(learner_id: str, course_name: str) -> dict:
     TIER2_COURSES = TIER1_COURSES | {
         "python-functions-advanced", "python-oop", "python-modules-stdlib",
     }
+
+    if profile.tier == "free":
+        return JSONResponse(status_code=402, content={
+            "error": "upgrade_required",
+            "upgrade_url": "https://paystack.shop/pay/vt_re4d3h52",
+            "message": "Courses require a Premium plan. Upgrade to Pro Learner or higher!",
+        })
     if profile.tier == "tier1" and course_name not in TIER1_COURSES:
-        return JSONResponse(
-            status_code=402,
-            content={
-                "error": "free_limit_reached",
-                "message": "This course requires Career Builder (Tier 2) or Elite (Tier 3). Upgrade to unlock!",
-            },
-        )
+        return JSONResponse(status_code=402, content={
+            "error": "upgrade_required",
+            "upgrade_url": "https://paystack.shop/pay/vt_re4d3h52",
+            "message": "This course requires Career Builder (Tier 2) or Elite (Tier 3). Upgrade to unlock!",
+        })
     if profile.tier == "tier2" and course_name not in TIER2_COURSES:
-        return JSONResponse(
-            status_code=402,
-            content={
-                "error": "free_limit_reached",
-                "message": "This course requires the Elite plan (Tier 3). Upgrade to unlock all advanced courses!",
-            },
-        )
+        return JSONResponse(status_code=402, content={
+            "error": "upgrade_required",
+            "upgrade_url": "https://paystack.shop/pay/vt_re4d3h52",
+            "message": "This course requires the Elite plan (Tier 3). Upgrade to unlock all advanced courses!",
+        })
 
     profile.current_course      = course_name
     profile.current_course_step = 1
@@ -576,9 +501,9 @@ async def start_course(learner_id: str, course_name: str) -> dict:
     from app.progress import save_profile
     save_profile(profile)
 
-    step = course.steps[0]
+    step          = course.steps[0]
     system_prompt = build_system_prompt(step.intent, topic=step.title, level=profile.level)
-    messages = [{"role": "user", "content": f"Teach me: {step.description}"}]
+    messages      = [{"role": "user", "content": f"Teach me: {step.description}"}]
 
     try:
         content = get_completion(system_prompt, messages)
@@ -587,17 +512,10 @@ async def start_course(learner_id: str, course_name: str) -> dict:
         raise HTTPException(status_code=502, detail="AI service error. Please try again.")
 
     return {
-        "course": course_name,
-        "step": step.step,
-        "title": step.title,
-        "total_steps": len(course.steps),
-        "content": content,
+        "course": course_name, "step": step.step,
+        "title": step.title, "total_steps": len(course.steps), "content": content,
     }
 
-
-# ---------------------------------------------------------------------------
-# /course/next
-# ---------------------------------------------------------------------------
 
 @app.post("/course/next")
 async def next_course_step(learner_id: str) -> dict:
@@ -612,8 +530,8 @@ async def next_course_step(learner_id: str) -> dict:
         raise HTTPException(status_code=404, detail="Course not found.")
 
     advance_course(learner_id)
-    profile   = get_profile(learner_id)
-    step_idx  = profile.current_course_step - 1
+    profile  = get_profile(learner_id)
+    step_idx = profile.current_course_step - 1
 
     if step_idx >= len(course.steps):
         from app.progress import _award_badge, save_profile, XP_PROJECT
@@ -624,16 +542,14 @@ async def next_course_step(learner_id: str) -> dict:
         profile.current_course_step = 0
         save_profile(profile)
         return {
-            "completed": True,
-            "course": course.name,
-            "xp_gained": XP_PROJECT,
-            "badge": badge,
+            "completed": True, "course": course.name,
+            "xp_gained": XP_PROJECT, "badge": badge,
             "content": f"🎉 Congratulations! You've completed **{course.name}**. You earned {XP_PROJECT} XP!",
         }
 
-    step = course.steps[step_idx]
+    step          = course.steps[step_idx]
     system_prompt = build_system_prompt(step.intent, topic=step.title, level=profile.level)
-    messages = [{"role": "user", "content": f"Teach me: {step.description}"}]
+    messages      = [{"role": "user", "content": f"Teach me: {step.description}"}]
 
     try:
         content = get_completion(system_prompt, messages)
@@ -642,49 +558,34 @@ async def next_course_step(learner_id: str) -> dict:
         raise HTTPException(status_code=502, detail="AI service error. Please try again.")
 
     xp, badge = record_lesson(learner_id, step.title, step.intent)
-
     return {
-        "completed": False,
-        "course": course.name,
-        "step": step.step,
-        "title": step.title,
-        "total_steps": len(course.steps),
-        "content": content,
-        "xp_gained": xp,
-        "badge": badge,
+        "completed": False, "course": course.name,
+        "step": step.step, "title": step.title,
+        "total_steps": len(course.steps), "content": content,
+        "xp_gained": xp, "badge": badge,
     }
 
-
 # ---------------------------------------------------------------------------
-# /quiz/generate
+# Quiz & Exercise
 # ---------------------------------------------------------------------------
 
 @app.post("/quiz/generate", response_model=QuizResponse)
 async def generate_quiz(request: QuizRequest) -> QuizResponse:
-    # Pydantic already validated lengths; validate topic string safety
     validate_topic(request.topic)
-
     system_prompt = build_system_prompt("quiz", topic=request.topic, level=request.level)
     messages = [{"role": "user", "content": f"Generate a quiz question about: {request.topic}"}]
-
     try:
         content = get_completion(system_prompt, messages)
     except Exception as exc:
         logger.error("Quiz generate LLM error: %s", exc)
         raise HTTPException(status_code=502, detail="AI service error. Please try again.")
-
     question, options = _parse_quiz(content)
     return QuizResponse(question=question, options=options, topic=request.topic, level=request.level)
 
 
-# ---------------------------------------------------------------------------
-# /quiz/answer
-# ---------------------------------------------------------------------------
-
 @app.post("/quiz/answer", response_model=QuizAnswerResponse)
 async def evaluate_quiz_answer(request: QuizAnswerRequest) -> QuizAnswerResponse:
     validate_topic(request.topic)
-
     system_prompt = build_system_prompt("quiz_eval", topic=request.topic, level=request.level)
     messages = [{
         "role": "user",
@@ -694,49 +595,36 @@ async def evaluate_quiz_answer(request: QuizAnswerRequest) -> QuizAnswerResponse
             "Evaluate this answer."
         ),
     }]
-
     try:
         content = get_completion(system_prompt, messages)
     except Exception as exc:
         logger.error("Quiz answer LLM error: %s", exc)
         raise HTTPException(status_code=502, detail="AI service error. Please try again.")
-
-    correct  = "correct: true" in content.lower()
-    score    = 100 if correct else 0
-    xp, _    = record_quiz(request.learner_id, request.topic, score)
-
+    correct = "correct: true" in content.lower()
+    score   = 100 if correct else 0
+    xp, _   = record_quiz(request.learner_id, request.topic, score)
     return QuizAnswerResponse(correct=correct, explanation=content, score=score, xp_gained=xp)
 
-
-# ---------------------------------------------------------------------------
-# /exercise/generate
-# ---------------------------------------------------------------------------
 
 @app.post("/exercise/generate")
 async def generate_exercise(learner_id: str, topic: str) -> dict:
     validate_learner_id(learner_id)
     validate_topic(topic)
-
     profile  = get_profile(learner_id)
     gaps     = get_knowledge_gaps(learner_id)
     is_gap   = topic in gaps
-
-    system_prompt = build_system_prompt(
-        "exercise", topic=topic, level=profile.level, is_gap_topic=is_gap
-    )
+    system_prompt = build_system_prompt("exercise", topic=topic, level=profile.level, is_gap_topic=is_gap)
     messages = [{"role": "user", "content": f"Give me a Python exercise on: {topic}"}]
-
     try:
         content = get_completion(system_prompt, messages)
     except Exception as exc:
         logger.error("Exercise LLM error: %s", exc)
         raise HTTPException(status_code=502, detail="AI service error. Please try again.")
-
     return {"topic": topic, "level": profile.level, "is_gap_topic": is_gap, "content": content}
 
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Helper
 # ---------------------------------------------------------------------------
 
 def _parse_quiz(raw: str) -> tuple[str, list[str]]:
@@ -753,16 +641,111 @@ def _parse_quiz(raw: str) -> tuple[str, list[str]]:
         options = ["A) See full response", "B) —", "C) —", "D) —"]
     return question, options
 
+# ---------------------------------------------------------------------------
+# ITEM 4 — Paystack webhook (auto-upgrade tier on charge.success)
+# ---------------------------------------------------------------------------
+
+# Tier map: Paystack plan name (lowercase) → internal tier
+_PAYSTACK_PLAN_TIER: dict[str, str] = {
+    "pro learner":   "tier1",
+    "tier1":         "tier1",
+    "tier 1":        "tier1",
+    "career builder":"tier2",
+    "tier2":         "tier2",
+    "tier 2":        "tier2",
+    "elite":         "tier3",
+    "tier3":         "tier3",
+    "tier 3":        "tier3",
+    # subscription plan codes (set these in Paystack dashboard metadata)
+    "plan_tier1":    "tier1",
+    "plan_tier2":    "tier2",
+    "plan_tier3":    "tier3",
+}
+
+
+@app.post("/webhooks/paystack")
+async def paystack_webhook(request: Request) -> dict:
+    """
+    Paystack sends a POST with a JSON body and an X-Paystack-Signature header.
+    We verify the HMAC-SHA512 signature using PAYSTACK_SECRET_KEY, then
+    on charge.success we upgrade the user's tier automatically.
+    """
+    secret_key = _os.getenv("PAYSTACK_SECRET_KEY", "")
+    body_bytes  = await request.body()
+
+    # Verify signature
+    if secret_key:
+        sig_header = request.headers.get("x-paystack-signature", "")
+        expected   = hmac.new(
+            secret_key.encode(), body_bytes, hashlib.sha512
+        ).hexdigest()
+        if not hmac.compare_digest(sig_header, expected):
+            logger.warning("Paystack webhook signature mismatch — ignored")
+            raise HTTPException(status_code=400, detail="Invalid signature")
+
+    import json as _json
+    try:
+        event = _json.loads(body_bytes)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    event_type = event.get("event", "")
+    data       = event.get("data", {})
+
+    if event_type == "charge.success":
+        customer   = data.get("customer", {})
+        email      = customer.get("email", "").lower()
+        meta       = data.get("metadata", {}) or {}
+        amount_kob = data.get("amount", 0)           # Paystack amounts are in kobo
+        amount_ngn = amount_kob / 100
+
+        # Determine tier from metadata or amount
+        plan_meta = str(meta.get("plan", "") or meta.get("tier", "")).lower()
+        tier      = _PAYSTACK_PLAN_TIER.get(plan_meta)
+
+        if not tier:
+            # Fall back: infer tier from amount
+            if amount_ngn >= 18000:
+                tier = "tier3"
+            elif amount_ngn >= 8000:
+                tier = "tier2"
+            elif amount_ngn >= 4000:
+                tier = "tier1"
+
+        if tier and email:
+            # Find learner_id from email account
+            from app.db import load_email_account
+            acct = load_email_account(email)
+            learner_id = acct["learner_id"] if acct else email
+
+            # Upgrade in SQLite (persistent) + memory cache
+            upgrade_tier_db(learner_id, tier)
+            from app.progress import get_profile as _gp, save_profile as _sp
+            p      = _gp(learner_id)
+            p.tier = tier
+            _sp(p)
+
+            # Record payment in admin
+            plan_label = {
+                "tier1": "Pro Learner (₦5,000/mo)",
+                "tier2": "Career Builder (₦10,000/mo)",
+                "tier3": "Elite (₦20,000/mo)",
+            }.get(tier, tier)
+            add_payment(email, customer.get("name", email), amount_ngn, plan_label, "paystack")
+            log_activity(learner_id, "payment:webhook",
+                         f"Paystack charge.success | tier={tier} | ₦{amount_ngn:.0f}")
+            logger.info("Paystack webhook: upgraded %s → %s", email, tier)
+
+    return {"ok": True}
 
 # ---------------------------------------------------------------------------
-# Global error handlers — never expose internals
+# Global error handlers
 # ---------------------------------------------------------------------------
 
 @app.exception_handler(RequestValidationError)
 async def request_validation_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
-    """Catch Pydantic 422 errors and return a clean single-string message."""
     try:
-        first = exc.errors()[0]
+        first  = exc.errors()[0]
         field  = " → ".join(str(loc) for loc in first.get("loc", []) if loc != "body")
         msg    = first.get("msg", "Invalid value")
         detail = f"{field}: {msg}" if field else msg
@@ -770,46 +753,48 @@ async def request_validation_handler(request: Request, exc: RequestValidationErr
         detail = "Invalid request data"
     return JSONResponse(status_code=422, content={"error": detail})
 
+
 @app.exception_handler(400)
 async def bad_request_handler(request: Request, exc: Exception) -> JSONResponse:
-    # Pass through the real detail message if it's an HTTPException
-    detail = getattr(exc, 'detail', None)
+    detail = getattr(exc, "detail", None)
     if isinstance(detail, str):
         return JSONResponse(status_code=400, content={"error": detail})
     return JSONResponse(status_code=400, content={"error": "Bad request"})
+
 
 @app.exception_handler(404)
 async def not_found_handler(request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=404, content={"error": "Not found"})
 
+
 @app.exception_handler(405)
 async def method_not_allowed_handler(request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=405, content={"error": "Method not allowed"})
 
+
 @app.exception_handler(422)
 async def validation_error_handler(request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=422, content={"error": "Invalid request data"})
+
 
 @app.exception_handler(500)
 async def internal_error_handler(request: Request, exc: Exception) -> JSONResponse:
     logger.error("Unhandled error: %s", exc)
     return JSONResponse(status_code=500, content={"error": "Internal server error"})
 
+
 @app.exception_handler(502)
 async def bad_gateway_handler(request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=502, content={"error": "AI service error. Please try again."})
+
 
 @app.exception_handler(503)
 async def service_unavailable_handler(request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(status_code=503, content={"error": "LLM unavailable, please retry"})
 
-
 # ---------------------------------------------------------------------------
-# Admin routes — protected by admin token
+# Admin Pydantic models
 # ---------------------------------------------------------------------------
-
-from pydantic import BaseModel as _BM
-
 
 class _AdminLogin(_BM):
     email:    str
@@ -846,6 +831,10 @@ def _require_admin(request: Request) -> str:
     return token
 
 
+# ---------------------------------------------------------------------------
+# Admin routes
+# ---------------------------------------------------------------------------
+
 @app.post("/admin/login")
 async def admin_login(body: _AdminLogin) -> dict:
     if not verify_admin_login(body.email, body.password):
@@ -858,22 +847,28 @@ async def admin_login(body: _AdminLogin) -> dict:
 async def admin_dashboard(request: Request) -> dict:
     _require_admin(request)
     from app.progress import _store as learner_store
-    from app.feedback import get_summary
     from app.security import _daily_prompt_store
-    import datetime
 
-    today = datetime.date.today().isoformat()
+    today        = datetime.date.today().isoformat()
     active_today = sum(1 for k, (d, c) in _daily_prompt_store.items() if d == today and c > 0)
 
+    # Merge memory store with SQLite confirmed emails for accurate user count
+    try:
+        db_emails = get_all_confirmed_emails()
+        email_count = len(db_emails)
+    except Exception:
+        email_count = 0
+
+    total_users = max(len(learner_store), email_count)
+
     return {
-        "users": {
-            "total":         len(learner_store),
-            "active_today":  active_today,
+        "users": {"total": total_users, "active_today": active_today},
+        "users_by_tier": {
+            t: sum(1 for p in learner_store.values() if p.tier == t)
+            for t in ["free", "tier1", "tier2", "tier3"]
         },
-        "users_by_tier": {t: sum(1 for p in learner_store.values() if p.tier == t)
-                          for t in ["free","tier1","tier2","tier3"]},
-        "revenue":    get_revenue_summary(),
-        "payments":   len(get_payments()),
+        "revenue":      get_revenue_summary(),
+        "payments":     len(get_payments()),
         "certificates": len(get_certificates()),
         "tasks": {
             "total":       len(get_tasks()),
@@ -881,30 +876,146 @@ async def admin_dashboard(request: Request) -> dict:
             "in_progress": sum(1 for t in get_tasks() if t.status == "in_progress"),
             "done":        sum(1 for t in get_tasks() if t.status == "done"),
         },
-        "feedback": get_summary().model_dump(),
+        "feedback":  get_summary().model_dump(),
         "team_size": len(get_team()),
     }
 
-
 @app.get("/admin/users")
-async def admin_users(request: Request) -> dict:
+async def admin_list_users(request: Request) -> dict:
     _require_admin(request)
-    from app.progress import _store as learner_store
-    from app.email_auth import _confirmed
+    from app.progress import _store as ls
+
+    # Pull all confirmed email accounts from SQLite (persistent across restarts)
+    try:
+        db_emails = get_all_confirmed_emails()
+    except Exception:
+        from app.email_auth import _confirmed
+        db_emails = [
+            {"email": e, "name": u["name"], "learner_id": u["learner_id"]}
+            for e, u in _confirmed.items()
+        ]
+
+    # Build a learner_id → email/name lookup for enriching profiles
+    id_to_email = {r["learner_id"]: r for r in db_emails}
+
     users = []
-    for lid, profile in learner_store.items():
+    for lid, profile in ls.items():
+        info = id_to_email.get(lid, {})
         users.append({
-            "learner_id":   lid,
-            "tier":         profile.tier,
-            "level":        profile.level,
-            "xp":           profile.xp,
-            "topics_seen":  len(profile.topics_seen),
-            "courses_done": len(profile.completed_projects),
-            "badges":       len(profile.badges),
+            "learner_id":    lid,
+            "email":         info.get("email", profile.email or ""),
+            "name":          info.get("name", profile.display_name or ""),
+            "tier":          profile.tier,
+            "level":         profile.level,
+            "xp":            profile.xp,
+            "topics_seen":   len(profile.topics_seen),
+            "courses_done":  len(profile.completed_projects),
+            "badges":        len(profile.badges),
+            "current_course": profile.current_course,
         })
-    email_users = [{"email": e, "name": u["name"], "type": "email"} for e, u in _confirmed.items()]
-    return {"learner_profiles": users, "email_accounts": email_users,
-            "total": len(users), "email_signups": len(email_users)}
+
+    # Include email accounts not yet in memory (signed up but not chatted)
+    seen_ids = {u["learner_id"] for u in users}
+    for r in db_emails:
+        if r["learner_id"] not in seen_ids:
+            users.append({
+                "learner_id": r["learner_id"],
+                "email":      r["email"],
+                "name":       r["name"],
+                "tier":       "free",
+                "level":      "beginner",
+                "xp":         0,
+                "topics_seen": 0,
+                "courses_done": 0,
+                "badges":      0,
+                "current_course": None,
+            })
+
+    return {
+        "learner_profiles": users,
+        "email_accounts":   [{"email": r["email"], "name": r["name"],
+                               "learner_id": r["learner_id"], "type": "email"}
+                              for r in db_emails],
+        "total":        len(users),
+        "email_signups": len(db_emails),
+    }
+
+
+@app.get("/admin/users/{learner_id}")
+async def admin_user_detail(learner_id: str, request: Request) -> dict:
+    _require_admin(request)
+    validate_learner_id(learner_id)
+    from app.progress import _store as ls
+    from app.security import _daily_prompt_store
+
+    p = ls.get(learner_id)
+    if not p:
+        # Try loading from SQLite
+        from app.db import load_profile
+        row = load_profile(learner_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="User not found.")
+        p = get_profile(learner_id)
+
+    today         = datetime.date.today().isoformat()
+    entry         = _daily_prompt_store.get(learner_id)
+    prompts_today = entry[1] if entry and entry[0] == today else 0
+
+    return {
+        "learner_id":     learner_id,
+        "email":          p.email,
+        "name":           p.display_name,
+        "tier":           p.tier,
+        "level":          p.level,
+        "xp":             p.xp,
+        "badges":         p.badges,
+        "topics_seen":    p.topics_seen,
+        "prompts_today":  prompts_today,
+        "current_course": p.current_course,
+        "course_step":    p.current_course_step,
+        "courses_done":   p.completed_projects,
+        "topic_progress": {
+            k: {"lessons": v.lessons_completed,
+                "exercises_passed": v.exercises_passed,
+                "exercises_attempted": v.exercises_attempted,
+                "weak": v.weak}
+            for k, v in p.topic_progress.items()
+        },
+    }
+
+# ITEM 1 — set-tier now writes to both memory AND SQLite via upgrade_tier_db
+@app.post("/admin/users/{learner_id}/set-tier")
+async def admin_set_tier(learner_id: str, request: Request) -> dict:
+    _require_admin(request)
+    validate_learner_id(learner_id)
+    body = await request.json()
+    tier = body.get("tier", "free")
+    if tier not in ("free", "tier1", "tier2", "tier3"):
+        raise HTTPException(status_code=400, detail="Invalid tier.")
+
+    from app.progress import _store as ls, save_profile as _sp
+    # Ensure profile is in memory
+    p      = get_profile(learner_id)   # loads from SQLite if not in cache
+    p.tier = tier
+    _sp(p)                             # saves to memory + SQLite
+    upgrade_tier_db(learner_id, tier)  # belt-and-suspenders: direct SQL UPDATE
+    log_activity(learner_id, "admin:set-tier", f"tier set to {tier}")
+    return {"ok": True, "learner_id": learner_id, "tier": tier}
+
+
+@app.post("/admin/users/{learner_id}/terminate")
+async def admin_terminate_user(learner_id: str, request: Request) -> dict:
+    _require_admin(request)
+    validate_learner_id(learner_id)
+    from app.progress import save_profile as _sp
+    p = get_profile(learner_id)
+    p.tier               = "free"
+    p.current_course     = None
+    p.current_course_step= 0
+    _sp(p)
+    upgrade_tier_db(learner_id, "free")
+    log_activity(learner_id, "admin:terminate", "subscription terminated by admin")
+    return {"ok": True, "message": f"Subscription terminated for {learner_id}"}
 
 
 @app.get("/admin/payments")
@@ -943,6 +1054,12 @@ async def admin_confirm_payment(payment_id: str, request: Request) -> dict:
 @app.get("/admin/certificates")
 async def admin_certificates(request: Request) -> dict:
     _require_admin(request)
+    # Prefer SQLite persistent store; fall back to in-memory
+    try:
+        certs_raw = get_certificates_db()
+        return {"certificates": certs_raw, "total": len(certs_raw)}
+    except Exception:
+        pass
     certs = get_certificates()
     return {
         "certificates": [
@@ -954,17 +1071,16 @@ async def admin_certificates(request: Request) -> dict:
         "total": len(certs),
     }
 
-
 @app.get("/admin/team")
 async def admin_team(request: Request) -> dict:
     _require_admin(request)
     return {
         "members": [{"email": m.email, "name": m.name, "role": m.role, "status": m.status}
                     for m in get_team()],
-        "tasks": [{"id": t.id, "title": t.title, "assigned_to": t.assigned_to,
-                   "priority": t.priority, "status": t.status, "due_date": t.due_date,
-                   "description": t.description}
-                  for t in get_tasks()],
+        "tasks":   [{"id": t.id, "title": t.title, "assigned_to": t.assigned_to,
+                     "priority": t.priority, "status": t.status,
+                     "due_date": t.due_date, "description": t.description}
+                    for t in get_tasks()],
     }
 
 
@@ -972,16 +1088,17 @@ async def admin_team(request: Request) -> dict:
 async def admin_invite_team(body: _TeamInvite, request: Request) -> dict:
     _require_admin(request)
     m = invite_team_member(body.email, body.name, body.role)
-    # Send invite email if configured
     try:
         from app.email_auth import _send_email, APP_URL
         html = f"""<div style="font-family:Arial;background:#0f1117;color:#e2e8f0;padding:32px;">
         <h2 style="color:#63b3ed;">🐍 MyPy Tutor — Team Invitation</h2>
         <p>Hi {body.name},</p>
         <p>You've been invited to join the MyPy Tutor team as <strong>{body.role}</strong>.</p>
-        <a href="{APP_URL}" style="background:#3182ce;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">Access Platform</a>
-        <p style="color:#4a5568;margin-top:20px;font-size:0.8rem;">MyPy Tutor · Teamsamikoko Global Academy</p></div>"""
-        _send_email(body.email, "You're invited to join MyPy Tutor team!", html,
+        <a href="{APP_URL}" style="background:#3182ce;color:#fff;padding:12px 24px;border-radius:8px;
+        text-decoration:none;font-weight:bold;">Access Platform</a>
+        <p style="color:#4a5568;margin-top:20px;font-size:0.8rem;">MyPy Tutor · Teamsamikoko Global Academy</p>
+        </div>"""
+        _send_email(body.email, "You're invited to join the MyPy Tutor team!", html,
                     f"Hi {body.name}, you've been invited to the MyPy Tutor team as {body.role}.")
     except Exception as e:
         logger.warning("Team invite email failed: %s", e)
@@ -992,17 +1109,19 @@ async def admin_invite_team(body: _TeamInvite, request: Request) -> dict:
 async def admin_create_task(body: _TaskCreate, request: Request) -> dict:
     _require_admin(request)
     t = create_task(body.title, body.description, body.assigned_to, body.priority, body.due_date)
-    # Notify assignee by email
     try:
         from app.email_auth import _send_email, APP_URL
         html = f"""<div style="font-family:Arial;background:#0f1117;color:#e2e8f0;padding:32px;">
         <h2 style="color:#f6ad55;">📋 New Task Assigned</h2>
         <p><strong>{body.title}</strong></p>
         <p style="color:#a0aec0;">{body.description}</p>
-        <p>Priority: <strong style="color:{'#fc8181' if body.priority=='urgent' else '#f6ad55'}">{body.priority.upper()}</strong></p>
+        <p>Priority: <strong style="color:{'#fc8181' if body.priority=='urgent' else '#f6ad55'}">
+        {body.priority.upper()}</strong></p>
         {"<p>Due: " + body.due_date + "</p>" if body.due_date else ""}
-        <a href="{APP_URL}" style="background:#3182ce;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;">View Task</a>
-        <p style="color:#4a5568;margin-top:20px;font-size:0.8rem;">MyPy Tutor · Teamsamikoko Global Academy</p></div>"""
+        <a href="{APP_URL}" style="background:#3182ce;color:#fff;padding:12px 24px;border-radius:8px;
+        text-decoration:none;font-weight:bold;">View Task</a>
+        <p style="color:#4a5568;margin-top:20px;font-size:0.8rem;">MyPy Tutor · Teamsamikoko Global Academy</p>
+        </div>"""
         _send_email(body.assigned_to, f"Task assigned: {body.title}", html,
                     f"New task: {body.title}\n{body.description}\nPriority: {body.priority}")
     except Exception as e:
@@ -1024,133 +1143,27 @@ async def admin_update_task(task_id: str, status: str, request: Request) -> dict
 @app.get("/admin/feedback")
 async def admin_feedback_data(request: Request) -> dict:
     _require_admin(request)
-    from app.feedback import _ratings, _surveys, get_summary
+    from app.feedback import _ratings, _surveys, get_summary as _gs
     return {
-        "summary": get_summary().model_dump(),
+        "summary": _gs().model_dump(),
         "recent_ratings": [
-            {"learner_id": r.learner_id, "rating": r.rating, "topic": r.topic,
-             "comment": r.comment, "intent": r.intent}
+            {"learner_id": r.learner_id, "rating": r.rating,
+             "topic": r.topic, "comment": r.comment, "intent": r.intent}
             for r in list(reversed(_ratings))[:20]
         ],
         "recent_surveys": [
-            {"learner_id": s.learner_id, "overall": s.overall, "clarity": s.clarity,
-             "helpfulness": s.helpfulness, "suggestion": s.suggestion,
-             "would_recommend": s.would_recommend}
+            {"learner_id": s.learner_id, "overall": s.overall,
+             "clarity": s.clarity, "helpfulness": s.helpfulness,
+             "suggestion": s.suggestion, "would_recommend": s.would_recommend}
             for s in list(reversed(_surveys))[:20]
         ],
     }
 
 
-# Add datetime import needed above
-import datetime
-
-
-# ---------------------------------------------------------------------------
-# Additional admin API routes
-# ---------------------------------------------------------------------------
-
-@app.get("/admin/users")
-async def admin_list_users(request: Request) -> dict:
-    _require_admin(request)
-    from app.progress import _store as ls
-    from app.db import get_all_confirmed_emails
-    # Load all email accounts from SQLite (persistent)
-    try:
-        db_emails = get_all_confirmed_emails()
-    except Exception:
-        from app.email_auth import _confirmed
-        db_emails = [{"email": e, "name": u["name"], "learner_id": u["learner_id"]}
-                     for e, u in _confirmed.items()]
-
-    users = []
-    for lid, profile in ls.items():
-        users.append({
-            "learner_id":    lid,
-            "tier":          profile.tier,
-            "level":         profile.level,
-            "xp":            profile.xp,
-            "topics_seen":   len(profile.topics_seen),
-            "courses_done":  len(profile.completed_projects),
-            "badges":        len(profile.badges),
-            "current_course": profile.current_course,
-        })
-    email_users = [{"email": r["email"], "name": r["name"],
-                    "learner_id": r["learner_id"], "type": "email"}
-                   for r in db_emails]
-    return {"learner_profiles": users, "email_accounts": email_users,
-            "total": len(users), "email_signups": len(email_users)}
-
-@app.get("/admin/users/{learner_id}")
-async def admin_user_detail(learner_id: str, request: Request) -> dict:
-    _require_admin(request)
-    validate_learner_id(learner_id)
-    from app.progress import _store as ls
-    from app.security import _daily_prompt_store
-    p = ls.get(learner_id)
-    if not p:
-        raise HTTPException(status_code=404, detail="User not found.")
-    today = datetime.date.today().isoformat()
-    entry = _daily_prompt_store.get(learner_id)
-    prompts_today = entry[1] if entry and entry[0] == today else 0
-    return {
-        "learner_id":    learner_id,
-        "tier":          p.tier,
-        "level":         p.level,
-        "xp":            p.xp,
-        "badges":        p.badges,
-        "topics_seen":   p.topics_seen,
-        "prompts_today": prompts_today,
-        "current_course": p.current_course,
-        "course_step":   p.current_course_step,
-        "courses_done":  p.completed_projects,
-        "topic_progress": {k: {"lessons": v.lessons_completed,
-                               "exercises_passed": v.exercises_passed,
-                               "exercises_attempted": v.exercises_attempted,
-                               "weak": v.weak}
-                           for k, v in p.topic_progress.items()},
-    }
-
-
-@app.post("/admin/users/{learner_id}/set-tier")
-async def admin_set_tier(learner_id: str, request: Request) -> dict:
-    _require_admin(request)
-    validate_learner_id(learner_id)
-    body = await request.json()
-    tier = body.get("tier", "free")
-    if tier not in ("free", "tier1", "tier2", "tier3"):
-        raise HTTPException(status_code=400, detail="Invalid tier.")
-    from app.progress import _store as ls, save_profile
-    p = ls.get(learner_id)
-    if not p:
-        raise HTTPException(status_code=404, detail="User not found.")
-    p.tier = tier
-    save_profile(p)
-    log_activity(learner_id, "admin:set-tier", f"tier set to {tier}")
-    return {"ok": True, "learner_id": learner_id, "tier": tier}
-
-
-@app.post("/admin/users/{learner_id}/terminate")
-async def admin_terminate_user(learner_id: str, request: Request) -> dict:
-    _require_admin(request)
-    validate_learner_id(learner_id)
-    from app.progress import _store as ls, save_profile
-    p = ls.get(learner_id)
-    if not p:
-        raise HTTPException(status_code=404, detail="User not found.")
-    p.tier = "free"
-    p.current_course = None
-    p.current_course_step = 0
-    save_profile(p)
-    log_activity(learner_id, "admin:terminate", "subscription terminated by admin")
-    return {"ok": True, "message": f"Subscription terminated for {learner_id}"}
-
-
 @app.get("/admin/activity")
 async def admin_activity(request: Request) -> dict:
     _require_admin(request)
-    # Load from SQLite for persistent history, fall back to memory
     try:
-        from app.db import get_activity_log
         activity = get_activity_log(200)
     except Exception:
         from app.admin import _activity_log
@@ -1161,10 +1174,10 @@ async def admin_activity(request: Request) -> dict:
 @app.post("/admin/announce")
 async def admin_announce(request: Request) -> dict:
     _require_admin(request)
-    body = await request.json()
-    target   = body.get("target", "all")
-    subject  = body.get("subject", "")
-    message  = body.get("message", "")
+    body    = await request.json()
+    target  = body.get("target", "all")
+    subject = body.get("subject", "")
+    message = body.get("message", "")
     if not subject or not message:
         raise HTTPException(status_code=400, detail="Subject and message required.")
     from app.admin import send_announcement
@@ -1175,21 +1188,21 @@ async def admin_announce(request: Request) -> dict:
 @app.get("/admin/files")
 async def admin_files_list(request: Request) -> dict:
     _require_admin(request)
-    import os as _os
+    import os as _os2
     files = []
-    for root, dirs, fnames in _os.walk("."):
-        dirs[:] = [d for d in dirs if d not in ['.venv','__pycache__','.git','.hypothesis']]
+    for root, dirs, fnames in _os2.walk("."):
+        dirs[:] = [d for d in dirs if d not in ['.venv', '__pycache__', '.git', '.hypothesis']]
         for f in fnames:
-            path = _os.path.join(root, f).replace("\\","/").lstrip("./")
-            if any(path.startswith(p) for p in ['app/','static/','requirements']):
-                size = _os.path.getsize(_os.path.join(root, f))
+            path = _os2.path.join(root, f).replace("\\", "/").lstrip("./")
+            if any(path.startswith(p) for p in ['app/', 'static/', 'requirements']):
+                size = _os2.path.getsize(_os2.path.join(root, f))
                 files.append({"path": path, "size": size})
     files.sort(key=lambda x: x["path"])
     return {"files": files, "total": len(files)}
 
 
 # ---------------------------------------------------------------------------
-# Static files — mounted LAST
+# Static files — mounted LAST so API routes take priority
 # ---------------------------------------------------------------------------
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

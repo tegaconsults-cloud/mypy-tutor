@@ -147,7 +147,7 @@ def load_profile(learner_id: str):
 
 
 def save_profile_db(learner_id: str, profile_dict: dict) -> None:
-    """Upsert a learner profile to SQLite."""
+    """Upsert a learner profile to SQLite — persists ALL fields including tier."""
     with get_db() as conn:
         conn.execute("""
         INSERT INTO learner_profiles
@@ -156,8 +156,11 @@ def save_profile_db(learner_id: str, profile_dict: dict) -> None:
            daily_prompts_used,last_prompt_date,updated_at)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,unixepoch())
         ON CONFLICT(learner_id) DO UPDATE SET
-          tier=excluded.tier, level=excluded.level, xp=excluded.xp,
-          badges=excluded.badges, topics_seen=excluded.topics_seen,
+          tier=excluded.tier,
+          level=excluded.level,
+          xp=excluded.xp,
+          badges=excluded.badges,
+          topics_seen=excluded.topics_seen,
           topic_progress=excluded.topic_progress,
           current_course=excluded.current_course,
           course_step=excluded.course_step,
@@ -179,6 +182,38 @@ def save_profile_db(learner_id: str, profile_dict: dict) -> None:
             profile_dict.get("daily_prompts_used", 0),
             profile_dict.get("last_prompt_date", ""),
         ))
+
+
+def upgrade_tier_db(learner_id: str, tier: str) -> None:
+    """Upgrade a specific learner's tier — called on payment confirmation."""
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE learner_profiles SET tier=?, updated_at=unixepoch() WHERE learner_id=?",
+            (tier, learner_id)
+        )
+        # If profile doesn't exist yet, create it with the tier
+        conn.execute("""
+        INSERT OR IGNORE INTO learner_profiles (learner_id, tier)
+        VALUES (?, ?)
+        """, (learner_id, tier))
+
+
+def get_all_learners() -> list[dict]:
+    """Return all learner profiles from SQLite for admin use."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM learner_profiles ORDER BY updated_at DESC"
+        ).fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        for field in ('badges', 'topics_seen', 'completed_projects'):
+            try:
+                d[field] = json.loads(d.get(field) or '[]')
+            except Exception:
+                d[field] = []
+        result.append(d)
+    return result
 
 
 # ---------------------------------------------------------------------------
