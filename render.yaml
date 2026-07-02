@@ -25,4 +25,6 @@ services:
         sync: false          # e.g. MyPy Tutor <your-gmail@gmail.com>
       - key: APP_URL
         value: https://mypytutor.onrender.com
+      - key: PAYSTACK_SECRET_KEY
+        sync: false          # Paystack secret key — set in Render dashboard
     autoDeploy: true
