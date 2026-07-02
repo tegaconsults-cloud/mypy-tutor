@@ -1,11 +1,9 @@
 -- ============================================================
--- MyPy Tutor — Supabase Schema
--- Run Part 1 first, then Part 2 in a separate query.
--- See supabase_schema_part1_tables.sql and supabase_schema_part2_rls.sql
--- Or just run this file — if it errors on RLS, run parts separately.
+-- MyPy Tutor — Supabase Schema  PART 1: Tables & Indexes
+-- Run this FIRST in: Supabase Dashboard → SQL Editor → New query
 -- ============================================================
 
--- 1. Helper trigger function
+-- 1. Helper trigger function (must exist before triggers reference it)
 create or replace function set_updated_at()
 returns trigger language plpgsql as $$
 begin
@@ -110,25 +108,3 @@ create table if not exists payments (
   status     text not null default 'confirmed',
   created_at timestamptz default now()
 );
-
--- 9. ROW LEVEL SECURITY
-alter table profiles         enable row level security;
-alter table email_accounts   enable row level security;
-alter table conversations    enable row level security;
-alter table messages         enable row level security;
-alter table learner_progress enable row level security;
-alter table certificates     enable row level security;
-
-drop policy if exists "own_profile"        on profiles;
-drop policy if exists "own_email_account"  on email_accounts;
-drop policy if exists "own_conversations"  on conversations;
-drop policy if exists "own_messages"       on messages;
-drop policy if exists "own_progress"       on learner_progress;
-drop policy if exists "own_certs"          on certificates;
-
-create policy "own_profile"       on profiles         for select using (id          = auth.uid()::text);
-create policy "own_email_account" on email_accounts   for select using (learner_id  = auth.uid()::text);
-create policy "own_conversations" on conversations    for select using (learner_id  = auth.uid()::text);
-create policy "own_messages"      on messages         for select using (learner_id  = auth.uid()::text);
-create policy "own_progress"      on learner_progress for select using (learner_id  = auth.uid()::text);
-create policy "own_certs"         on certificates     for select using (learner_id  = auth.uid()::text);
