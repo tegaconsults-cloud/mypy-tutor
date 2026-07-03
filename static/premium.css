@@ -998,3 +998,19 @@ header{
 #progress-panel.active{display:flex}
 #pricing-panel.active{display:flex}
 #certificates-panel.active{display:flex}
+
+/* ── Profile panel ── */
+.prof-label{
+  display:block;font-size:0.74rem;color:var(--text-muted);
+  margin-bottom:5px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;
+}
+.prof-input{
+  width:100%;background:var(--bg-elevated);border:1px solid var(--border);
+  color:var(--text-primary);border-radius:var(--radius);
+  padding:10px 13px;font-size:0.9rem;outline:none;
+  font-family:var(--font);transition:var(--transition);
+}
+.prof-input:focus{border-color:var(--border-focus);box-shadow:0 0 0 3px var(--accent-glow)}
+.prof-input::placeholder{color:var(--text-muted)}
+textarea.prof-input{resize:vertical;min-height:72px;line-height:1.55}
+#profile-panel{overflow-y:auto;-webkit-overflow-scrolling:touch}
