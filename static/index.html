@@ -902,6 +902,9 @@
           </div>
 
           <!-- Menu items -->
+          <button class="dropdown-item" onclick="switchPanel('profile'); closeUserDropdown()">
+            👤 Edit Profile
+          </button>
           <button class="dropdown-item" onclick="switchPanel('progress'); closeUserDropdown()">
             📊 My Progress &amp; Badges
           </button>
@@ -1076,6 +1079,70 @@
         <div class="progress-card">
           <h3>📈 Topic Progress</h3>
           <div id="topic-progress-list"><span style="font-size:0.82rem;color:#4a5568">Start chatting to track topics.</span></div>
+        </div>
+      </div>
+
+      <!-- PROFILE (editable) -->
+      <div id="profile-panel" class="panel">
+        <div style="max-width:560px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:16px;padding:18px 16px;overflow-y:auto">
+
+          <!-- Avatar + name card -->
+          <div class="progress-card" style="display:flex;align-items:center;gap:16px">
+            <div id="prof-avatar-ring"
+                 style="width:72px;height:72px;border-radius:50%;flex-shrink:0;
+                        background:linear-gradient(135deg,#3b82f6,#8b5cf6);
+                        display:flex;align-items:center;justify-content:center;
+                        font-size:1.8rem;font-weight:800;color:#fff;
+                        box-shadow:0 0 20px rgba(59,130,246,0.35);">
+            </div>
+            <div style="min-width:0">
+              <div style="font-size:1.1rem;font-weight:800;color:#f1f5f9;letter-spacing:-0.02em" id="prof-display-name">—</div>
+              <div style="font-size:0.8rem;color:#64748b;margin-top:2px" id="prof-email-display">—</div>
+              <div id="prof-tier-badge" style="display:inline-block;margin-top:6px;font-size:0.62rem;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;padding:2px 10px;border-radius:999px;background:rgba(59,130,246,0.15);color:#93c5fd;border:1px solid rgba(59,130,246,0.3)">Free Plan</div>
+            </div>
+          </div>
+
+          <!-- Edit profile form -->
+          <div class="progress-card" style="display:flex;flex-direction:column;gap:14px">
+            <h3 style="color:#f1f5f9;font-size:0.97rem;font-weight:700">✏️ Edit Profile</h3>
+            <div>
+              <label class="prof-label">Display Name</label>
+              <input class="prof-input" id="prof-inp-name" type="text" placeholder="How should we call you?" maxlength="80"/>
+            </div>
+            <div>
+              <label class="prof-label">Bio</label>
+              <textarea class="prof-input" id="prof-inp-bio" placeholder="A short bio about yourself…" maxlength="500" style="min-height:80px;resize:vertical"></textarea>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div>
+                <label class="prof-label">Location</label>
+                <input class="prof-input" id="prof-inp-location" type="text" placeholder="e.g. Lagos, Nigeria" maxlength="100"/>
+              </div>
+              <div>
+                <label class="prof-label">Website</label>
+                <input class="prof-input" id="prof-inp-website" type="url" placeholder="https://yoursite.com" maxlength="200"/>
+              </div>
+            </div>
+            <div id="prof-save-msg" style="display:none;font-size:0.82rem;text-align:center"></div>
+            <button onclick="saveProfile()" id="prof-save-btn"
+              style="width:100%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);
+                     color:#fff;border:none;border-radius:12px;padding:13px;
+                     font-size:0.92rem;font-weight:700;cursor:pointer;
+                     font-family:var(--font);transition:var(--transition);
+                     box-shadow:0 4px 14px rgba(59,130,246,0.35)">
+              Save Changes
+            </button>
+          </div>
+
+          <!-- Quick links card -->
+          <div class="progress-card" style="display:flex;flex-direction:column;gap:10px">
+            <h3 style="color:#f1f5f9;font-size:0.97rem;font-weight:700">🔗 Quick Links</h3>
+            <button class="sidebar-btn" onclick="switchPanel('progress')">📊 My Progress &amp; Badges</button>
+            <button class="sidebar-btn" onclick="switchPanel('certificates')">🎓 My Certificates</button>
+            <button class="sidebar-btn" onclick="switchPanel('pricing')">💎 Upgrade Plan</button>
+            <div id="prof-invoices-list" style="font-size:0.82rem;color:#64748b"></div>
+          </div>
+
         </div>
       </div>
 
@@ -1509,6 +1576,7 @@
       closeSidebar();
       if (name === 'progress') refreshProgress();
       if (name === 'courses')  refreshCourses();
+      if (name === 'profile')  refreshProfilePanel();
     }
 
     document.querySelectorAll('.nav-tab, .bnav-btn').forEach(btn => {
@@ -1636,6 +1704,143 @@
           });
         }
       } catch (_) {}
+    }
+
+    // ── Profile panel ─────────────────────────────────────────────────────────
+    let _profileCache = null;
+
+    async function refreshProfilePanel() {
+      const lid = getLearnerId();
+      if (lid === 'default') return;
+
+      // Fill from currentUser immediately so the panel shows instantly
+      if (currentUser) {
+        _populateProfileUI({
+          display_name: currentUser.name || '',
+          email:        currentUser.email || '',
+          bio: '', location: '', website: '',
+          tier:  'free', level: 'beginner', xp: 0, badges: [],
+        });
+      }
+
+      try {
+        const res  = await fetch(`/auth/profile/${lid}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        _profileCache = data;
+        _populateProfileUI(data);
+
+        // Load invoices
+        const invRes = await fetch(`/invoices/${lid}`);
+        if (invRes.ok) {
+          const invData = await invRes.json();
+          const invEl   = document.getElementById('prof-invoices-list');
+          if (invEl && invData.invoices && invData.invoices.length) {
+            invEl.innerHTML = '<p style="font-size:.76rem;color:#64748b;margin-bottom:6px;font-weight:600;text-transform:uppercase;letter-spacing:.06em">Your Invoices</p>' +
+              invData.invoices.map(inv =>
+                `<div style="display:flex;justify-content:space-between;align-items:center;
+                             padding:7px 0;border-bottom:1px solid rgba(255,255,255,0.06);font-size:.82rem">
+                   <span style="color:#94a3b8">${inv.plan}</span>
+                   <span style="color:#f1f5f9;font-weight:600">₦${Number(inv.amount).toLocaleString()}</span>
+                   <a href="/invoice/${inv.id}" target="_blank" rel="noopener"
+                      style="color:#60a5fa;font-size:.75rem;text-decoration:none;">View</a>
+                   <a href="/invoice/${inv.id}/pdf" target="_blank" rel="noopener"
+                      style="color:#6ee7b7;font-size:.75rem;text-decoration:none;">PDF</a>
+                 </div>`
+              ).join('');
+          }
+        }
+      } catch (e) {}
+    }
+
+    function _populateProfileUI(data) {
+      // Avatar initials
+      const ring  = document.getElementById('prof-avatar-ring');
+      const name  = data.display_name || currentUser?.name || '';
+      const email = data.email || currentUser?.email || '';
+      if (ring) {
+        const initials = (name || email || 'U').split(' ').map(w => w[0]).slice(0,2).join('').toUpperCase();
+        ring.textContent = initials;
+      }
+      // Fields
+      const setEl = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val || '—'; };
+      setEl('prof-display-name', name || email.split('@')[0]);
+      setEl('prof-email-display', email);
+
+      // Tier badge
+      const tierEl = document.getElementById('prof-tier-badge');
+      if (tierEl) {
+        const tierNames = { free:'Free Plan', tier1:'Pro Learner', tier2:'Career Builder', tier3:'Elite' };
+        const tierClasses = { tier1:'#60a5fa', tier2:'#c4b5fd', tier3:'#fcd34d', free:'#64748b' };
+        tierEl.textContent = tierNames[data.tier] || 'Free Plan';
+        tierEl.style.color = tierClasses[data.tier] || '#64748b';
+      }
+
+      // Populate form inputs
+      const inp = (id, val) => { const e = document.getElementById(id); if (e) e.value = val || ''; };
+      inp('prof-inp-name',     data.display_name || name);
+      inp('prof-inp-bio',      data.bio      || '');
+      inp('prof-inp-location', data.location || '');
+      inp('prof-inp-website',  data.website  || '');
+    }
+
+    async function saveProfile() {
+      const lid = getLearnerId();
+      if (lid === 'default') {
+        _showProfMsg('Sign in to save your profile.', false);
+        return;
+      }
+      const btn = document.getElementById('prof-save-btn');
+      btn.disabled = true; btn.textContent = 'Saving…';
+      _showProfMsg('', null);
+
+      const body = {
+        display_name: document.getElementById('prof-inp-name').value.trim(),
+        bio:          document.getElementById('prof-inp-bio').value.trim(),
+        location:     document.getElementById('prof-inp-location').value.trim(),
+        website:      document.getElementById('prof-inp-website').value.trim(),
+      };
+
+      // Basic website validation
+      if (body.website && !body.website.startsWith('http')) {
+        body.website = 'https://' + body.website;
+        document.getElementById('prof-inp-website').value = body.website;
+      }
+
+      try {
+        const res  = await fetch(`/auth/profile/${lid}`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          _showProfMsg(data.error || data.detail || 'Save failed.', false);
+          return;
+        }
+        _showProfMsg('✅ Profile saved!', true);
+        // Update displayed name immediately
+        if (body.display_name) {
+          document.getElementById('prof-display-name').textContent = body.display_name;
+          document.getElementById('user-name').textContent = body.display_name.split(' ')[0];
+          document.getElementById('dp-full-name').textContent = body.display_name;
+        }
+        // Invalidate progress cache so next open is fresh
+        _progressCache = null;
+      } catch (err) {
+        _showProfMsg('Network error. Please try again.', false);
+      } finally {
+        btn.disabled = false; btn.textContent = 'Save Changes';
+      }
+    }
+
+    function _showProfMsg(text, ok) {
+      const el = document.getElementById('prof-save-msg');
+      if (!el) return;
+      if (!text) { el.style.display = 'none'; return; }
+      el.style.display = 'block';
+      el.style.color   = ok ? '#6ee7b7' : '#fca5a5';
+      el.textContent   = text;
     }
 
     // ── Progress panel ────────────────────────────────────────────────────────
