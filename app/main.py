@@ -33,6 +33,7 @@ from app.models import (
     AssignmentSubmit, AssignmentReview,
     CouponValidate, CouponCreate, ReferralUse,
     AccessCodeGenerate, EmailSignUpWithCode,
+    UserProfileUpdate, GitHubAuthCallback,
 )
 from app.prompts import build_system_prompt
 from app.topics import get_topics
@@ -88,6 +89,8 @@ from app.db import (
     create_invoice_db, get_invoice_db, get_invoices_by_learner, get_all_invoices_db,
     # access codes
     create_access_code, validate_access_code, redeem_access_code, get_all_access_codes,
+    # user profiles
+    update_user_profile_db, get_user_profile_db,
 )
 from app.supabase_client import (
     sb_upsert_profile, sb_get_or_create_conversation,
@@ -1985,6 +1988,285 @@ def _recover_from_supabase() -> None:
 
 # Run recovery at startup (after DB is initialised)
 _recover_from_supabase()
+
+
+# ---------------------------------------------------------------------------
+# FIX: Editable User Profile routes
+# ---------------------------------------------------------------------------
+
+@app.get("/auth/profile/{learner_id}")
+async def get_profile_data(learner_id: str) -> dict:
+    """Get the editable profile fields for a learner."""
+    validate_learner_id(learner_id)
+    db_profile = get_user_profile_db(learner_id)
+    lp = get_profile(learner_id)
+    return {
+        "learner_id":   learner_id,
+        "display_name": db_profile.get("display_name") or lp.display_name or "",
+        "bio":          db_profile.get("bio", ""),
+        "location":     db_profile.get("location", ""),
+        "website":      db_profile.get("website", ""),
+        "email":        lp.email or "",
+        "level":        lp.level,
+        "tier":         lp.tier,
+        "xp":           lp.xp,
+        "badges":       lp.badges,
+    }
+
+
+@app.post("/auth/profile/{learner_id}")
+async def update_profile(learner_id: str, body: UserProfileUpdate) -> dict:
+    """Update editable profile fields."""
+    validate_learner_id(learner_id)
+    update_user_profile_db(
+        learner_id,
+        display_name=body.display_name,
+        bio=body.bio,
+        location=body.location,
+        website=body.website,
+    )
+    # Mirror display_name to LearnerProfile in memory + SQLite
+    lp = get_profile(learner_id)
+    if body.display_name:
+        lp.display_name = body.display_name
+    from app.progress import save_profile as _sp
+    _sp(lp)
+    # Mirror to Supabase
+    import threading as _t
+    if body.display_name or lp.email:
+        _t.Thread(
+            target=sb_upsert_profile,
+            args=(learner_id, lp.email, body.display_name or lp.display_name),
+            daemon=False,
+        ).start()
+    log_activity(learner_id, "profile:updated", f"name={body.display_name}")
+    return {"ok": True, "message": "Profile updated successfully."}
+
+
+# ---------------------------------------------------------------------------
+# FIX: GitHub OAuth
+# ---------------------------------------------------------------------------
+
+@app.get("/auth/github/login")
+async def auth_github_login() -> JSONResponse:
+    """Redirect to GitHub OAuth consent screen."""
+    from fastapi.responses import RedirectResponse
+    import urllib.parse
+    client_id = _os.getenv("GITHUB_CLIENT_ID", "")
+    app_url   = _os.getenv("APP_URL", "https://mypytutor.onrender.com")
+    if not client_id:
+        return RedirectResponse(url="/?auth=error&msg=GitHub+Sign-In+not+configured")
+    params = urllib.parse.urlencode({
+        "client_id":    client_id,
+        "redirect_uri": f"{app_url}/auth/github/callback",
+        "scope":        "read:user user:email",
+        "state":        "mypytutor",
+    })
+    return RedirectResponse(url=f"https://github.com/login/oauth/authorize?{params}")
+
+
+@app.get("/auth/github/callback")
+async def auth_github_callback(code: str = None, error: str = None,
+                                state: str = None) -> JSONResponse:
+    """Handle GitHub OAuth callback — exchange code for token, get user info."""
+    from fastapi.responses import RedirectResponse
+    import json as _json
+
+    app_url       = _os.getenv("APP_URL", "https://mypytutor.onrender.com")
+    client_id     = _os.getenv("GITHUB_CLIENT_ID", "")
+    client_secret = _os.getenv("GITHUB_CLIENT_SECRET", "")
+
+    if error or not code:
+        return RedirectResponse(url=f"/?auth=error&msg=GitHub+sign-in+was+cancelled")
+
+    try:
+        import httpx as _httpx
+        async with _httpx.AsyncClient(timeout=10) as hc:
+            # Exchange code for access token
+            token_res = await hc.post(
+                "https://github.com/login/oauth/access_token",
+                headers={"Accept": "application/json"},
+                data={"client_id": client_id, "client_secret": client_secret, "code": code},
+            )
+            token_data = token_res.json()
+            access_token = token_data.get("access_token", "")
+            if not access_token:
+                return RedirectResponse(url="/?auth=error&msg=GitHub+token+exchange+failed")
+
+            # Fetch user info
+            user_res = await hc.get(
+                "https://api.github.com/user",
+                headers={"Authorization": f"Bearer {access_token}", "Accept": "application/vnd.github+json"},
+            )
+            gh_user = user_res.json()
+
+            # Fetch primary email if not public
+            email = gh_user.get("email") or ""
+            if not email:
+                email_res = await hc.get(
+                    "https://api.github.com/user/emails",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+                emails = email_res.json()
+                primary = next((e for e in emails if e.get("primary") and e.get("verified")), None)
+                email = primary["email"] if primary else f"gh_{gh_user['id']}@github.local"
+
+        # Create or load user
+        learner_id = f"gh_{gh_user['id']}"
+        name       = gh_user.get("name") or gh_user.get("login") or email.split("@")[0]
+        picture    = gh_user.get("avatar_url", "")
+
+        # Upsert into auth store (same pattern as Google)
+        from app.auth import _users, UserAccount, create_session_token as _cst
+        if learner_id not in _users:
+            _users[learner_id] = UserAccount(
+                learner_id=learner_id, email=email,
+                name=name, picture=picture, google_sub=""
+            )
+        else:
+            _users[learner_id].name    = name
+            _users[learner_id].picture = picture
+
+        token = _cst(learner_id)
+        sb_upsert_profile(learner_id, email, name)
+        log_activity(learner_id, "auth:github", f"login for {email}")
+
+        import urllib.parse as _up
+        user_data = _up.quote(_json.dumps({
+            "token": token, "learner_id": learner_id,
+            "name": name, "email": email, "picture": picture,
+        }))
+        return RedirectResponse(url=f"/?auth=google_success&user={user_data}")
+
+    except Exception as exc:
+        logger.error("GitHub OAuth callback error: %s", exc)
+        return RedirectResponse(url="/?auth=error&msg=GitHub+sign-in+failed")
+
+
+# ---------------------------------------------------------------------------
+# FIX: Invoice PDF generation (ReportLab — no weasyprint, free tier safe)
+# ---------------------------------------------------------------------------
+
+@app.get("/invoice/{invoice_id}/pdf")
+async def get_invoice_pdf(invoice_id: str) -> JSONResponse:
+    """Generate and return a downloadable PDF invoice using ReportLab."""
+    inv = get_invoice_db(invoice_id)
+    if not inv:
+        raise HTTPException(status_code=404, detail="Invoice not found.")
+    try:
+        import io
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib import colors
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import cm
+        from fastapi.responses import StreamingResponse
+
+        buf    = io.BytesIO()
+        doc    = SimpleDocTemplate(buf, pagesize=A4,
+                                   rightMargin=2*cm, leftMargin=2*cm,
+                                   topMargin=2*cm, bottomMargin=2*cm)
+        styles = getSampleStyleSheet()
+        navy   = colors.HexColor("#0d2b6e")
+        grey   = colors.HexColor("#718096")
+        story  = []
+
+        # Header
+        story.append(Paragraph("<b>🐍 MyPy Tutor</b>", ParagraphStyle(
+            "hdr", parent=styles["Title"], textColor=navy, fontSize=22, spaceAfter=4)))
+        story.append(Paragraph(
+            "Powered by TeamTega Technologies Limited<br/>"
+            "Certified by Teamsamikoko Global Academy · Reg No: 3508656",
+            ParagraphStyle("sub", parent=styles["Normal"], textColor=grey, fontSize=9, spaceAfter=16)))
+
+        # Invoice title + meta
+        story.append(Paragraph(f"<b>INVOICE #{inv['id']}</b>",
+                                ParagraphStyle("inv", parent=styles["Heading2"], textColor=navy, spaceAfter=4)))
+        story.append(Paragraph(f"Date: {inv.get('issued_at_fmt', '')}", styles["Normal"]))
+        story.append(Spacer(1, 0.4*cm))
+
+        # Bill to
+        story.append(Paragraph("<b>Bill To</b>", ParagraphStyle(
+            "billt", parent=styles["Normal"], textColor=grey, fontSize=9, spaceBefore=8)))
+        story.append(Paragraph(f"<b>{inv['name']}</b><br/>{inv['email']}",
+                                ParagraphStyle("billa", parent=styles["Normal"], fontSize=11, spaceAfter=12)))
+
+        # Line items table
+        data = [
+            ["Description", "Amount"],
+            [inv["plan"], f"\u20a6{inv['amount']:,.0f}"],
+            ["", ""],
+            ["Total Paid", f"\u20a6{inv['amount']:,.0f} {inv['currency']}"],
+        ]
+        tbl = Table(data, colWidths=[12*cm, 5*cm])
+        tbl.setStyle(TableStyle([
+            ("BACKGROUND",    (0,0), (-1,0), navy),
+            ("TEXTCOLOR",     (0,0), (-1,0), colors.white),
+            ("FONTNAME",      (0,0), (-1,0), "Helvetica-Bold"),
+            ("FONTSIZE",      (0,0), (-1,0), 10),
+            ("ALIGN",         (1,0), (1,-1), "RIGHT"),
+            ("BACKGROUND",    (0,-1), (-1,-1), colors.HexColor("#f0f7ff")),
+            ("FONTNAME",      (0,-1), (-1,-1), "Helvetica-Bold"),
+            ("LINEBELOW",     (0,0), (-1,-2), 0.5, grey),
+            ("ROWBACKGROUNDS",(0,1), (-1,-2), [colors.white, colors.HexColor("#f7fafc")]),
+            ("TOPPADDING",    (0,0), (-1,-1), 6),
+            ("BOTTOMPADDING", (0,0), (-1,-1), 6),
+        ]))
+        story.append(tbl)
+        story.append(Spacer(1, 0.5*cm))
+        story.append(Paragraph(
+            "Status: <b>PAID</b> &nbsp;&nbsp; Payment Ref: " + inv.get("payment_id", ""),
+            ParagraphStyle("status", parent=styles["Normal"], textColor=colors.HexColor("#276749"), fontSize=10)))
+        story.append(Spacer(1, 1*cm))
+        story.append(Paragraph(
+            '"Learn Smarter. Code Better. Build the Future."',
+            ParagraphStyle("tag", parent=styles["Normal"], textColor=grey, fontSize=9, fontName="Helvetica-Oblique")))
+
+        doc.build(story)
+        buf.seek(0)
+        filename = f"MyPyTutor_Invoice_{inv['id']}.pdf"
+        return StreamingResponse(
+            buf,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+    except ImportError:
+        raise HTTPException(status_code=503, detail="PDF generation not available — install reportlab.")
+    except Exception as exc:
+        logger.error("PDF generation error: %s", exc)
+        raise HTTPException(status_code=500, detail="Could not generate PDF invoice.")
+
+
+# ---------------------------------------------------------------------------
+# FIX: Paystack metadata — store learner_id in payment so Google users
+#      can be auto-upgraded via webhook (no email-matching required)
+# ---------------------------------------------------------------------------
+
+@app.get("/payments/metadata/{learner_id}")
+async def get_payment_metadata(learner_id: str) -> dict:
+    """
+    Returns the metadata dict to embed in a Paystack payment link.
+    Frontend appends this as custom_fields so the webhook can identify the user.
+    """
+    validate_learner_id(learner_id)
+    lp    = get_profile(learner_id)
+    email = lp.email or ""
+    return {
+        "metadata": {
+            "learner_id": learner_id,
+            "email":      email,
+            "custom_fields": [
+                {"display_name": "Learner ID",  "variable_name": "learner_id",  "value": learner_id},
+                {"display_name": "User Email",  "variable_name": "user_email",  "value": email},
+            ],
+        }
+    }
+
+
+# ---------------------------------------------------------------------------
+# FIX: Render persistent disk — DB_PATH env var documented in render.yaml
+#      (no code change needed — db.py already reads DB_PATH env var)
+# ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------

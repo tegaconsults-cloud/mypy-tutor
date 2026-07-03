@@ -33,4 +33,10 @@ services:
         sync: false          # Supabase publishable anon key
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false          # Supabase service role key (server-side only)
+      - key: GITHUB_CLIENT_ID
+        sync: false          # GitHub OAuth App Client ID (optional)
+      - key: GITHUB_CLIENT_SECRET
+        sync: false          # GitHub OAuth App Client Secret (optional)
+      - key: DB_PATH
+        sync: false          # Optional: /data/mypytutor.db for persistent disk
     autoDeploy: true
