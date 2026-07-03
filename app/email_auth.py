@@ -322,8 +322,8 @@ def confirm_email_token(token: str) -> tuple[bool, str]:
     if not user_data:
         return False, "No pending registration found for this email."
 
-    _confirmed[email]              = user_data
-    _by_id[user_data["learner_id"]] = user_data
+    _confirmed[email]               = user_data
+    _by_id[user_data["learner_id"]]  = user_data
     del _pending[email]
 
     # Persist to SQLite
@@ -339,6 +339,21 @@ def confirm_email_token(token: str) -> tuple[bool, str]:
         )
     except Exception as exc:
         logger.warning("SQLite save failed for confirmed user: %s", exc)
+
+    # Apply access code tier AFTER confirmation — prevents pre-confirmation abuse
+    access_code = user_data.get("access_code", "")
+    access_tier = user_data.get("access_tier", "")
+    if access_code and access_tier:
+        try:
+            from app.db import validate_access_code, redeem_access_code, upgrade_tier_db
+            code_rec = validate_access_code(access_code)
+            if code_rec:
+                redeemed = redeem_access_code(access_code, email, user_data["learner_id"])
+                if redeemed:
+                    upgrade_tier_db(user_data["learner_id"], access_tier)
+                    logger.info("Access code %s applied for %s → %s", access_code, email, access_tier)
+        except Exception as exc:
+            logger.warning("Access code tier grant failed: %s", exc)
 
     # Mirror to Supabase — survives Render ephemeral restarts
     try:

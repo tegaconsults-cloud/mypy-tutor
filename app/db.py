@@ -260,6 +260,19 @@ def init_db() -> None:
             ON access_codes (sent_to_email);
         """)
 
+        # ── Schema migrations — add new columns to existing tables ──────────
+        # These ALTER TABLE ... ADD COLUMN statements are no-ops if the
+        # column already exists (SQLite ignores the error via try/except).
+        _migrations = [
+            "ALTER TABLE learner_profiles ADD COLUMN email TEXT DEFAULT ''",
+            "ALTER TABLE learner_profiles ADD COLUMN display_name TEXT DEFAULT ''",
+        ]
+        for sql in _migrations:
+            try:
+                conn.execute(sql)
+            except Exception:
+                pass   # column already exists — safe to ignore
+
     logger.info("Database initialised at %s", DB_PATH)
 
 
@@ -279,14 +292,14 @@ def load_profile(learner_id: str):
 
 
 def save_profile_db(learner_id: str, profile_dict: dict) -> None:
-    """Upsert a learner profile to SQLite — persists ALL fields including tier."""
+    """Upsert a learner profile to SQLite — persists ALL fields including tier, email, name."""
     with get_db() as conn:
         conn.execute("""
         INSERT INTO learner_profiles
           (learner_id,tier,level,xp,badges,topics_seen,topic_progress,
            current_course,course_step,completed_projects,
-           daily_prompts_used,last_prompt_date,updated_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,unixepoch())
+           daily_prompts_used,last_prompt_date,email,display_name,updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,unixepoch())
         ON CONFLICT(learner_id) DO UPDATE SET
           tier=excluded.tier,
           level=excluded.level,
@@ -299,6 +312,8 @@ def save_profile_db(learner_id: str, profile_dict: dict) -> None:
           completed_projects=excluded.completed_projects,
           daily_prompts_used=excluded.daily_prompts_used,
           last_prompt_date=excluded.last_prompt_date,
+          email=CASE WHEN excluded.email != '' THEN excluded.email ELSE learner_profiles.email END,
+          display_name=CASE WHEN excluded.display_name != '' THEN excluded.display_name ELSE learner_profiles.display_name END,
           updated_at=unixepoch()
         """, (
             learner_id,
@@ -313,6 +328,8 @@ def save_profile_db(learner_id: str, profile_dict: dict) -> None:
             json.dumps(profile_dict.get("completed_projects", [])),
             profile_dict.get("daily_prompts_used", 0),
             profile_dict.get("last_prompt_date", ""),
+            profile_dict.get("email", ""),
+            profile_dict.get("display_name", ""),
         ))
 
 

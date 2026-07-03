@@ -194,6 +194,7 @@ class QuizAnswerResponse(BaseModel):
 class ProgressResponse(BaseModel):
     learner_id:           str
     level:                str
+    tier:                 str       = "free"   # included so frontend can show plan badge
     xp:                   int
     badges:               list[str]
     topics_seen:          list[str]

@@ -367,32 +367,47 @@ async def auth_me(user=Depends(require_user)) -> AuthResponse:
 async def auth_signup(request: EmailSignUpWithCode) -> dict:
     """
     Register with email + password.
-    Optional access_code field: if valid, user is immediately granted that tier on confirmation.
+    Optional access_code: validated now, redeemed on email confirmation.
+    Tier is NOT granted until the email is confirmed — prevents abuse.
     """
     pw_hash = hash_password(request.password)
+
+    # Validate access code BEFORE registering (fail fast with clear message)
+    access_code = request.access_code.strip().upper() if request.access_code else ""
+    code_rec = None
+    if access_code:
+        code_rec = validate_access_code(access_code)
+        if not code_rec:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid or already-used access code. Please check and try again."
+            )
+
     success, message = register_email(request.email, request.name, pw_hash)
     if not success:
         raise HTTPException(status_code=400, detail=message)
-    from app.email_auth import _make_learner_id
+
+    from app.email_auth import _make_learner_id, _pending
     learner_id = _make_learner_id(request.email)
-    # Validate + redeem access code if provided
-    tier_from_code = None
-    if request.access_code:
-        code_rec = validate_access_code(request.access_code.strip())
-        if code_rec:
-            redeemed = redeem_access_code(request.access_code.strip(), request.email, learner_id)
-            if redeemed:
-                upgrade_tier_db(learner_id, code_rec["tier"])
-                tier_from_code = code_rec["tier"]
-                log_activity(learner_id, "access_code:redeemed",
-                             f"code={request.access_code} tier={code_rec['tier']}")
-    # Mirror to Supabase
-    sb_upsert_profile(learner_id, request.email, request.name)
+
+    # Store the access code in pending data — applied after email confirmation
+    if access_code and code_rec:
+        _pending[request.email.lower()]["access_code"] = access_code
+        _pending[request.email.lower()]["access_tier"] = code_rec["tier"]
+
+    # Mirror to Supabase (pre-confirm stub — real data added on confirm)
+    import threading as _thr
+    _thr.Thread(
+        target=sb_upsert_profile,
+        args=(learner_id, request.email, request.name),
+        daemon=False,
+    ).start()
+
     response = {"ok": True, "message": message}
-    if tier_from_code:
+    if code_rec:
         tier_labels = {"tier1": "Pro Learner", "tier2": "Career Builder", "tier3": "Elite"}
-        response["tier_granted"] = tier_from_code
-        response["tier_label"]   = tier_labels.get(tier_from_code, tier_from_code)
+        response["code_accepted"] = True
+        response["tier_on_confirm"] = tier_labels.get(code_rec["tier"], code_rec["tier"])
     return response
 
 
@@ -511,6 +526,7 @@ async def get_progress(learner_id: str) -> ProgressResponse:
     return ProgressResponse(
         learner_id=profile.learner_id,
         level=profile.level,
+        tier=profile.tier,
         xp=profile.xp,
         badges=profile.badges,
         topics_seen=profile.topics_seen,
@@ -524,11 +540,17 @@ async def get_progress(learner_id: str) -> ProgressResponse:
 
 @app.get("/prompts/count")
 async def prompts_count(learner_id: str = "default", req: Request = None) -> dict:
+    from app.security import FREE_DAILY_LIMIT
     validate_learner_id(learner_id)
-    ip    = _get_ip(req) if req else "unknown"
-    count = get_free_prompt_count(learner_id, ip)
+    ip      = _get_ip(req) if req else "unknown"
+    count   = get_free_prompt_count(learner_id, ip)
     profile = get_profile(learner_id)
-    return {"used": count, "limit": 10, "tier": profile.tier, "is_limited": profile.tier == "free"}
+    return {
+        "used": count,
+        "limit": FREE_DAILY_LIMIT,
+        "tier": profile.tier,
+        "is_limited": profile.tier == "free",
+    }
 
 # ---------------------------------------------------------------------------
 # Courses
