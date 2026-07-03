@@ -72,17 +72,19 @@ def save_profile(profile: LearnerProfile) -> None:
         k: v.model_dump() for k, v in profile.topic_progress.items()
     }
     profile_data = {
-        "tier":              profile.tier,
-        "level":             profile.level,
-        "xp":                profile.xp,
-        "badges":            profile.badges,
-        "topics_seen":       profile.topics_seen,
-        "topic_progress":    tp_dict,
-        "current_course":    profile.current_course,
-        "current_course_step": profile.current_course_step,
+        "tier":               profile.tier,
+        "level":              profile.level,
+        "xp":                 profile.xp,
+        "badges":             profile.badges,
+        "topics_seen":        profile.topics_seen,
+        "topic_progress":     tp_dict,
+        "current_course":     profile.current_course,
+        "current_course_step":profile.current_course_step,
         "completed_projects": profile.completed_projects,
         "daily_prompts_used": profile.daily_prompts_used,
-        "last_prompt_date":  profile.last_prompt_date,
+        "last_prompt_date":   profile.last_prompt_date,
+        "email":              profile.email,
+        "display_name":       profile.display_name,
     }
     save_profile_db(profile.learner_id, profile_data)
     # Supabase sync — non-daemon thread so it finishes before process exits on SIGTERM

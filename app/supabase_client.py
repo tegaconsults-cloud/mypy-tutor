@@ -124,12 +124,13 @@ def sb_get_or_create_conversation(learner_id: str) -> str | None:
     if not sb:
         return None
     try:
-        # Ensure a minimal profile row exists before inserting conversation
-        # (prevents FK violation when email users haven't hit /auth/signin yet)
+        # Ensure a minimal profile row exists before inserting conversation.
+        # Use upsert with on_conflict=id so we never overwrite real profile data.
+        # Only inserts if the row doesn't exist yet.
         try:
             sb.table("profiles").upsert({
                 "id":        learner_id,
-                "email":     f"{learner_id}@placeholder.internal",
+                "email":     "",       # empty — real email added by sb_upsert_profile later
                 "full_name": "",
             }, on_conflict="id").execute()
         except Exception:

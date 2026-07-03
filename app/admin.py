@@ -19,14 +19,19 @@ from fastapi import HTTPException
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Admin credentials — set ADMIN_EMAIL and ADMIN_PASSWORD in Render dashboard
+# Admin credentials — read lazily at call time so Render env vars are current
 # ---------------------------------------------------------------------------
 
-ADMIN_EMAIL    = os.getenv("ADMIN_EMAIL",    "tega.com.ng@gmail.com")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "")   # hashed SHA-256 of plain password
-ADMIN_TOKEN_SECRET = os.getenv("SESSION_SECRET", "change-me-in-production-32-chars-min")
+def _get_admin_email() -> str:
+    return os.getenv("ADMIN_EMAIL", "tega.com.ng@gmail.com")
 
-_admin_serializer = URLSafeTimedSerializer(ADMIN_TOKEN_SECRET)
+def _get_admin_password() -> str:
+    return os.getenv("ADMIN_PASSWORD", "")
+
+def _get_admin_serializer() -> "URLSafeTimedSerializer":
+    secret = os.getenv("SESSION_SECRET", "change-me-in-production-32-chars-min")
+    return URLSafeTimedSerializer(secret)
+
 ADMIN_TOKEN_MAX_AGE = 60 * 60 * 8   # 8 hours
 
 
@@ -36,27 +41,22 @@ def _hash(pw: str) -> str:
 
 def verify_admin_login(email: str, password: str) -> bool:
     """Check admin credentials. Constant-time comparison."""
-    email_ok = email.lower().strip() == ADMIN_EMAIL.lower()
-    # If ADMIN_PASSWORD env var is set as a hash, compare hashes
-    # Otherwise fall back to direct comparison (dev only)
-    stored = ADMIN_PASSWORD
+    admin_email    = _get_admin_email()
+    stored_pw      = _get_admin_password()
+    email_ok = email.lower().strip() == admin_email.lower()
     pw_ok = False
-    if stored:
-        # Support both plain text (dev) and sha256 hash (prod)
-        pw_ok = (stored == _hash(password)) or (stored == password)
-    else:
-        # No password set — deny all
-        pw_ok = False
+    if stored_pw:
+        pw_ok = (stored_pw == _hash(password)) or (stored_pw == password)
     return email_ok and pw_ok
 
 
 def create_admin_token() -> str:
-    return _admin_serializer.dumps("admin", salt="admin-session")
+    return _get_admin_serializer().dumps("admin", salt="admin-session")
 
 
 def verify_admin_token(token: str) -> bool:
     try:
-        val = _admin_serializer.loads(token, salt="admin-session", max_age=ADMIN_TOKEN_MAX_AGE)
+        val = _get_admin_serializer().loads(token, salt="admin-session", max_age=ADMIN_TOKEN_MAX_AGE)
         return val == "admin"
     except (BadSignature, SignatureExpired):
         return False
