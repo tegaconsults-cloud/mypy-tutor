@@ -117,12 +117,24 @@ def sb_get_or_create_conversation(learner_id: str) -> str | None:
     """
     Returns the active conversation_id for a learner.
     Creates a new conversation row if none exists.
+    Ensures the profile row exists first to prevent FK violations.
     Returns None if Supabase unavailable.
     """
     sb = get_supabase()
     if not sb:
         return None
     try:
+        # Ensure a minimal profile row exists before inserting conversation
+        # (prevents FK violation when email users haven't hit /auth/signin yet)
+        try:
+            sb.table("profiles").upsert({
+                "id":        learner_id,
+                "email":     f"{learner_id}@placeholder.internal",
+                "full_name": "",
+            }, on_conflict="id").execute()
+        except Exception:
+            pass  # profile may already exist; ignore errors
+
         # Look for the most recent conversation
         res = (
             sb.table("conversations")

@@ -50,7 +50,7 @@ from app.security import (
     _get_ip,
 )
 from app.auth import (
-    verify_google_token, get_or_create_user,
+    verify_google_token, verify_google_token_strict, get_or_create_user,
     create_session_token, get_current_user, require_user,
 )
 from app.feedback import (
@@ -339,7 +339,8 @@ async def auth_google_callback(code: str = None, error: str = None) -> JSONRespo
 
 @app.post("/auth/google", response_model=AuthResponse)
 async def auth_google(request: GoogleAuthRequest) -> AuthResponse:
-    payload = verify_google_token(request.credential)
+    """One-Tap / GSI token submitted directly from client — uses strict signature verification."""
+    payload = await verify_google_token_strict(request.credential)
     user    = get_or_create_user(payload)
     token   = create_session_token(user.learner_id)
     # Mirror to Supabase
@@ -363,16 +364,36 @@ async def auth_me(user=Depends(require_user)) -> AuthResponse:
 # ---------------------------------------------------------------------------
 
 @app.post("/auth/signup")
-async def auth_signup(request: EmailSignUpRequest) -> dict:
+async def auth_signup(request: EmailSignUpWithCode) -> dict:
+    """
+    Register with email + password.
+    Optional access_code field: if valid, user is immediately granted that tier on confirmation.
+    """
     pw_hash = hash_password(request.password)
     success, message = register_email(request.email, request.name, pw_hash)
     if not success:
         raise HTTPException(status_code=400, detail=message)
-    # Mirror new user to Supabase profiles table
     from app.email_auth import _make_learner_id
     learner_id = _make_learner_id(request.email)
+    # Validate + redeem access code if provided
+    tier_from_code = None
+    if request.access_code:
+        code_rec = validate_access_code(request.access_code.strip())
+        if code_rec:
+            redeemed = redeem_access_code(request.access_code.strip(), request.email, learner_id)
+            if redeemed:
+                upgrade_tier_db(learner_id, code_rec["tier"])
+                tier_from_code = code_rec["tier"]
+                log_activity(learner_id, "access_code:redeemed",
+                             f"code={request.access_code} tier={code_rec['tier']}")
+    # Mirror to Supabase
     sb_upsert_profile(learner_id, request.email, request.name)
-    return {"ok": True, "message": message}
+    response = {"ok": True, "message": message}
+    if tier_from_code:
+        tier_labels = {"tier1": "Pro Learner", "tier2": "Career Builder", "tier3": "Elite"}
+        response["tier_granted"] = tier_from_code
+        response["tier_label"]   = tier_labels.get(tier_from_code, tier_from_code)
+    return response
 
 
 @app.post("/auth/signin", response_model=AuthResponse)
@@ -381,6 +402,13 @@ async def auth_signin(request: EmailSignInRequest) -> AuthResponse:
     if not success or not user_data:
         raise HTTPException(status_code=401, detail=message)
     token = create_session_token(user_data["learner_id"])
+    # Ensure Supabase profile row exists before any conversation inserts (Bug 4 fix)
+    import threading as _thr
+    _thr.Thread(
+        target=sb_upsert_profile,
+        args=(user_data["learner_id"], user_data["email"], user_data["name"]),
+        daemon=False,
+    ).start()
     return AuthResponse(
         token=token, learner_id=user_data["learner_id"],
         name=user_data["name"], email=user_data["email"], picture="",
@@ -1166,17 +1194,18 @@ async def admin_invite_team(body: _TeamInvite, request: Request) -> dict:
     _require_admin(request)
     m = invite_team_member(body.email, body.name, body.role)
     try:
-        from app.email_auth import _send_email, APP_URL
+        from app.email_auth import _send_email_async
+        _app_url = _os.getenv("APP_URL", "https://mypytutor.onrender.com")
         html = f"""<div style="font-family:Arial;background:#0f1117;color:#e2e8f0;padding:32px;">
         <h2 style="color:#63b3ed;">🐍 MyPy Tutor — Team Invitation</h2>
         <p>Hi {body.name},</p>
         <p>You've been invited to join the MyPy Tutor team as <strong>{body.role}</strong>.</p>
-        <a href="{APP_URL}" style="background:#3182ce;color:#fff;padding:12px 24px;border-radius:8px;
+        <a href="{_app_url}" style="background:#3182ce;color:#fff;padding:12px 24px;border-radius:8px;
         text-decoration:none;font-weight:bold;">Access Platform</a>
         <p style="color:#4a5568;margin-top:20px;font-size:0.8rem;">MyPy Tutor · Teamsamikoko Global Academy</p>
         </div>"""
-        _send_email(body.email, "You're invited to join the MyPy Tutor team!", html,
-                    f"Hi {body.name}, you've been invited to the MyPy Tutor team as {body.role}.")
+        _send_email_async(body.email, "You're invited to join the MyPy Tutor team!", html,
+                          f"Hi {body.name}, you've been invited to the MyPy Tutor team as {body.role}.")
     except Exception as e:
         logger.warning("Team invite email failed: %s", e)
     return {"ok": True, "member": {"email": m.email, "name": m.name, "role": m.role}}
@@ -1187,7 +1216,8 @@ async def admin_create_task(body: _TaskCreate, request: Request) -> dict:
     _require_admin(request)
     t = create_task(body.title, body.description, body.assigned_to, body.priority, body.due_date)
     try:
-        from app.email_auth import _send_email, APP_URL
+        from app.email_auth import _send_email_async
+        _app_url = _os.getenv("APP_URL", "https://mypytutor.onrender.com")
         html = f"""<div style="font-family:Arial;background:#0f1117;color:#e2e8f0;padding:32px;">
         <h2 style="color:#f6ad55;">📋 New Task Assigned</h2>
         <p><strong>{body.title}</strong></p>
@@ -1195,12 +1225,12 @@ async def admin_create_task(body: _TaskCreate, request: Request) -> dict:
         <p>Priority: <strong style="color:{'#fc8181' if body.priority=='urgent' else '#f6ad55'}">
         {body.priority.upper()}</strong></p>
         {"<p>Due: " + body.due_date + "</p>" if body.due_date else ""}
-        <a href="{APP_URL}" style="background:#3182ce;color:#fff;padding:12px 24px;border-radius:8px;
+        <a href="{_app_url}" style="background:#3182ce;color:#fff;padding:12px 24px;border-radius:8px;
         text-decoration:none;font-weight:bold;">View Task</a>
         <p style="color:#4a5568;margin-top:20px;font-size:0.8rem;">MyPy Tutor · Teamsamikoko Global Academy</p>
         </div>"""
-        _send_email(body.assigned_to, f"Task assigned: {body.title}", html,
-                    f"New task: {body.title}\n{body.description}\nPriority: {body.priority}")
+        _send_email_async(body.assigned_to, f"Task assigned: {body.title}", html,
+                          f"New task: {body.title}\n{body.description}\nPriority: {body.priority}")
     except Exception as e:
         logger.warning("Task email failed: %s", e)
     return {"ok": True, "task_id": t.id}

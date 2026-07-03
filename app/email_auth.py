@@ -37,17 +37,23 @@ def _cfg(key: str, default: str = "") -> str:
     """Read env var at call time — never at import time."""
     return os.getenv(key, default)
 
-# Keep these for backwards compatibility with code that reads them directly
-EMAIL_HOST     = "smtp.gmail.com"   # overridden at runtime by _cfg()
-EMAIL_PORT     = 587
-APP_URL        = "https://mypytutor.onrender.com"
-SESSION_SECRET = "change-me-in-production-32-chars-min"
+# ---------------------------------------------------------------------------
+# Config — all values read lazily at call time via _cfg()
+# ---------------------------------------------------------------------------
+
+def _cfg(key: str, default: str = "") -> str:
+    """Read env var at call time — never at import time — so Render values are current."""
+    return os.getenv(key, default)
+
+# Module-level APP_URL — kept as a patchable name for token URL construction.
+# _send_email() updates this on every call so it always reflects the env var.
+APP_URL = "https://mypytutor.onrender.com"
 
 def _get_session_secret() -> str:
     return os.getenv("SESSION_SECRET", "change-me-in-production-32-chars-min")
 
 def _get_token_serializer() -> "URLSafeTimedSerializer":
-    """Fresh serializer each time in case SESSION_SECRET changes after import."""
+    """Build a fresh serializer at call time so SESSION_SECRET is always current."""
     return URLSafeTimedSerializer(_get_session_secret())
 
 CONFIRM_MAX_AGE = 60 * 60 * 24   # 24 hours
