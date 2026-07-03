@@ -2008,14 +2008,18 @@
     const SESSION_KEY = 'mypy_tutor_session';
 
     function openAuthModal() {
-      document.getElementById('auth-modal-overlay').classList.add('open');
-      document.getElementById('auth-modal-error').style.display = 'none';
-      document.getElementById('auth-modal-error').textContent = '';
-      document.getElementById('auth-success-msg').classList.remove('visible');
+      const overlay = document.getElementById('auth-modal-overlay');
+      if (!overlay) return;   // DOM not ready yet — skip
+      overlay.classList.add('open');
+      const errEl = document.getElementById('auth-modal-error');
+      if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+      const successEl = document.getElementById('auth-success-msg');
+      if (successEl) { successEl.style.display = 'none'; successEl.textContent = ''; }
       switchAuthTab('signin');
     }
     function closeAuthModal() {
-      document.getElementById('auth-modal-overlay').classList.remove('open');
+      const overlay = document.getElementById('auth-modal-overlay');
+      if (overlay) overlay.classList.remove('open');
     }
     function handleModalOverlayClick(e) {
       if (e.target === document.getElementById('auth-modal-overlay')) closeAuthModal();
@@ -2565,13 +2569,15 @@
       _sidebarRefreshTimer = setTimeout(_origRefreshSidebar, 3000);
     }
 
-    // ── Init ──────────────────────────────────────────────────────────────────
-    loadTopics();
-    loadHistory();
-    refreshSidebar();
-    restoreSession();
-    loadAuthConfig();       // fetch Google Client ID + initialize GSI
-    messageInput.focus();
+    // ── Init — wrapped in DOMContentLoaded to guarantee all HTML exists ────────
+    document.addEventListener('DOMContentLoaded', function initApp() {
+      loadTopics();
+      loadHistory();
+      refreshSidebar();
+      restoreSession();
+      loadAuthConfig();       // fetch Google Client ID + initialize GSI
+      messageInput.focus();
+    });
 
     // Handle PWA shortcut links (?panel=chat, ?panel=quiz, etc.)
     (function handleShortcutNav() {
