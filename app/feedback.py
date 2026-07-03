@@ -17,32 +17,46 @@ from app.models import MessageFeedback, SurveyFeedback, FeedbackSummary
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Email config — reuses the same Gmail SMTP setup as email_auth.py
+# Email config — read lazily at send time so Render env vars are always current
 # ---------------------------------------------------------------------------
 
-EMAIL_HOST    = os.getenv("EMAIL_HOST",   "smtp.gmail.com")
-EMAIL_PORT    = int(os.getenv("EMAIL_PORT", "587"))
-EMAIL_USER    = os.getenv("EMAIL_USER",   "")
-EMAIL_PASS    = os.getenv("EMAIL_PASS",   "")
-EMAIL_FROM    = os.getenv("EMAIL_FROM",   "MyPy Tutor <noreply@mypytutor.com>")
-ADMIN_EMAIL   = "tega.com.ng@gmail.com"   # all feedback forwarded here
+ADMIN_EMAIL = "tega.com.ng@gmail.com"   # all feedback forwarded here
 
 
 def _send_feedback_email(subject: str, html_body: str, text_body: str) -> None:
-    """Send feedback notification to admin. Silent on failure."""
-    if not EMAIL_USER or not EMAIL_PASS:
+    """Send feedback notification to admin in a daemon thread. Silent on failure."""
+    import threading
+    threading.Thread(
+        target=_do_send_feedback,
+        args=(subject, html_body, text_body),
+        daemon=True,
+    ).start()
+
+
+def _do_send_feedback(subject: str, html_body: str, text_body: str) -> None:
+    """Actual SMTP send — runs in daemon thread, reads env vars at call time."""
+    email_user = os.getenv("EMAIL_USER", "")
+    email_pass = os.getenv("EMAIL_PASS", "")
+    email_host = os.getenv("EMAIL_HOST", "smtp.gmail.com")
+    email_port = int(os.getenv("EMAIL_PORT", "587"))
+    email_from = os.getenv("EMAIL_FROM", f"MyPy Tutor <{email_user}>")
+
+    if not email_user or not email_pass:
         logger.info("Email not configured — feedback stored locally only")
         return
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
-        msg["From"]    = EMAIL_FROM
+        msg["From"]    = email_from
         msg["To"]      = ADMIN_EMAIL
         msg.attach(MIMEText(text_body, "plain"))
         msg.attach(MIMEText(html_body, "html"))
-        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=8) as server:
-            server.ehlo(); server.starttls(); server.login(EMAIL_USER, EMAIL_PASS)
-            server.sendmail(EMAIL_USER, ADMIN_EMAIL, msg.as_string())
+        with smtplib.SMTP(email_host, email_port, timeout=15) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(email_user, email_pass)
+            server.sendmail(email_user, [ADMIN_EMAIL], msg.as_string())
         logger.info("Feedback email sent to %s", ADMIN_EMAIL)
     except Exception as exc:
         logger.warning("Feedback email failed: %s", exc)

@@ -262,3 +262,22 @@ class CouponCreate(BaseModel):
     plan:          str   = Field(default="any", max_length=20)
     max_uses:      int   = Field(default=100, ge=1)
     expires_days:  int   = Field(default=0, ge=0)   # 0 = never expires
+
+
+# ---------------------------------------------------------------------------
+# Access code models
+# ---------------------------------------------------------------------------
+
+class AccessCodeGenerate(BaseModel):
+    tier:          Literal["tier1", "tier2", "tier3"]
+    sent_to_email: str  = Field(default="", max_length=254)
+    expires_days:  int  = Field(default=30, ge=1, le=365)
+
+
+class EmailSignUpWithCode(BaseModel):
+    """Extended signup that accepts an optional access code."""
+    name:        str = Field(..., min_length=1, max_length=80)
+    email:       str = Field(..., min_length=5, max_length=254,
+                              pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    password:    str = Field(..., min_length=8, max_length=128)
+    access_code: str = Field(default="", max_length=32)

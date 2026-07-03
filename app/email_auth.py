@@ -30,19 +30,27 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Config
+# Config — read lazily at call time so Render env vars are always current
 # ---------------------------------------------------------------------------
 
-EMAIL_HOST    = os.getenv("EMAIL_HOST",   "smtp.gmail.com")
-EMAIL_PORT    = int(os.getenv("EMAIL_PORT", "587"))
-EMAIL_USER    = os.getenv("EMAIL_USER",   "")
-EMAIL_PASS    = os.getenv("EMAIL_PASS",   "")
-EMAIL_FROM    = os.getenv("EMAIL_FROM",   "MyPy Tutor <noreply@mypytutor.com>")
-APP_URL       = os.getenv("APP_URL",      "https://mypytutor.onrender.com")
-SESSION_SECRET = os.getenv("SESSION_SECRET", "change-me-in-production-32-chars-min")
+def _cfg(key: str, default: str = "") -> str:
+    """Read env var at call time — never at import time."""
+    return os.getenv(key, default)
 
-_token_serializer = URLSafeTimedSerializer(SESSION_SECRET)
-CONFIRM_MAX_AGE   = 60 * 60 * 24   # 24 hours
+# Keep these for backwards compatibility with code that reads them directly
+EMAIL_HOST     = "smtp.gmail.com"   # overridden at runtime by _cfg()
+EMAIL_PORT     = 587
+APP_URL        = "https://mypytutor.onrender.com"
+SESSION_SECRET = "change-me-in-production-32-chars-min"
+
+def _get_session_secret() -> str:
+    return os.getenv("SESSION_SECRET", "change-me-in-production-32-chars-min")
+
+def _get_token_serializer() -> "URLSafeTimedSerializer":
+    """Fresh serializer each time in case SESSION_SECRET changes after import."""
+    return URLSafeTimedSerializer(_get_session_secret())
+
+CONFIRM_MAX_AGE = 60 * 60 * 24   # 24 hours
 
 # ---------------------------------------------------------------------------
 # In-memory stores (backed by SQLite via db.py)
@@ -133,28 +141,74 @@ def _make_learner_id(email: str) -> str:
 
 
 def _send_email(to: str, subject: str, html_body: str, text_body: str) -> bool:
-    """Send an email via Gmail SMTP. Returns True on success."""
-    if not EMAIL_USER or not EMAIL_PASS:
-        logger.warning("Email not configured — skipping send to %s", to)
+    """
+    Send an email via Gmail SMTP.
+    - Reads env vars at call time (not import time) so Render values are current.
+    - Runs in the calling thread; wrap in threading.Thread for non-blocking use.
+    Returns True on success.
+    """
+    email_user = _cfg("EMAIL_USER")
+    email_pass = _cfg("EMAIL_PASS")
+    email_host = _cfg("EMAIL_HOST", "smtp.gmail.com")
+    email_port = int(_cfg("EMAIL_PORT", "587"))
+    email_from = _cfg("EMAIL_FROM", f"MyPy Tutor <{email_user}>")
+    app_url    = _cfg("APP_URL", "https://mypytutor.onrender.com")
+
+    # Patch module-level APP_URL so it stays current for token URLs
+    global APP_URL
+    if app_url:
+        APP_URL = app_url
+
+    if not email_user or not email_pass:
+        logger.warning(
+            "Email not configured (EMAIL_USER/EMAIL_PASS not set) — "
+            "skipping send to %s. Set these in Render → Environment.", to
+        )
         return False
+
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
-        msg["From"]    = EMAIL_FROM
+        msg["From"]    = email_from or f"MyPy Tutor <{email_user}>"
         msg["To"]      = to
-        msg.attach(MIMEText(text_body, "plain"))
-        msg.attach(MIMEText(html_body, "html"))
+        msg["Reply-To"] = email_user
+        msg.attach(MIMEText(text_body, "plain", "utf-8"))
+        msg.attach(MIMEText(html_body, "html",  "utf-8"))
 
-        with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=10) as server:
+        with smtplib.SMTP(email_host, email_port, timeout=20) as server:
             server.ehlo()
             server.starttls()
-            server.login(EMAIL_USER, EMAIL_PASS)
-            server.sendmail(EMAIL_USER, to, msg.as_string())
-        logger.info("Email sent to %s", to)
+            server.ehlo()
+            server.login(email_user, email_pass)
+            server.sendmail(email_user, [to], msg.as_string())
+
+        logger.info("✅ Email sent to %s (subject: %s)", to, subject)
         return True
-    except Exception as exc:
-        logger.error("Failed to send email to %s: %s", to, exc)
+
+    except smtplib.SMTPAuthenticationError as exc:
+        logger.error(
+            "❌ Gmail auth failed for %s — check EMAIL_PASS is a Gmail App Password "
+            "(not your normal password): %s", email_user, exc
+        )
         return False
+    except smtplib.SMTPException as exc:
+        logger.error("❌ SMTP error sending to %s: %s", to, exc)
+        return False
+    except Exception as exc:
+        logger.error("❌ Failed to send email to %s: %s", to, exc)
+        return False
+
+
+def _send_email_async(to: str, subject: str, html_body: str, text_body: str) -> None:
+    """Fire-and-forget email send in a daemon thread — never blocks the request."""
+    import threading
+    t = threading.Thread(
+        target=_send_email,
+        args=(to, subject, html_body, text_body),
+        daemon=True,
+        name=f"email-{to[:20]}",
+    )
+    t.start()
 
 
 # ---------------------------------------------------------------------------
@@ -173,7 +227,7 @@ def register_email(email: str, name: str, password_hash: str) -> tuple[bool, str
         return False, "An account with this email already exists. Please sign in."
 
     # Generate confirmation token
-    token = _token_serializer.dumps(email, salt="email-confirm")
+    token = _get_token_serializer().dumps(email, salt="email-confirm")
 
     _pending[email] = {
         "name":          name,
@@ -184,7 +238,8 @@ def register_email(email: str, name: str, password_hash: str) -> tuple[bool, str
         "created_at":    time.time(),
     }
 
-    confirm_url = f"{APP_URL}/auth/confirm?token={token}"
+    app_url     = _cfg("APP_URL", "https://mypytutor.onrender.com")
+    confirm_url = f"{app_url}/auth/confirm?token={token}"
 
     html_body = f"""
 <!DOCTYPE html>
@@ -222,26 +277,20 @@ def register_email(email: str, name: str, password_hash: str) -> tuple[bool, str
         f"— MyPy Tutor Team"
     )
 
-    sent = _send_email(email, "Confirm your MyPy Tutor account", html_body, text_body)
+    # Send confirmation email in a background thread (non-blocking)
+    _send_email_async(email, "Confirm your MyPy Tutor account", html_body, text_body)
 
-    if not sent:
-        if not EMAIL_USER or not EMAIL_PASS:
-            # Neither email credentials set — dev/test mode, auto-confirm
-            logger.warning("DEV MODE: auto-confirming %s (email not configured)", email)
-            return confirm_email_token(token)
-        else:
-            # Credentials configured but send failed — still create the account
-            # but inform user the email may have failed
-            logger.error("Email send failed for %s — account created but confirmation may not have arrived", email)
-            return True, (
-                f"✅ Account created for {email}! "
-                "We tried to send a confirmation email — if it doesn't arrive within a few minutes, "
-                "please contact support or try signing in directly."
-            )
+    email_user = _cfg("EMAIL_USER")
+    email_pass = _cfg("EMAIL_PASS")
+
+    if not email_user or not email_pass:
+        # Dev mode — no email credentials, auto-confirm immediately
+        logger.warning("DEV MODE: auto-confirming %s (EMAIL_USER/EMAIL_PASS not set)", email)
+        return confirm_email_token(token)
 
     return True, (
         f"✅ Confirmation email sent to {email}! "
-        "Please check your inbox (and spam folder) and click the link to activate your account."
+        "Please check your inbox and spam folder, then click the link to activate your account."
     )
 
 
@@ -252,7 +301,7 @@ def confirm_email_token(token: str) -> tuple[bool, str]:
     On success, moves user from _pending to _confirmed.
     """
     try:
-        email = _token_serializer.loads(token, salt="email-confirm", max_age=CONFIRM_MAX_AGE)
+        email = _get_token_serializer().loads(token, salt="email-confirm", max_age=CONFIRM_MAX_AGE)
     except SignatureExpired:
         return False, "Confirmation link has expired. Please sign up again."
     except BadSignature:
@@ -297,14 +346,20 @@ def confirm_email_token(token: str) -> tuple[bool, str]:
     except Exception as exc:
         logger.warning("Supabase email account sync failed: %s", exc)
 
-    # Send welcome email
-    _send_welcome(user_data["name"], email)
+    # Send welcome email asynchronously (non-blocking)
+    _send_email_async(
+        user_data["email"],
+        f"Welcome to MyPy Tutor, {user_data['name'].split()[0]}! Your learning journey begins 🐍",
+        *_build_welcome_email(user_data["name"], user_data["email"])
+    )
 
     return True, f"Email confirmed! Welcome to MyPy Tutor, {user_data['name']} 🎉"
 
 
-def _send_welcome(name: str, email: str) -> None:
+def _build_welcome_email(name: str, email: str) -> tuple[str, str]:
+    """Returns (html_body, text_body) for the welcome email."""
     first_name = name.split()[0] if name else "Learner"
+    app_url    = _cfg("APP_URL", "https://mypytutor.onrender.com")
 
     html_body = f"""<!DOCTYPE html>
 <html lang="en">
@@ -313,92 +368,48 @@ def _send_welcome(name: str, email: str) -> None:
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f9;padding:32px 16px;">
 <tr><td align="center">
 <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
-
-  <!-- Header -->
   <tr><td style="background:linear-gradient(135deg,#0d2b6e 0%,#1a3f9a 100%);border-radius:14px 14px 0 0;padding:32px 40px;text-align:center;">
     <div style="font-size:2.2rem;margin-bottom:6px;">🐍</div>
-    <h1 style="color:#ffffff;font-size:1.5rem;margin:0;letter-spacing:0.04em;">MyPy Tutor</h1>
+    <h1 style="color:#ffffff;font-size:1.5rem;margin:0;">MyPy Tutor</h1>
     <p style="color:rgba(255,255,255,0.7);font-size:0.75rem;margin:6px 0 0;letter-spacing:0.12em;text-transform:uppercase;">Powered by TeamTega Technologies Limited</p>
   </td></tr>
-
-  <!-- Body -->
   <tr><td style="background:#ffffff;padding:36px 40px;border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0;">
-
     <p style="font-size:1rem;color:#1a202c;margin:0 0 16px;">Dear <strong>{first_name}</strong>,</p>
     <h2 style="color:#0d2b6e;font-size:1.3rem;margin:0 0 12px;">Welcome to MyPy Tutor!</h2>
-
-    <p style="color:#4a5568;line-height:1.7;margin:0 0 14px;">
-      We're excited to have you join a growing community of learners who are mastering Python through personalized, AI-powered learning.
-    </p>
-    <p style="color:#4a5568;line-height:1.7;margin:0 0 20px;">
-      MyPy Tutor is more than an online Python course — it's an intelligent learning platform designed to help you build real-world programming skills at your own pace. Whether you're taking your first steps into coding or advancing into artificial intelligence, data science, databases, or automation, MyPy Tutor is here to guide you every step of the way.
-    </p>
-
-    <!-- What to expect -->
+    <p style="color:#4a5568;line-height:1.7;margin:0 0 14px;">We're excited to have you join a growing community of learners mastering Python through personalised, AI-powered learning.</p>
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8faff;border-radius:10px;border:1px solid #e2e8f0;padding:20px 24px;margin-bottom:20px;">
     <tr><td>
-      <h3 style="color:#0d2b6e;font-size:0.95rem;margin:0 0 14px;letter-spacing:0.04em;">What You Can Expect</h3>
-      <p style="margin:0 0 10px;color:#2d3748;line-height:1.6;"><strong>🤖 Sir. Tega AI Tutor</strong> — Your personal AI instructor that explains concepts clearly, answers your questions, debugs your code, and adapts lessons to your learning needs.</p>
-      <p style="margin:0 0 10px;color:#2d3748;line-height:1.6;"><strong>📚 Structured Learning</strong> — Access comprehensive Python courses covering everything from the fundamentals to advanced topics.</p>
-      <p style="margin:0 0 10px;color:#2d3748;line-height:1.6;"><strong>📈 Personalized Progress Tracking</strong> — Your learning history, achievements, and knowledge gaps are securely stored so you can continue exactly where you left off.</p>
-      <p style="margin:0;color:#2d3748;line-height:1.6;"><strong>🏆 Professional Certification</strong> — Complete your learning journey and earn verifiable certificates issued by Teamsamikoko Global Academy.</p>
+      <h3 style="color:#0d2b6e;font-size:0.95rem;margin:0 0 14px;">What You Can Expect</h3>
+      <p style="margin:0 0 10px;color:#2d3748;line-height:1.6;"><strong>🤖 Sir. Tega AI Tutor</strong> — Your personal AI instructor that explains concepts clearly, debugs your code, and adapts to your learning needs.</p>
+      <p style="margin:0 0 10px;color:#2d3748;line-height:1.6;"><strong>📚 Structured Learning</strong> — Comprehensive Python courses from fundamentals to AI, data science, and databases.</p>
+      <p style="margin:0 0 10px;color:#2d3748;line-height:1.6;"><strong>📈 Progress Tracking</strong> — Your history, achievements, and knowledge gaps are stored so you continue where you left off.</p>
+      <p style="margin:0;color:#2d3748;line-height:1.6;"><strong>🏆 Professional Certification</strong> — Earn verifiable certificates issued by Teamsamikoko Global Academy.</p>
     </td></tr>
     </table>
-
-    <!-- About TSA -->
-    <h3 style="color:#0d2b6e;font-size:0.92rem;margin:0 0 8px;">About Teamsamikoko Global Academy</h3>
-    <p style="color:#4a5568;line-height:1.7;font-size:0.88rem;margin:0 0 16px;">
-      Teamsamikoko Global Academy is a registered educational institution committed to equipping individuals with practical digital, technical, entrepreneurial, and professional skills needed to thrive in today's world. Our mission is to make high-quality technology education accessible, affordable, and impactful while preparing learners for global opportunities through practical training and recognized certifications.
-    </p>
-
-    <!-- About TTL -->
-    <h3 style="color:#0d2b6e;font-size:0.92rem;margin:0 0 8px;">About TeamTega Technologies Limited</h3>
-    <p style="color:#4a5568;line-height:1.7;font-size:0.88rem;margin:0 0 16px;">
-      TeamTega Technologies Limited is the technology company behind the MyPy Tutor platform. We specialize in building innovative software solutions powered by Artificial Intelligence, automation, cloud technologies, and modern web development. Our goal is to develop intelligent digital products that transform education, businesses, healthcare, and public services across Africa and beyond.
-    </p>
-
-    <p style="color:#4a5568;line-height:1.7;font-size:0.88rem;margin:0 0 20px;">
-      Together, Teamsamikoko Global Academy and TeamTega Technologies Limited combine educational excellence with cutting-edge technology to create a smarter and more personalized learning experience.
-    </p>
-
-    <!-- Get started -->
     <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f7ff;border-radius:10px;border-left:4px solid #0d2b6e;padding:18px 22px;margin-bottom:24px;">
     <tr><td>
       <h3 style="color:#0d2b6e;font-size:0.92rem;margin:0 0 10px;">Get Started Today</h3>
-      <p style="color:#2d3748;margin:0 0 6px;line-height:1.6;font-size:0.88rem;">✅ Complete your profile</p>
-      <p style="color:#2d3748;margin:0 0 6px;line-height:1.6;font-size:0.88rem;">✅ Start with your recommended Python course</p>
-      <p style="color:#2d3748;margin:0 0 6px;line-height:1.6;font-size:0.88rem;">✅ Ask Sir. Tega questions whenever you need help</p>
-      <p style="color:#2d3748;margin:0 0 6px;line-height:1.6;font-size:0.88rem;">✅ Practice consistently using the exercises and coding challenges</p>
-      <p style="color:#2d3748;margin:0;line-height:1.6;font-size:0.88rem;">✅ Track your progress and unlock certificates as you advance</p>
+      <p style="color:#2d3748;margin:0 0 5px;font-size:0.88rem;">✅ Start with your recommended Python course</p>
+      <p style="color:#2d3748;margin:0 0 5px;font-size:0.88rem;">✅ Ask Sir. Tega anything about Python</p>
+      <p style="color:#2d3748;margin:0 0 5px;font-size:0.88rem;">✅ Practice with exercises and coding challenges</p>
+      <p style="color:#2d3748;margin:0;font-size:0.88rem;">✅ Track progress and unlock certificates as you advance</p>
     </td></tr>
     </table>
-
-    <p style="color:#4a5568;line-height:1.7;font-size:0.88rem;margin:0 0 20px;">
-      Learning Python is one of the best investments you can make for your future, and we're honoured to be part of your journey. Thank you for choosing MyPy Tutor. We wish you success as you learn, build, and innovate.
-    </p>
-
-    <!-- CTA Button -->
     <div style="text-align:center;margin:24px 0;">
-      <a href="{APP_URL}" style="display:inline-block;background:linear-gradient(135deg,#0d2b6e,#1a3f9a);color:#ffffff;text-decoration:none;font-weight:bold;font-size:0.95rem;padding:14px 36px;border-radius:8px;letter-spacing:0.04em;box-shadow:0 4px 14px rgba(13,43,110,0.3);">
+      <a href="{app_url}" style="display:inline-block;background:linear-gradient(135deg,#0d2b6e,#1a3f9a);color:#ffffff;text-decoration:none;font-weight:bold;font-size:0.95rem;padding:14px 36px;border-radius:8px;">
         🚀 Start Learning Now
       </a>
     </div>
-
     <p style="color:#718096;font-size:0.85rem;line-height:1.6;margin:0;">
-      Warm regards,<br/>
-      <strong style="color:#0d2b6e;">The MyPy Tutor Team</strong>
+      Warm regards,<br/><strong style="color:#0d2b6e;">The MyPy Tutor Team</strong>
     </p>
-
   </td></tr>
-
-  <!-- Footer -->
   <tr><td style="background:#0d2b6e;border-radius:0 0 14px 14px;padding:20px 40px;text-align:center;">
-    <p style="color:rgba(255,255,255,0.9);font-size:0.78rem;margin:0 0 6px;font-weight:600;">Powered by TeamTega Technologies Limited</p>
-    <p style="color:rgba(255,255,255,0.7);font-size:0.72rem;margin:0 0 6px;">Certified by Teamsamikoko Global Academy · Reg No: 3508656</p>
-    <p style="color:rgba(255,255,255,0.55);font-size:0.7rem;margin:0 0 8px;font-style:italic;">"Learn Smarter. Code Better. Build the Future."</p>
-    <a href="{APP_URL}" style="color:#90c4ff;font-size:0.72rem;">{APP_URL.replace('https://','')}</a>
+    <p style="color:rgba(255,255,255,0.9);font-size:0.78rem;margin:0 0 4px;font-weight:600;">Powered by TeamTega Technologies Limited</p>
+    <p style="color:rgba(255,255,255,0.7);font-size:0.72rem;margin:0 0 4px;">Certified by Teamsamikoko Global Academy · Reg No: 3508656</p>
+    <p style="color:rgba(255,255,255,0.55);font-size:0.7rem;margin:0 0 6px;font-style:italic;">"Learn Smarter. Code Better. Build the Future."</p>
+    <a href="{app_url}" style="color:#90c4ff;font-size:0.72rem;">{app_url.replace('https://','')}</a>
   </td></tr>
-
 </table>
 </td></tr>
 </table>
@@ -409,34 +420,26 @@ def _send_welcome(name: str, email: str) -> None:
 
 Welcome to MyPy Tutor!
 
-We're excited to have you join a growing community of learners mastering Python through personalized, AI-powered learning.
+Sir. Tega is ready to teach you Python from basics to AI and data science.
 
-What You Can Expect:
-- Sir. Tega AI Tutor: Your personal AI instructor
-- Structured Learning: Comprehensive Python courses
-- Progress Tracking: Your history stored securely
-- Professional Certification: Certificates from Teamsamikoko Global Academy
-
-Get Started Today:
-1. Complete your profile
-2. Start with your recommended Python course
-3. Ask Sir. Tega questions whenever you need help
-4. Practice with exercises and coding challenges
-5. Track progress and unlock certificates
-
-Start learning at: {APP_URL}
+Get started at: {app_url}
 
 Warm regards,
 The MyPy Tutor Team
 Powered by TeamTega Technologies Limited
-Certified by Teamsamikoko Global Academy
+Certified by Teamsamikoko Global Academy · Reg No: 3508656
 "Learn Smarter. Code Better. Build the Future."
 """
-    _send_email(
+    return html_body, text_body
+
+
+# Keep old name for any external callers
+def _send_welcome(name: str, email: str) -> None:
+    html, text = _build_welcome_email(name, email)
+    _send_email_async(
         email,
-        f"Welcome to MyPy Tutor, {first_name}! Your learning journey begins 🐍",
-        html_body,
-        text_body
+        f"Welcome to MyPy Tutor, {name.split()[0]}! Your learning journey begins 🐍",
+        html, text
     )
 
 
@@ -448,13 +451,14 @@ import hashlib as _hashlib
 
 
 def hash_password(password: str) -> str:
-    """Simple SHA-256 hash — good enough for in-memory MVP, use bcrypt for production."""
+    """SHA-256 hash. Use bcrypt in production for stronger security."""
     return _hashlib.sha256(password.encode()).hexdigest()
 
 
 def sign_in_email(email: str, password: str) -> tuple[bool, Optional[dict], str]:
     """
     Attempt email/password sign-in.
+
     Returns (success, user_data, message).
     """
     email = email.lower().strip()
@@ -491,14 +495,14 @@ def request_password_reset(email: str) -> tuple[bool, str]:
     user  = _confirmed.get(email)
 
     if user:
-        token = _token_serializer.dumps(email, salt="pw-reset")
+        token = _get_token_serializer().dumps(email, salt="pw-reset")
         try:
             from app.db import save_reset_token
             save_reset_token(token, email)
         except Exception as exc:
             logger.warning("Could not save reset token to DB: %s", exc)
 
-        reset_url  = f"{APP_URL}/?auth=reset&token={token}"
+        reset_url  = f"{_cfg('APP_URL', 'https://mypytutor.onrender.com')}/?auth=reset&token={token}"
         first_name = user.get("name", "Learner").split()[0]
 
         html_body = f"""<!DOCTYPE html>
@@ -538,7 +542,7 @@ def request_password_reset(email: str) -> tuple[bool, str]:
             f"If you didn't request this, ignore this email.\n\n"
             f"— MyPy Tutor Team"
         )
-        _send_email(email, "Reset your MyPy Tutor password", html_body, text_body)
+        _send_email_async(email, "Reset your MyPy Tutor password", html_body, text_body)
 
     # Always return success (prevents email enumeration attacks)
     return True, (
@@ -557,7 +561,7 @@ def confirm_password_reset(token: str, new_password: str) -> tuple[bool, str]:
 
     # Validate token signature first (fast, no DB needed)
     try:
-        email = _token_serializer.loads(token, salt="pw-reset", max_age=RESET_MAX_AGE)
+        email = _get_token_serializer().loads(token, salt="pw-reset", max_age=RESET_MAX_AGE)
     except SignatureExpired:
         return False, "Reset link has expired. Please request a new one."
     except BadSignature:
