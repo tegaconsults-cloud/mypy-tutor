@@ -1428,10 +1428,16 @@
 
     // ── marked.js + hljs — deferred scripts, init after DOM ready ────────────
     // Scripts are defer'd so they load in parallel but execute after HTML parse.
-    // We guard calls with a readiness check so the first message still renders.
+    // _initLibs() retries every 150ms until both libraries are available,
+    // then configures them once. This handles slow CDN connections gracefully.
     let _libsReady = false;
     function _initLibs() {
-      if (_libsReady || typeof marked === 'undefined' || typeof hljs === 'undefined') return;
+      if (_libsReady) return;
+      if (typeof marked === 'undefined' || typeof hljs === 'undefined') {
+        // Libraries not loaded yet — schedule a retry
+        setTimeout(_initLibs, 150);
+        return;
+      }
       _libsReady = true;
       marked.setOptions({ breaks: true, gfm: true });
       const renderer = new marked.Renderer();
@@ -1444,7 +1450,8 @@
       };
       marked.use({ renderer });
     }
-    // Attempt init now (if scripts somehow already loaded) and also on load
+    // Start the retry loop immediately — will succeed once deferred scripts load
+    _initLibs();
     document.addEventListener('DOMContentLoaded', _initLibs);
     window.addEventListener('load', _initLibs);
 
@@ -2192,28 +2199,29 @@
       const current  = document.getElementById('chpw-current').value;
       const newPw    = document.getElementById('chpw-new').value;
       const confirm  = document.getElementById('chpw-confirm').value;
-      const msgEl    = document.getElementById('chpw-msg');
 
-      msgEl.style.display = 'none';
+      // Bug 5 fix: check auth type, not just whether email is stored
+      const authType = localStorage.getItem('mpt_auth_type') || 'email';
+      if (authType === 'google') {
+        _showChpwMsg('Google accounts — change your password at myaccount.google.com', false);
+        return;
+      }
 
       const email = localStorage.getItem('mpt_user_email') || '';
       if (!email) {
-        // Google users can't change password here
-        msgEl.style.display = 'block';
-        msgEl.style.color   = '#f6ad55';
-        msgEl.textContent   = 'Google accounts — change password via your Google account settings.';
+        _showChpwMsg('Could not determine account email. Please sign out and back in.', false);
         return;
       }
-      if (!current)          { _showChpwMsg('Enter your current password.', false); return; }
-      if (newPw.length < 8)  { _showChpwMsg('New password must be at least 8 characters.', false); return; }
-      if (newPw !== confirm)  { _showChpwMsg('Passwords do not match.', false); return; }
+      if (!current)         { _showChpwMsg('Enter your current password.', false); return; }
+      if (newPw.length < 8) { _showChpwMsg('New password must be at least 8 characters.', false); return; }
+      if (newPw !== confirm) { _showChpwMsg('Passwords do not match.', false); return; }
 
       const btn = document.querySelector('#chpw-form .chpw-btn');
       btn.disabled    = true;
       btn.textContent = 'Updating…';
 
       try {
-        // Step 1: verify current password by signing in
+        // Step 1: verify current password is correct
         const verRes = await fetch('/auth/signin', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2223,18 +2231,15 @@
           _showChpwMsg('Current password is incorrect.', false);
           return;
         }
-        // Step 2: request a reset token and apply new password in one flow
-        const fRes = await fetch('/auth/forgot-password', {
+        // Step 2: trigger forgot-password to email a secure reset link
+        await fetch('/auth/forgot-password', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email }),
         });
-        const fData = await fRes.json();
-        // We can't use the email-token flow here directly (token goes to email),
-        // so use the admin set-password endpoint we'll add, OR show guidance.
         _showChpwMsg(
           '✅ A password reset link has been sent to ' + email +
-          '. Click the link in your email to complete the change.',
+          '. Click the link in your email to set the new password.',
           true
         );
         document.getElementById('chpw-current').value = '';
@@ -2334,8 +2339,11 @@
       localStorage.setItem(SESSION_KEY, data.token);
       // Store user info for learner_id usage and admin visibility
       localStorage.setItem('mpt_user_email', data.email || '');
-      localStorage.setItem('mpt_user_name', data.name || '');
+      localStorage.setItem('mpt_user_name',  data.name  || '');
       localStorage.setItem('mpt_learner_id', data.learner_id || '');
+      // Track auth type so change-password can detect Google accounts
+      const isGoogleUser = (data.learner_id || '').startsWith('g_');
+      localStorage.setItem('mpt_auth_type', isGoogleUser ? 'google' : 'email');
 
       // Update UI: show user chip, hide sign-in button
       document.getElementById('auth-btn').style.display = 'none';
@@ -2397,7 +2405,11 @@
 
     function signOut() {
       localStorage.removeItem(SESSION_KEY);
-      localStorage.removeItem('mpt_conv_id');  // clear conversation on sign-out
+      localStorage.removeItem('mpt_conv_id');    // clear conversation on sign-out
+      localStorage.removeItem('mpt_auth_type');  // clear auth type
+      localStorage.removeItem('mpt_user_email');
+      localStorage.removeItem('mpt_user_name');
+      localStorage.removeItem('mpt_learner_id');
       currentUser = null;
       window._learnerId = 'default';
       document.getElementById('auth-btn').style.display = 'flex';

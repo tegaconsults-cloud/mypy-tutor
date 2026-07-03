@@ -85,14 +85,15 @@ def save_profile(profile: LearnerProfile) -> None:
         "last_prompt_date":  profile.last_prompt_date,
     }
     save_profile_db(profile.learner_id, profile_data)
-    # Supabase sync — fire in a daemon thread so it never blocks the event loop
+    # Supabase sync — non-daemon thread so it finishes before process exits on SIGTERM
     try:
         from app.supabase_client import sb_sync_progress
         import threading
         threading.Thread(
             target=sb_sync_progress,
             args=(profile.learner_id, profile_data),
-            daemon=True,
+            daemon=False,   # non-daemon: process waits for this on shutdown
+            name=f"sb-sync-{profile.learner_id[:12]}",
         ).start()
     except Exception:
         pass

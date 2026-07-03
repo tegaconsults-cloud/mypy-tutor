@@ -489,8 +489,11 @@ def save_prompt_history(learner_id: str, role: str, content: str,
             "INSERT INTO prompt_history (learner_id,role,content,intent,topic) VALUES (?,?,?,?,?)",
             (learner_id, role, content[:4000], intent[:50], topic[:100])
         )
-        # Efficient trim: delete oldest rows beyond the limit using a subquery
-        # that only touches this learner's rows via the composite index.
+        # Trim to last PROMPT_HISTORY_LIMIT rows.
+        # The subquery returns NULL when there are fewer rows than the limit,
+        # making the WHERE clause false — no rows deleted. This is correct.
+        # The composite index (learner_id, id) makes both the subquery and
+        # the DELETE fast even with thousands of rows.
         conn.execute("""
         DELETE FROM prompt_history
         WHERE learner_id = ? AND id <= (

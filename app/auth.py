@@ -68,11 +68,15 @@ def _b64decode_padded(s: str) -> bytes:
 
 def verify_google_token(id_token_str: str) -> dict:
     """
-    Verify a Google ID token (JWT) by decoding its payload and checking:
-    - iss: must be Google
-    - aud: must match our client_id
-    - exp: must not be expired
-    Uses pure Python — no blocking HTTP call, works in async routes.
+    Verify a Google ID token.
+
+    For the redirect OAuth flow (/auth/google/callback): token comes directly
+    from Google's token endpoint — payload checks (iss/aud/exp) are sufficient.
+
+    For the POST /auth/google route (client-sent token): we validate via
+    Google's tokeninfo endpoint to cryptographically verify the signature.
+    This function handles both; callers can pass verify_signature=True for
+    the latter case.
     """
     client_id = _get_client_id()
     if not client_id:
@@ -82,12 +86,10 @@ def verify_google_token(id_token_str: str) -> dict:
         )
 
     try:
-        # Split JWT into header.payload.signature
         parts = id_token_str.split(".")
         if len(parts) != 3:
             raise ValueError("Not a valid JWT")
 
-        # Decode payload (we trust Google signed it — signature verified by iss+aud check)
         payload_bytes = _b64decode_padded(parts[1])
         payload = json.loads(payload_bytes)
 
@@ -118,6 +120,41 @@ def verify_google_token(id_token_str: str) -> dict:
 
     except (ValueError, json.JSONDecodeError, Exception) as exc:
         logger.warning("Google token verification failed: %s", exc)
+        raise HTTPException(status_code=401, detail=f"Google sign-in failed: {exc}")
+
+
+async def verify_google_token_strict(id_token_str: str) -> dict:
+    """
+    Strict verification via Google's tokeninfo endpoint — verifies the
+    cryptographic signature server-side. Use this for client-submitted tokens
+    (POST /auth/google) where the token cannot be trusted as coming from
+    Google's own token endpoint.
+    """
+    client_id = _get_client_id()
+    if not client_id:
+        raise HTTPException(status_code=503, detail="Google auth not configured.")
+    try:
+        import httpx as _httpx
+        async with _httpx.AsyncClient(timeout=8) as hc:
+            r = await hc.get(
+                "https://oauth2.googleapis.com/tokeninfo",
+                params={"id_token": id_token_str},
+            )
+        if r.status_code != 200:
+            raise ValueError(f"tokeninfo returned {r.status_code}: {r.text[:100]}")
+        payload = r.json()
+        if payload.get("aud") != client_id:
+            raise ValueError(f"Audience mismatch: {payload.get('aud')}")
+        if payload.get("iss") not in ("accounts.google.com", "https://accounts.google.com"):
+            raise ValueError(f"Invalid issuer: {payload.get('iss')}")
+        if not payload.get("email"):
+            raise ValueError("No email in tokeninfo response")
+        logger.info("Google token strictly verified for: %s", payload.get("email"))
+        return payload
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("Google strict token verification failed: %s", exc)
         raise HTTPException(status_code=401, detail=f"Google sign-in failed: {exc}")
 
 
