@@ -1,7 +1,7 @@
 {
   "name": "MyPy Tutor",
-  "short_name": "MyPy",
-  "description": "Your best AI/ML & Python Tutor — powered by Teamsamikoko Global Academy. Learn Python, take quizzes, earn certificates.",
+  "short_name": "MyPy Tutor",
+  "description": "Your best AI/ML & Python Tutor — learn Python, take quizzes, earn certificates. Powered by Teamsamikoko Global Academy.",
   "start_url": "/",
   "id": "/",
   "display": "standalone",
@@ -14,9 +14,9 @@
   "prefer_related_applications": false,
   "icons": [
     {
-      "src": "/icons/logo.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/icons/logo-mpt.png",
+      "sizes": "300x300",
+      "type": "image/png",
       "purpose": "any"
     },
     {
@@ -51,21 +51,21 @@
       "short_name": "Chat",
       "description": "Ask a Python question",
       "url": "/?panel=chat",
-      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/icons/logo-mpt.png", "sizes": "300x300" }]
     },
     {
       "name": "Take a Quiz",
       "short_name": "Quiz",
       "description": "Test your Python knowledge",
       "url": "/?panel=quiz",
-      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/icons/logo-mpt.png", "sizes": "300x300" }]
     },
     {
       "name": "My Progress",
       "short_name": "Progress",
       "description": "View your learning progress",
       "url": "/?panel=progress",
-      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+      "icons": [{ "src": "/icons/logo-mpt.png", "sizes": "300x300" }]
     }
   ]
 }

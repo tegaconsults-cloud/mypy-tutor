@@ -7,13 +7,14 @@
  *  - Navigation requests → Cache-first, serve cached shell if offline
  */
 
-const CACHE_VERSION = 'mypy-tutor-v3';
+const CACHE_VERSION = 'mypy-tutor-v4';
 const OFFLINE_URL   = '/';
 
 // App shell to pre-cache on install — do NOT include sw.js itself
 const PRECACHE_URLS = [
   '/',
   '/manifest.json',
+  '/icons/logo-mpt.png',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
   'https://cdn.jsdelivr.net/npm/marked/marked.min.js',
