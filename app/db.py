@@ -43,8 +43,9 @@ def get_db():
 
 
 def init_db() -> None:
-    """Create all tables if they don't exist."""
+    """Create all tables then all indexes — order matters: indexes must come after tables."""
     with get_db() as conn:
+        # ── PASS 1: All tables ───────────────────────────────────────────────
         conn.executescript("""
         CREATE TABLE IF NOT EXISTS learner_profiles (
             learner_id      TEXT PRIMARY KEY,
@@ -128,8 +129,117 @@ def init_db() -> None:
             sent_at         REAL DEFAULT (unixepoch())
         );
 
-        -- ── Performance indexes ──────────────────────────────────────────────
-        -- These turn full table scans into fast index lookups on hot columns.
+        CREATE TABLE IF NOT EXISTS password_resets (
+            token           TEXT PRIMARY KEY,
+            email           TEXT NOT NULL,
+            created_at      REAL DEFAULT (unixepoch()),
+            used            INTEGER DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS prompt_history (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            learner_id      TEXT NOT NULL,
+            role            TEXT NOT NULL,
+            content         TEXT NOT NULL,
+            intent          TEXT DEFAULT '',
+            topic           TEXT DEFAULT '',
+            ts              REAL DEFAULT (unixepoch())
+        );
+
+        CREATE TABLE IF NOT EXISTS quiz_attempts (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            learner_id      TEXT NOT NULL,
+            topic           TEXT NOT NULL,
+            question        TEXT NOT NULL,
+            answer          TEXT NOT NULL,
+            correct         INTEGER DEFAULT 0,
+            score           INTEGER DEFAULT 0,
+            ts              REAL DEFAULT (unixepoch())
+        );
+
+        CREATE TABLE IF NOT EXISTS assignments (
+            id              TEXT PRIMARY KEY,
+            learner_id      TEXT NOT NULL,
+            title           TEXT NOT NULL,
+            description     TEXT NOT NULL,
+            course          TEXT DEFAULT '',
+            status          TEXT DEFAULT 'pending',
+            submission      TEXT DEFAULT '',
+            feedback        TEXT DEFAULT '',
+            score           INTEGER DEFAULT 0,
+            submitted_at    REAL,
+            reviewed_at     REAL,
+            created_at      REAL DEFAULT (unixepoch())
+        );
+
+        CREATE TABLE IF NOT EXISTS referrals (
+            code            TEXT PRIMARY KEY,
+            owner_id        TEXT NOT NULL,
+            owner_email     TEXT NOT NULL,
+            uses            INTEGER DEFAULT 0,
+            max_uses        INTEGER DEFAULT 50,
+            reward_tier     TEXT DEFAULT 'tier1',
+            created_at      REAL DEFAULT (unixepoch())
+        );
+
+        CREATE TABLE IF NOT EXISTS referral_uses (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            code            TEXT NOT NULL,
+            used_by_email   TEXT NOT NULL,
+            used_by_id      TEXT NOT NULL,
+            discount_pct    INTEGER DEFAULT 20,
+            ts              REAL DEFAULT (unixepoch())
+        );
+
+        CREATE TABLE IF NOT EXISTS coupons (
+            code            TEXT PRIMARY KEY,
+            discount_pct    INTEGER NOT NULL,
+            discount_flat   REAL DEFAULT 0,
+            plan            TEXT DEFAULT 'any',
+            max_uses        INTEGER DEFAULT 100,
+            uses            INTEGER DEFAULT 0,
+            expires_at      REAL DEFAULT 0,
+            active          INTEGER DEFAULT 1,
+            created_at      REAL DEFAULT (unixepoch())
+        );
+
+        CREATE TABLE IF NOT EXISTS coupon_uses (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            code            TEXT NOT NULL,
+            learner_id      TEXT NOT NULL,
+            email           TEXT NOT NULL,
+            amount_saved    REAL DEFAULT 0,
+            ts              REAL DEFAULT (unixepoch())
+        );
+
+        CREATE TABLE IF NOT EXISTS invoices (
+            id              TEXT PRIMARY KEY,
+            payment_id      TEXT NOT NULL,
+            learner_id      TEXT NOT NULL,
+            email           TEXT NOT NULL,
+            name            TEXT NOT NULL,
+            plan            TEXT NOT NULL,
+            amount          REAL NOT NULL,
+            currency        TEXT DEFAULT 'NGN',
+            issued_at       REAL DEFAULT (unixepoch()),
+            due_date        TEXT DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS access_codes (
+            code            TEXT PRIMARY KEY,
+            tier            TEXT NOT NULL,
+            created_by      TEXT DEFAULT 'admin',
+            sent_to_email   TEXT DEFAULT '',
+            used_by_email   TEXT DEFAULT '',
+            used_by_id      TEXT DEFAULT '',
+            used            INTEGER DEFAULT 0,
+            expires_at      REAL DEFAULT 0,
+            created_at      REAL DEFAULT (unixepoch())
+        );
+        """)
+
+        # ── PASS 2: All indexes (tables guaranteed to exist now) ─────────────
+        conn.executescript("""
         CREATE INDEX IF NOT EXISTS idx_prompt_history_learner
             ON prompt_history (learner_id, id);
         CREATE INDEX IF NOT EXISTS idx_quiz_attempts_learner
@@ -146,113 +256,10 @@ def init_db() -> None:
             ON coupons (active, plan);
         CREATE INDEX IF NOT EXISTS idx_payments_email
             ON payments (user_email);
-        
-
-        -- Password reset tokens
-        CREATE TABLE IF NOT EXISTS password_resets (
-            token           TEXT PRIMARY KEY,
-            email           TEXT NOT NULL,
-            created_at      REAL DEFAULT (unixepoch()),
-            used            INTEGER DEFAULT 0
-        );
-
-        -- Conversation / prompt history (last 50 per user)
-        CREATE TABLE IF NOT EXISTS prompt_history (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            learner_id      TEXT NOT NULL,
-            role            TEXT NOT NULL,
-            content         TEXT NOT NULL,
-            intent          TEXT DEFAULT '',
-            topic           TEXT DEFAULT '',
-            ts              REAL DEFAULT (unixepoch())
-        );
-
-        -- Quiz attempts (full record per attempt)
-        CREATE TABLE IF NOT EXISTS quiz_attempts (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            learner_id      TEXT NOT NULL,
-            topic           TEXT NOT NULL,
-            question        TEXT NOT NULL,
-            answer          TEXT NOT NULL,
-            correct         INTEGER DEFAULT 0,
-            score           INTEGER DEFAULT 0,
-            ts              REAL DEFAULT (unixepoch())
-        );
-
-        -- Assignments (per-learner submission + review)
-        CREATE TABLE IF NOT EXISTS assignments (
-            id              TEXT PRIMARY KEY,
-            learner_id      TEXT NOT NULL,
-            title           TEXT NOT NULL,
-            description     TEXT NOT NULL,
-            course          TEXT DEFAULT '',
-            status          TEXT DEFAULT 'pending',
-            submission      TEXT DEFAULT '',
-            feedback        TEXT DEFAULT '',
-            score           INTEGER DEFAULT 0,
-            submitted_at    REAL,
-            reviewed_at     REAL,
-            created_at      REAL DEFAULT (unixepoch())
-        );
-
-        -- Referral codes
-        CREATE TABLE IF NOT EXISTS referrals (
-            code            TEXT PRIMARY KEY,
-            owner_id        TEXT NOT NULL,
-            owner_email     TEXT NOT NULL,
-            uses            INTEGER DEFAULT 0,
-            max_uses        INTEGER DEFAULT 50,
-            reward_tier     TEXT DEFAULT 'tier1',
-            created_at      REAL DEFAULT (unixepoch())
-        );
-
-        -- Referral usage tracking
-        CREATE TABLE IF NOT EXISTS referral_uses (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            code            TEXT NOT NULL,
-            used_by_email   TEXT NOT NULL,
-            used_by_id      TEXT NOT NULL,
-            discount_pct    INTEGER DEFAULT 20,
-            ts              REAL DEFAULT (unixepoch())
-        );
-
-        -- Coupon codes
-        CREATE TABLE IF NOT EXISTS coupons (
-            code            TEXT PRIMARY KEY,
-            discount_pct    INTEGER NOT NULL,
-            discount_flat   REAL DEFAULT 0,
-            plan            TEXT DEFAULT 'any',
-            max_uses        INTEGER DEFAULT 100,
-            uses            INTEGER DEFAULT 0,
-            expires_at      REAL DEFAULT 0,
-            active          INTEGER DEFAULT 1,
-            created_at      REAL DEFAULT (unixepoch())
-        );
-
-        -- Coupon usage log
-        CREATE TABLE IF NOT EXISTS coupon_uses (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            code            TEXT NOT NULL,
-            learner_id      TEXT NOT NULL,
-            email           TEXT NOT NULL,
-            amount_saved    REAL DEFAULT 0,
-            ts              REAL DEFAULT (unixepoch())
-        );
-
-        -- Payment invoices
-        CREATE TABLE IF NOT EXISTS invoices (
-            id              TEXT PRIMARY KEY,
-            payment_id      TEXT NOT NULL,
-            learner_id      TEXT NOT NULL,
-            email           TEXT NOT NULL,
-            name            TEXT NOT NULL,
-            plan            TEXT NOT NULL,
-            amount          REAL NOT NULL,
-            currency        TEXT DEFAULT 'NGN',
-            issued_at       REAL DEFAULT (unixepoch()),
-            due_date        TEXT DEFAULT ''
-        );
+        CREATE INDEX IF NOT EXISTS idx_access_codes_email
+            ON access_codes (sent_to_email);
         """)
+
     logger.info("Database initialised at %s", DB_PATH)
 
 
@@ -786,5 +793,67 @@ def get_all_invoices_db() -> list[dict]:
     for r in rows:
         d = dict(r)
         d["issued_at_fmt"] = _dt.datetime.fromtimestamp(d["issued_at"]).strftime("%d %B %Y")
+        result.append(d)
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Access codes — admin generates, user enters at signup to get tier instantly
+# ---------------------------------------------------------------------------
+
+def create_access_code(code: str, tier: str, sent_to_email: str = "",
+                        expires_at: float = 0) -> None:
+    with get_db() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO access_codes "
+            "(code, tier, sent_to_email, expires_at) VALUES (?,?,?,?)",
+            (code.upper(), tier, sent_to_email.lower(), expires_at)
+        )
+
+
+def validate_access_code(code: str) -> dict | None:
+    """
+    Return the access code record if it's valid (unused, not expired).
+    Returns None if invalid.
+    """
+    import time as _t
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM access_codes WHERE code=? AND used=0",
+            (code.upper(),)
+        ).fetchone()
+    if not row:
+        return None
+    r = dict(row)
+    if r["expires_at"] and r["expires_at"] > 0 and _t.time() > r["expires_at"]:
+        return None
+    return r
+
+
+def redeem_access_code(code: str, email: str, learner_id: str) -> bool:
+    """Mark code as used. Returns False if already used or not found."""
+    with get_db() as conn:
+        cur = conn.execute(
+            "UPDATE access_codes SET used=1, used_by_email=?, used_by_id=? "
+            "WHERE code=? AND used=0",
+            (email.lower(), learner_id, code.upper())
+        )
+    return cur.rowcount > 0
+
+
+def get_all_access_codes() -> list[dict]:
+    import datetime as _dt
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM access_codes ORDER BY created_at DESC"
+        ).fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["created_at_fmt"] = _dt.datetime.fromtimestamp(d["created_at"]).strftime("%Y-%m-%d %H:%M")
+        d["expires_fmt"] = (
+            _dt.datetime.fromtimestamp(d["expires_at"]).strftime("%Y-%m-%d")
+            if d["expires_at"] else "Never"
+        )
         result.append(d)
     return result

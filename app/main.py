@@ -32,6 +32,7 @@ from app.models import (
     PasswordResetRequest, PasswordResetConfirm,
     AssignmentSubmit, AssignmentReview,
     CouponValidate, CouponCreate, ReferralUse,
+    AccessCodeGenerate, EmailSignUpWithCode,
 )
 from app.prompts import build_system_prompt
 from app.topics import get_topics
@@ -85,6 +86,8 @@ from app.db import (
     create_coupon_db, validate_coupon_db, use_coupon_db, get_all_coupons_db,
     # invoices
     create_invoice_db, get_invoice_db, get_invoices_by_learner, get_all_invoices_db,
+    # access codes
+    create_access_code, validate_access_code, redeem_access_code, get_all_access_codes,
 )
 from app.supabase_client import (
     sb_upsert_profile, sb_get_or_create_conversation,
@@ -1273,6 +1276,80 @@ async def admin_files_list(request: Request) -> dict:
                 files.append({"path": path, "size": size})
     files.sort(key=lambda x: x["path"])
     return {"files": files, "total": len(files)}
+
+
+@app.post("/admin/email/test")
+async def admin_test_email(request: Request) -> dict:
+    """
+    Send a test email to verify SMTP configuration is working.
+    POST body: { "to": "recipient@email.com" }
+    """
+    _require_admin(request)
+    body = await request.json()
+    to   = body.get("to", "").strip()
+    if not to or "@" not in to:
+        raise HTTPException(status_code=400, detail="Provide a valid 'to' email address.")
+
+    # Show current SMTP config (values only, no secrets)
+    email_user = _os.getenv("EMAIL_USER", "")
+    email_pass = _os.getenv("EMAIL_PASS", "")
+    email_host = _os.getenv("EMAIL_HOST", "smtp.gmail.com")
+    email_port = _os.getenv("EMAIL_PORT", "587")
+
+    config_status = {
+        "EMAIL_HOST":  email_host,
+        "EMAIL_PORT":  email_port,
+        "EMAIL_USER":  email_user if email_user else "❌ NOT SET",
+        "EMAIL_PASS":  "✅ set" if email_pass else "❌ NOT SET",
+        "EMAIL_FROM":  _os.getenv("EMAIL_FROM", "not set"),
+        "APP_URL":     _os.getenv("APP_URL", "not set"),
+    }
+
+    if not email_user or not email_pass:
+        return {
+            "ok": False,
+            "sent": False,
+            "config": config_status,
+            "error": "EMAIL_USER or EMAIL_PASS not set in Render environment variables.",
+        }
+
+    from app.email_auth import _send_email
+    import threading, queue
+
+    result_q: queue.Queue = queue.Queue()
+
+    def _try_send():
+        html = f"""<div style="font-family:Arial;background:#0f1117;color:#e2e8f0;padding:32px;max-width:500px;border-radius:12px;">
+        <h2 style="color:#63b3ed;">🐍 MyPy Tutor — Email Test</h2>
+        <p>✅ This is a test email from your MyPy Tutor admin panel.</p>
+        <p style="color:#68d391;font-weight:700;">Email delivery is working correctly!</p>
+        <hr style="border:none;border-top:1px solid #2d3748;margin:16px 0"/>
+        <p style="font-size:.78rem;color:#4a5568;">Sent from: {email_user}<br/>
+        Host: {email_host}:{email_port}</p>
+        </div>"""
+        text = f"MyPy Tutor email test.\nIf you see this, email delivery is working.\nFrom: {email_user}"
+        ok = _send_email(to, "MyPy Tutor — Email Test ✅", html, text)
+        result_q.put(ok)
+
+    t = threading.Thread(target=_try_send, daemon=True)
+    t.start()
+    t.join(timeout=25)   # wait up to 25s for the result
+
+    if not result_q.empty():
+        ok = result_q.get()
+        if ok:
+            return {"ok": True, "sent": True, "to": to, "config": config_status}
+        else:
+            return {
+                "ok": False, "sent": False, "to": to, "config": config_status,
+                "error": "SMTP send failed — check Render logs for the exact error. "
+                         "Common causes: wrong Gmail App Password, 2FA not enabled on Gmail, "
+                         "or EMAIL_USER is not a Gmail address.",
+            }
+    return {
+        "ok": False, "sent": False, "to": to, "config": config_status,
+        "error": "Email send timed out after 25 seconds. Check your SMTP settings.",
+    }
 
 
 # ---------------------------------------------------------------------------

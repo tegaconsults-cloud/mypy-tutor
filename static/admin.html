@@ -250,6 +250,28 @@ label{font-size:.74rem;color:#718096;display:block;margin-bottom:3px}
       <!-- FILES -->
       <div id="p-files" class="page">
         <h2>📁 Project Files</h2>
+
+        <!-- Email Diagnostics — test delivery before going live -->
+        <div class="sec" style="margin-bottom:14px">
+          <h3>📧 Email Delivery Test</h3>
+          <p style="color:#718096;font-size:.82rem;margin-bottom:10px">
+            Send a test email to verify your Gmail SMTP settings are working.
+            If users are not receiving emails, run this first.
+          </p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+            <div style="flex:1;min-width:200px">
+              <label style="font-size:.74rem;color:#718096;display:block;margin-bottom:3px">Send test to</label>
+              <input id="test-email-to" type="email" placeholder="your@email.com" style="width:100%"/>
+            </div>
+            <button class="btn" onclick="sendTestEmail()" style="flex-shrink:0">Send Test Email</button>
+          </div>
+          <div id="email-test-result" style="margin-top:10px;display:none"></div>
+          <div id="email-config-box" style="margin-top:10px;display:none">
+            <p style="font-size:.74rem;color:#718096;margin-bottom:6px">Current SMTP config:</p>
+            <div id="email-config-detail" style="font-family:monospace;font-size:.72rem;color:#a0aec0;background:#0f1117;padding:10px;border-radius:6px"></div>
+          </div>
+        </div>
+
         <div class="sec"><div id="files-list">Loading…</div></div>
       </div>
     </main>
@@ -547,6 +569,30 @@ async function updateTask(id,status){
 }
 
 // ── Files ──────────────────────────────────────────────────────────────────
+async function sendTestEmail(){
+  const to = document.getElementById('test-email-to').value.trim();
+  if(!to){toast('Enter a recipient email',false);return;}
+  const resEl = document.getElementById('email-test-result');
+  const cfgEl = document.getElementById('email-config-box');
+  resEl.style.display='block';
+  resEl.innerHTML='<span style="color:#718096">Sending test email — please wait up to 30s…</span>';
+  cfgEl.style.display='none';
+  const r=await api('/admin/email/test',{method:'POST',body:JSON.stringify({to})});
+  const d=await r.json();
+  if(d.sent){
+    resEl.innerHTML=`<div class="alert-g">✅ Test email sent to <strong>${to}</strong>. Check your inbox (and spam folder).</div>`;
+  } else {
+    resEl.innerHTML=`<div class="alert-r">❌ Failed to send.<br/><span style="font-size:.8rem">${d.error||'Unknown error'}</span></div>`;
+  }
+  if(d.config){
+    cfgEl.style.display='block';
+    document.getElementById('email-config-detail').innerHTML=
+      Object.entries(d.config).map(([k,v])=>
+        `<div style="margin-bottom:3px"><span style="color:#4a5568">${k}:</span> <span style="color:${v.includes('NOT SET')?'#fc8181':'#68d391'}">${v}</span></div>`
+      ).join('');
+  }
+}
+
 async function loadFiles(){
   const r=await api('/admin/files'); const d=await r.json();
   document.getElementById('files-list').innerHTML=
