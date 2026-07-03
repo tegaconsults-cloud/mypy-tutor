@@ -180,13 +180,38 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         response.headers["X-XSS-Protection"]          = "1; mode=block"
         response.headers["Referrer-Policy"]           = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"]        = "geolocation=(), microphone=(), camera=()"
-        response.headers["Content-Security-Policy"]   = (
+        response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://accounts.google.com https://www.googletagmanager.com https://www.google-analytics.com; "
-            "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
+            # Scripts: self + all CDN libs + Google GSI + GA
+            "script-src 'self' 'unsafe-inline' "
+            "https://cdn.jsdelivr.net "
+            "https://cdnjs.cloudflare.com "
+            "https://accounts.google.com "
+            "https://www.googletagmanager.com "
+            "https://www.google-analytics.com; "
+            # Styles: self + inline + CDN + Google GSI stylesheet
+            "style-src 'self' 'unsafe-inline' "
+            "https://cdnjs.cloudflare.com "
+            "https://accounts.google.com; "
+            # Fonts: self + CDN
             "font-src 'self' https://cdnjs.cloudflare.com; "
-            "img-src 'self' data: https://www.google-analytics.com https://www.googletagmanager.com; "
-            "connect-src 'self' https://www.google-analytics.com https://analytics.google.com https://region1.google-analytics.com; "
+            # Images: self + data URIs + GA + GTM
+            "img-src 'self' data: "
+            "https://www.google-analytics.com "
+            "https://www.googletagmanager.com "
+            "https://lh3.googleusercontent.com; "
+            # Fetch / XHR / WebSocket — includes CDN domains the SW fetches during precache
+            "connect-src 'self' "
+            "https://cdn.jsdelivr.net "
+            "https://cdnjs.cloudflare.com "
+            "https://accounts.google.com "
+            "https://www.google-analytics.com "
+            "https://analytics.google.com "
+            "https://region1.google-analytics.com "
+            "https://oauth2.googleapis.com; "
+            # Frames: Google GSI sign-in iframe
+            "frame-src https://accounts.google.com; "
+            # Workers (service worker)
             "worker-src 'self';"
         )
         # Remove server fingerprint
