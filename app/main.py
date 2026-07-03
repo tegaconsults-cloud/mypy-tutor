@@ -250,6 +250,27 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon() -> HTMLResponse:
+    """Serve favicon.ico with no-cache headers to force browsers to pick up logo changes."""
+    import os as _os2
+    fav_path = _os2.path.join("static", "favicon.ico")
+    if not _os2.path.exists(fav_path):
+        raise HTTPException(status_code=404, detail="favicon not found")
+    with open(fav_path, "rb") as f:
+        data = f.read()
+    from fastapi.responses import Response as _Resp
+    return _Resp(
+        content=data,
+        media_type="image/x-icon",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma":        "no-cache",
+            "Expires":       "0",
+        },
+    )
+
+
 # ---------------------------------------------------------------------------
 # Auth — Google OAuth
 # ---------------------------------------------------------------------------
