@@ -189,12 +189,13 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             "https://accounts.google.com "
             "https://www.googletagmanager.com "
             "https://www.google-analytics.com; "
-            # Styles: self + inline + CDN + Google GSI stylesheet
+            # Styles: self + inline + CDN + Google GSI stylesheet + Google Fonts
             "style-src 'self' 'unsafe-inline' "
             "https://cdnjs.cloudflare.com "
-            "https://accounts.google.com; "
-            # Fonts: self + CDN
-            "font-src 'self' https://cdnjs.cloudflare.com; "
+            "https://accounts.google.com "
+            "https://fonts.googleapis.com; "
+            # Fonts: self + CDN + Google Fonts
+            "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; "
             # Images: self + data URIs + GA + GTM
             "img-src 'self' data: "
             "https://www.google-analytics.com "
@@ -208,7 +209,9 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             "https://www.google-analytics.com "
             "https://analytics.google.com "
             "https://region1.google-analytics.com "
-            "https://oauth2.googleapis.com; "
+            "https://oauth2.googleapis.com "
+            "https://fonts.googleapis.com "
+            "https://fonts.gstatic.com; "
             # Frames: Google GSI sign-in iframe
             "frame-src https://accounts.google.com; "
             # Workers (service worker)

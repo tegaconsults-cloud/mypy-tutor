@@ -30,15 +30,7 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Config — read lazily at call time so Render env vars are always current
-# ---------------------------------------------------------------------------
-
-def _cfg(key: str, default: str = "") -> str:
-    """Read env var at call time — never at import time."""
-    return os.getenv(key, default)
-
-# ---------------------------------------------------------------------------
-# Config — all values read lazily at call time via _cfg()
+# Config — all values read lazily at call time so Render env vars are current
 # ---------------------------------------------------------------------------
 
 def _cfg(key: str, default: str = "") -> str:
@@ -46,7 +38,6 @@ def _cfg(key: str, default: str = "") -> str:
     return os.getenv(key, default)
 
 # Module-level APP_URL — kept as a patchable name for token URL construction.
-# _send_email() updates this on every call so it always reflects the env var.
 APP_URL = "https://mypytutor.onrender.com"
 
 def _get_session_secret() -> str:
@@ -472,14 +463,36 @@ import hashlib as _hashlib
 
 
 def hash_password(password: str) -> str:
-    """SHA-256 hash. Use bcrypt in production for stronger security."""
-    return _hashlib.sha256(password.encode()).hexdigest()
+    """Hash password with bcrypt (cost 12). Brute-force resistant."""
+    try:
+        import bcrypt as _bcrypt
+        return _bcrypt.hashpw(password.encode("utf-8"),
+                               _bcrypt.gensalt(rounds=12)).decode("utf-8")
+    except ImportError:
+        # Fallback to SHA-256 if bcrypt not installed (should not happen on Render)
+        logger.warning("bcrypt not available — falling back to SHA-256")
+        return _hashlib.sha256(password.encode()).hexdigest()
+
+
+def verify_password(plain: str, stored: str) -> bool:
+    """
+    Verify a password against a stored hash.
+    Handles both bcrypt ($2b$...) and legacy SHA-256 hashes transparently.
+    """
+    if stored.startswith("$2"):
+        try:
+            import bcrypt as _bcrypt
+            return _bcrypt.checkpw(plain.encode("utf-8"), stored.encode("utf-8"))
+        except Exception:
+            return False
+    # Legacy SHA-256
+    return stored == _hashlib.sha256(plain.encode()).hexdigest()
 
 
 def sign_in_email(email: str, password: str) -> tuple[bool, Optional[dict], str]:
     """
     Attempt email/password sign-in.
-
+    Transparently upgrades legacy SHA-256 hashes to bcrypt on first successful login.
     Returns (success, user_data, message).
     """
     email = email.lower().strip()
@@ -490,8 +503,24 @@ def sign_in_email(email: str, password: str) -> tuple[bool, Optional[dict], str]
     if not user:
         return False, None, "No account found with this email. Please sign up."
 
-    if user["password_hash"] != hash_password(password):
+    if not verify_password(password, user["password_hash"]):
         return False, None, "Incorrect password."
+
+    # Upgrade legacy SHA-256 to bcrypt transparently
+    if not user["password_hash"].startswith("$2"):
+        try:
+            new_hash = hash_password(password)
+            user["password_hash"] = new_hash
+            lid = user.get("learner_id", "")
+            if lid and lid in _by_id:
+                _by_id[lid]["password_hash"] = new_hash
+            from app.db import update_password_hash as _uph
+            _uph(email, new_hash)
+            from app.supabase_client import sb_update_email_password as _sep
+            _sep(email, new_hash)
+            logger.info("Upgraded SHA-256 -> bcrypt for %s", email)
+        except Exception as exc:
+            logger.debug("Hash upgrade failed (non-fatal): %s", exc)
 
     return True, user, "Signed in successfully."
 
@@ -599,6 +628,12 @@ def confirm_password_reset(token: str, new_password: str) -> tuple[bool, str]:
         mark_reset_token_used(token)
         new_hash = hash_password(new_password)
         update_password_hash(email, new_hash)
+        # Ensure Supabase stays in sync
+        try:
+            from app.supabase_client import sb_update_email_password
+            sb_update_email_password(email, new_hash)
+        except Exception:
+            pass
     except Exception as exc:
         logger.error("Password reset DB error: %s", exc)
         return False, "Could not update password. Please try again."

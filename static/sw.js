@@ -14,6 +14,7 @@ const OFFLINE_URL   = '/';
 const PRECACHE_URLS = [
   '/',
   '/manifest.json',
+  '/premium.css',
   '/icons/logo-mpt.png',
   '/icons/icon-192.png',
   '/icons/icon-512.png',

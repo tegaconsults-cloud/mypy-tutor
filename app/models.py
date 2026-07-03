@@ -282,3 +282,24 @@ class EmailSignUpWithCode(BaseModel):
                               pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
     password:    str = Field(..., min_length=8, max_length=128)
     access_code: str = Field(default="", max_length=32)
+
+# ---------------------------------------------------------------------------
+# Editable user profile model
+# ---------------------------------------------------------------------------
+
+class UserProfileUpdate(BaseModel):
+    """Fields a user can edit about themselves."""
+    display_name: str = Field(default="", max_length=80)
+    bio:          str = Field(default="", max_length=500)
+    location:     str = Field(default="", max_length=100)
+    website:      str = Field(default="", max_length=200)
+
+
+# ---------------------------------------------------------------------------
+# GitHub OAuth model
+# ---------------------------------------------------------------------------
+
+class GitHubAuthCallback(BaseModel):
+    code:  str = Field(..., min_length=1, max_length=256)
+    state: str = Field(default="", max_length=256)
+

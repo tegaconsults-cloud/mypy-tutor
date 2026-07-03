@@ -45,3 +45,9 @@ Thumbs.db
 
 # Kiro specs (optional - remove if you want to commit specs)
 .kiro/
+
+# SQLite database — ephemeral, never commit
+*.db
+*.db-shm
+*.db-wal
+mypytutor.db

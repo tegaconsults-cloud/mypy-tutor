@@ -236,6 +236,16 @@ def init_db() -> None:
             expires_at      REAL DEFAULT 0,
             created_at      REAL DEFAULT (unixepoch())
         );
+
+        -- User editable profile (bio, location, website)
+        CREATE TABLE IF NOT EXISTS user_profiles (
+            learner_id   TEXT PRIMARY KEY,
+            display_name TEXT DEFAULT '',
+            bio          TEXT DEFAULT '',
+            location     TEXT DEFAULT '',
+            website      TEXT DEFAULT '',
+            updated_at   REAL DEFAULT (unixepoch())
+        );
         """)
 
         # ── PASS 2: All indexes (tables guaranteed to exist now) ─────────────
@@ -877,3 +887,32 @@ def get_all_access_codes() -> list[dict]:
         )
         result.append(d)
     return result
+
+# ---------------------------------------------------------------------------
+# User editable profile helpers
+# ---------------------------------------------------------------------------
+
+def update_user_profile_db(learner_id: str, display_name: str,
+                             bio: str, location: str, website: str) -> None:
+    with get_db() as conn:
+        conn.execute("""
+        INSERT INTO user_profiles (learner_id, display_name, bio, location, website)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(learner_id) DO UPDATE SET
+            display_name = excluded.display_name,
+            bio          = excluded.bio,
+            location     = excluded.location,
+            website      = excluded.website,
+            updated_at   = unixepoch()
+        """, (learner_id, display_name[:80], bio[:500], location[:100], website[:200]))
+
+
+def get_user_profile_db(learner_id: str) -> dict:
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT * FROM user_profiles WHERE learner_id=?", (learner_id,)
+        ).fetchone()
+    if row:
+        return dict(row)
+    return {"learner_id": learner_id, "display_name": "",
+            "bio": "", "location": "", "website": ""}
