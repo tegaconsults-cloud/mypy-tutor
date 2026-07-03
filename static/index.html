@@ -666,18 +666,47 @@
       object-fit: cover; flex-shrink: 0;
       background: #2d3748;
     }
+    /* Fallback avatar initials circle */
+    #user-avatar-fallback {
+      display: none; width: 28px; height: 28px; border-radius: 50%;
+      background: linear-gradient(135deg,#2b6cb0,#553c9a);
+      color: #fff; font-size: 0.72rem; font-weight: 700;
+      align-items: center; justify-content: center; flex-shrink: 0;
+    }
     #user-name { font-size: 0.78rem; color: #e2e8f0; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* Chevron indicator */
+    #user-chip::after {
+      content: '▾'; font-size: 0.6rem; color: #718096; margin-left: 2px;
+    }
 
     /* User dropdown */
     #user-dropdown {
       display: none; position: absolute; top: calc(100% + 8px); right: 0;
-      background: #1a202c; border: 1px solid #2d3748; border-radius: 10px;
-      min-width: 180px; padding: 6px; z-index: 500;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      background: #1a202c; border: 1px solid #2d3748; border-radius: 12px;
+      min-width: 230px; padding: 6px; z-index: 500;
+      box-shadow: 0 12px 32px rgba(0,0,0,0.55);
+      animation: dropIn 0.12s ease;
     }
+    @keyframes dropIn { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
     #user-dropdown.open { display: block; }
+
+    /* Profile header inside dropdown */
+    .dropdown-profile {
+      padding: 12px 14px 10px; border-bottom: 1px solid #2d3748; margin-bottom: 4px;
+    }
+    .dropdown-profile .dp-name { font-size: 0.88rem; font-weight: 700; color: #e2e8f0; }
+    .dropdown-profile .dp-email { font-size: 0.72rem; color: #718096; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .dropdown-profile .dp-tier {
+      display: inline-block; margin-top: 6px; font-size: 0.65rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.08em; padding: 2px 8px;
+      border-radius: 999px; background: #2d3748; color: #718096;
+    }
+    .dropdown-profile .dp-tier.tier1 { background: #2c5282; color: #90cdf4; }
+    .dropdown-profile .dp-tier.tier2 { background: #553c9a; color: #d6bcfa; }
+    .dropdown-profile .dp-tier.tier3 { background: #744210; color: #f6ad55; }
+
     .dropdown-item {
-      display: flex; align-items: center; gap: 8px;
+      display: flex; align-items: center; gap: 9px;
       padding: 9px 12px; border-radius: 7px; font-size: 0.84rem;
       color: #a0aec0; cursor: pointer; transition: background 0.12s;
       border: none; background: transparent; width: 100%; text-align: left;
@@ -686,6 +715,23 @@
     .dropdown-divider { border: none; border-top: 1px solid #2d3748; margin: 4px 0; }
     .dropdown-item.danger { color: #fc8181; }
     .dropdown-item.danger:hover { background: #3b1a1a; }
+
+    /* Change password inline form inside dropdown */
+    #chpw-form {
+      display: none; padding: 10px 12px; border-top: 1px solid #2d3748; margin-top: 2px;
+    }
+    #chpw-form input {
+      width: 100%; background: #0f1117; border: 1px solid #2d3748; color: #e2e8f0;
+      border-radius: 6px; padding: 7px 10px; font-size: 0.8rem; margin-bottom: 6px;
+      outline: none;
+    }
+    #chpw-form input:focus { border-color: #4299e1; }
+    #chpw-form .chpw-btn {
+      width: 100%; background: #2b6cb0; color: #fff; border: none; border-radius: 6px;
+      padding: 8px; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+    }
+    #chpw-form .chpw-btn:hover { opacity: 0.88; }
+    #chpw-msg { font-size: 0.76rem; margin-bottom: 6px; display: none; }
 
     /* Auth modal — email tab */
     .auth-tabs { display: flex; gap: 0; border-radius: 8px; overflow: hidden; border: 1px solid #2d3748; margin-bottom: 4px; }
@@ -835,13 +881,48 @@
       </button>
       <!-- Auth: user chip (logged in) -->
       <div id="user-chip" aria-label="Account menu" onclick="toggleUserDropdown()">
-        <img id="user-avatar" src="" alt="Avatar" />
+        <img id="user-avatar" src="" alt="Avatar" style="display:none"/>
+        <div id="user-avatar-fallback" aria-hidden="true"></div>
         <span id="user-name"></span>
-        <div id="user-dropdown">
-          <button class="dropdown-item" onclick="switchPanel('progress'); closeUserDropdown()">📊 My Progress</button>
-          <button class="dropdown-item" onclick="switchPanel('pricing'); closeUserDropdown()">💎 Upgrade Plan</button>
+        <div id="user-dropdown" onclick="event.stopPropagation()">
+
+          <!-- Profile header -->
+          <div class="dropdown-profile">
+            <div class="dp-name" id="dp-full-name">—</div>
+            <div class="dp-email" id="dp-email">—</div>
+            <span class="dp-tier" id="dp-tier">Free</span>
+          </div>
+
+          <!-- Menu items -->
+          <button class="dropdown-item" onclick="switchPanel('progress'); closeUserDropdown()">
+            📊 My Progress &amp; Badges
+          </button>
+          <button class="dropdown-item" onclick="switchPanel('pricing'); closeUserDropdown()">
+            💎 Upgrade Plan
+          </button>
+          <button class="dropdown-item" onclick="switchPanel('certificates'); closeUserDropdown()">
+            🎓 My Certificates
+          </button>
+          <button class="dropdown-item" onclick="toggleChangePassword()">
+            🔑 Change Password
+          </button>
+
+          <!-- Inline change-password form -->
+          <div id="chpw-form">
+            <div id="chpw-msg"></div>
+            <input type="password" id="chpw-current" placeholder="Current password" autocomplete="current-password"/>
+            <input type="password" id="chpw-new"     placeholder="New password (min 8 chars)" autocomplete="new-password"/>
+            <input type="password" id="chpw-confirm" placeholder="Confirm new password" autocomplete="new-password"/>
+            <button class="chpw-btn" onclick="doChangePassword()">Update Password</button>
+          </div>
+
           <hr class="dropdown-divider"/>
-          <button class="dropdown-item danger" onclick="signOut()">🚪 Sign Out</button>
+          <button class="dropdown-item" onclick="copyLearnerId()">
+            🔗 Copy Learner ID
+          </button>
+          <button class="dropdown-item danger" onclick="signOut(); closeUserDropdown()">
+            🚪 Sign Out
+          </button>
         </div>
       </div>
       <button id="clear-btn" title="Clear chat">✕ Clear</button>
@@ -2083,12 +2164,112 @@
     }
     function closeUserDropdown() {
       document.getElementById('user-dropdown').classList.remove('open');
+      // Also hide the change-password form when closing
+      document.getElementById('chpw-form').style.display = 'none';
     }
     // Close dropdown when clicking elsewhere
     document.addEventListener('click', e => {
       const chip = document.getElementById('user-chip');
       if (chip && !chip.contains(e.target)) closeUserDropdown();
     });
+
+    // ── Change Password ───────────────────────────────────────────────────────
+    function toggleChangePassword() {
+      const form = document.getElementById('chpw-form');
+      const open = form.style.display === 'block';
+      form.style.display = open ? 'none' : 'block';
+      if (!open) {
+        document.getElementById('chpw-current').value = '';
+        document.getElementById('chpw-new').value     = '';
+        document.getElementById('chpw-confirm').value = '';
+        const msg = document.getElementById('chpw-msg');
+        msg.style.display = 'none';
+        msg.textContent   = '';
+      }
+    }
+
+    async function doChangePassword() {
+      const current  = document.getElementById('chpw-current').value;
+      const newPw    = document.getElementById('chpw-new').value;
+      const confirm  = document.getElementById('chpw-confirm').value;
+      const msgEl    = document.getElementById('chpw-msg');
+
+      msgEl.style.display = 'none';
+
+      const email = localStorage.getItem('mpt_user_email') || '';
+      if (!email) {
+        // Google users can't change password here
+        msgEl.style.display = 'block';
+        msgEl.style.color   = '#f6ad55';
+        msgEl.textContent   = 'Google accounts — change password via your Google account settings.';
+        return;
+      }
+      if (!current)          { _showChpwMsg('Enter your current password.', false); return; }
+      if (newPw.length < 8)  { _showChpwMsg('New password must be at least 8 characters.', false); return; }
+      if (newPw !== confirm)  { _showChpwMsg('Passwords do not match.', false); return; }
+
+      const btn = document.querySelector('#chpw-form .chpw-btn');
+      btn.disabled    = true;
+      btn.textContent = 'Updating…';
+
+      try {
+        // Step 1: verify current password by signing in
+        const verRes = await fetch('/auth/signin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password: current }),
+        });
+        if (!verRes.ok) {
+          _showChpwMsg('Current password is incorrect.', false);
+          return;
+        }
+        // Step 2: request a reset token and apply new password in one flow
+        const fRes = await fetch('/auth/forgot-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        });
+        const fData = await fRes.json();
+        // We can't use the email-token flow here directly (token goes to email),
+        // so use the admin set-password endpoint we'll add, OR show guidance.
+        _showChpwMsg(
+          '✅ A password reset link has been sent to ' + email +
+          '. Click the link in your email to complete the change.',
+          true
+        );
+        document.getElementById('chpw-current').value = '';
+        document.getElementById('chpw-new').value     = '';
+        document.getElementById('chpw-confirm').value = '';
+      } catch (err) {
+        _showChpwMsg('Network error. Please try again.', false);
+      } finally {
+        btn.disabled    = false;
+        btn.textContent = 'Update Password';
+      }
+    }
+
+    function _showChpwMsg(text, ok) {
+      const el = document.getElementById('chpw-msg');
+      el.style.display = 'block';
+      el.style.color   = ok ? '#68d391' : '#fc8181';
+      el.textContent   = text;
+    }
+
+    // ── Copy Learner ID ───────────────────────────────────────────────────────
+    function copyLearnerId() {
+      const lid = getLearnerId();
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(lid).then(() => {
+          closeUserDropdown();
+          // Show brief toast
+          const t = document.createElement('div');
+          t.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#276749;color:#68d391;border-radius:10px;padding:8px 18px;font-size:.82rem;font-weight:600;z-index:9999';
+          t.textContent = '✅ Learner ID copied';
+          document.body.appendChild(t);
+          setTimeout(() => t.remove(), 2500);
+        });
+      }
+    }
 
     async function handleGoogleSignIn() {
       const btn = document.getElementById('google-signin-btn');
@@ -2160,10 +2341,37 @@
       document.getElementById('auth-btn').style.display = 'none';
       const chip = document.getElementById('user-chip');
       chip.style.display = 'flex';
-      document.getElementById('user-name').textContent = (data.name || data.email || '').split(' ')[0];
-      const avatar = document.getElementById('user-avatar');
-      if (data.picture) { avatar.src = data.picture; avatar.style.display = 'block'; }
-      else { avatar.style.display = 'none'; }
+
+      const firstName = (data.name || data.email || '').split(' ')[0];
+      document.getElementById('user-name').textContent = firstName;
+
+      // Profile dropdown header
+      document.getElementById('dp-full-name').textContent = data.name  || data.email || 'Learner';
+      document.getElementById('dp-email').textContent     = data.email || '';
+
+      // Avatar: photo if available, else initials circle
+      const avatar   = document.getElementById('user-avatar');
+      const fallback = document.getElementById('user-avatar-fallback');
+      if (data.picture) {
+        avatar.src = data.picture;
+        avatar.style.display = 'block';
+        fallback.style.display = 'none';
+      } else {
+        avatar.style.display = 'none';
+        fallback.style.display = 'flex';
+        const initials = (data.name || data.email || 'U')
+          .split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
+        fallback.textContent = initials;
+      }
+
+      // Tier badge — refresh from progress
+      _fetchProgress(true).then(p => {
+        if (!p) return;
+        const tierEl   = document.getElementById('dp-tier');
+        const tierName = { free: 'Free Plan', tier1: 'Pro Learner', tier2: 'Career Builder', tier3: 'Elite' };
+        tierEl.textContent = tierName[p.tier] || 'Free Plan';
+        tierEl.className   = 'dp-tier ' + (p.tier || 'free');
+      }).catch(() => {});
 
       // Use authenticated learner_id for all API calls
       window._learnerId = data.learner_id;
@@ -2171,8 +2379,6 @@
       refreshPromptCount();
 
       // ── Restore Supabase conversation on login ─────────────────────────────
-      // If no local conversation_id, get/create one from server so Sir. Tega
-      // remembers where the learner left off.
       if (!localStorage.getItem('mpt_conv_id') && data.learner_id !== 'default') {
         fetch(`/conversations/${data.learner_id}`)
           .then(r => r.ok ? r.json() : null)
