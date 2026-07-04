@@ -162,13 +162,14 @@ async def chat(request: ChatRequest, req: Request,
         ip = _get_ip(req)
         allowed, used = check_free_prompt_limit(request.learner_id, ip)
         if not allowed:
+            from app.security import FREE_DAILY_LIMIT
             return JSONResponse(
                 status_code=402,
                 content={
                     "error": "free_limit_reached",
-                    "message": "You've used your 10 free daily prompts. Upgrade to Premium to continue learning!",
+                    "message": f"You've used your {FREE_DAILY_LIMIT} free daily prompts. Upgrade to Premium to continue learning!",
                     "used": used,
-                    "limit": 10,
+                    "limit": FREE_DAILY_LIMIT,
                 },
             )
         increment_free_prompt_count(request.learner_id, ip)
@@ -197,7 +198,7 @@ async def chat(request: ChatRequest, req: Request,
     history_messages.append({"role": "user", "content": request.message})
 
     try:
-        content = get_completion(system_prompt, history_messages)
+        content = get_completion(system_prompt, history_messages, intent=intent)
     except Exception as exc:
         exc_type = type(exc).__name__.lower()
         if any(k in exc_type for k in ("ratelimit", "timeout", "serviceunavailable")):
@@ -784,7 +785,7 @@ async def start_course(learner_id: str, course_name: str) -> dict:
     messages      = [{"role": "user", "content": f"Teach me: {step.description}"}]
 
     try:
-        content = get_completion(system_prompt, messages)
+        content = get_completion(system_prompt, messages, intent="course")
     except Exception as exc:
         logger.error("Course start LLM error: %s", exc)
         raise HTTPException(status_code=502, detail="AI service error. Please try again.")
@@ -830,7 +831,7 @@ async def next_course_step(learner_id: str) -> dict:
     messages      = [{"role": "user", "content": f"Teach me: {step.description}"}]
 
     try:
-        content = get_completion(system_prompt, messages)
+        content = get_completion(system_prompt, messages, intent="course")
     except Exception as exc:
         logger.error("Course next LLM error: %s", exc)
         raise HTTPException(status_code=502, detail="AI service error. Please try again.")
@@ -853,7 +854,7 @@ async def generate_quiz(request: QuizRequest) -> QuizResponse:
     system_prompt = build_system_prompt("quiz", topic=request.topic, level=request.level)
     messages = [{"role": "user", "content": f"Generate a quiz question about: {request.topic}"}]
     try:
-        content = get_completion(system_prompt, messages)
+        content = get_completion(system_prompt, messages, intent="quiz")
     except Exception as exc:
         logger.error("Quiz generate LLM error: %s", exc)
         raise HTTPException(status_code=502, detail="AI service error. Please try again.")
@@ -874,7 +875,7 @@ async def evaluate_quiz_answer(request: QuizAnswerRequest) -> QuizAnswerResponse
         ),
     }]
     try:
-        content = get_completion(system_prompt, messages)
+        content = get_completion(system_prompt, messages, intent="quiz_eval")
     except Exception as exc:
         logger.error("Quiz answer LLM error: %s", exc)
         raise HTTPException(status_code=502, detail="AI service error. Please try again.")
@@ -897,7 +898,7 @@ async def generate_exercise(learner_id: str, topic: str) -> dict:
     system_prompt = build_system_prompt("exercise", topic=topic, level=profile.level, is_gap_topic=is_gap)
     messages = [{"role": "user", "content": f"Give me a Python exercise on: {topic}"}]
     try:
-        content = get_completion(system_prompt, messages)
+        content = get_completion(system_prompt, messages, intent="exercise")
     except Exception as exc:
         logger.error("Exercise LLM error: %s", exc)
         raise HTTPException(status_code=502, detail="AI service error. Please try again.")
@@ -1664,7 +1665,7 @@ async def generate_assignment(learner_id: str, topic: str) -> dict:
         f"expected output, and evaluation criteria. Format it clearly."
     )}]
     try:
-        content = get_completion(system_prompt, messages)
+        content = get_completion(system_prompt, messages, intent="exercise")
     except Exception as exc:
         logger.error("Assignment gen error: %s", exc)
         raise HTTPException(status_code=502, detail="AI service error. Please try again.")
@@ -1708,7 +1709,7 @@ async def ai_review_assignment(assignment_id: str, learner_id: str) -> dict:
         f"End your response with exactly: SCORE: <number>"
     )}]
     try:
-        content = get_completion(system_prompt, messages)
+        content = get_completion(system_prompt, messages, intent="debug")
     except Exception as exc:
         logger.error("Assignment review error: %s", exc)
         raise HTTPException(status_code=502, detail="AI service error. Please try again.")
@@ -2356,8 +2357,14 @@ def _recover_from_supabase() -> None:
         logger.warning("Supabase progress recovery failed: %s", exc)
 
 
-# Run recovery at startup (after DB is initialised)
-_recover_from_supabase()
+# Run recovery in a background thread — never blocks the first incoming request.
+# Uses a non-daemon thread so it finishes before process exits on SIGTERM.
+import threading as _startup_threading
+_startup_threading.Thread(
+    target=_recover_from_supabase,
+    daemon=False,
+    name="startup-recovery",
+).start()
 
 
 # ---------------------------------------------------------------------------

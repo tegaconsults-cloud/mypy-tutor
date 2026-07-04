@@ -148,7 +148,7 @@ def _send_email(to: str, subject: str, html_body: str, text_body: str) -> bool:
     email_pass = _cfg("EMAIL_PASS")
     email_host = _cfg("EMAIL_HOST", "smtp.gmail.com")
     email_port = int(_cfg("EMAIL_PORT", "587"))
-    email_from = _cfg("EMAIL_FROM", f"MyPy Tutor <{email_user}>")
+    email_from = _cfg("EMAIL_FROM", "")
     app_url    = _cfg("APP_URL", "https://mypytutor.onrender.com")
 
     # Patch module-level APP_URL so it stays current for token URLs
@@ -163,10 +163,20 @@ def _send_email(to: str, subject: str, html_body: str, text_body: str) -> bool:
         )
         return False
 
+    # Guarantee EMAIL_FROM always contains a valid RFC 5322 address.
+    # Strip any surrounding quotes that may be present if the env var
+    # was set with quotes (e.g. "MyPy Tutor <addr>" → MyPy Tutor <addr>).
+    # If the env var is just a display name (no "<") Gmail will reject it.
+    if not email_from or "<" not in email_from:
+        email_from = f"MyPy Tutor <{email_user}>"
+    else:
+        # Remove wrapping quotes if present: "Name <addr>" → Name <addr>
+        email_from = email_from.strip().strip('"').strip("'")
+
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
-        msg["From"]    = email_from or f"MyPy Tutor <{email_user}>"
+        msg["From"]    = email_from
         msg["To"]      = to
         msg["Reply-To"] = email_user
         msg.attach(MIMEText(text_body, "plain", "utf-8"))
