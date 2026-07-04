@@ -7,10 +7,13 @@
  *  - Navigation requests → Cache-first, serve cached shell if offline
  */
 
-const CACHE_VERSION = 'mypy-tutor-v4';
+const CACHE_VERSION = 'mypy-tutor-v5';
 const OFFLINE_URL   = '/';
 
 // App shell to pre-cache on install — do NOT include sw.js itself
+// NOTE: External CDN URLs are intentionally excluded — they are loaded
+// by the page directly via <script defer> and cached by the browser,
+// not via the service worker (avoids CSP connect-src violations).
 const PRECACHE_URLS = [
   '/',
   '/manifest.json',
@@ -18,10 +21,6 @@ const PRECACHE_URLS = [
   '/icons/logo-mpt.png',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
-  'https://cdn.jsdelivr.net/npm/marked/marked.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css',
-  'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js',
 ];
 
 // All backend API prefixes — always network-first

@@ -56,6 +56,8 @@ def get_profile(learner_id: str) -> LearnerProfile:
             completed_projects=json.loads(row.get("completed_projects", "[]")),
             daily_prompts_used=row.get("daily_prompts_used", 0),
             last_prompt_date=row.get("last_prompt_date", ""),
+            email=row.get("email", ""),
+            display_name=row.get("display_name", ""),
         )
         _store[learner_id] = profile
         return profile
