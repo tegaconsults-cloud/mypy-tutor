@@ -490,9 +490,123 @@ async def auth_confirm(token: str) -> JSONResponse:
     return RedirectResponse(url=f"/?auth={status}&msg={msg_encoded}", status_code=302)
 
 
-# ---------------------------------------------------------------------------
-# Feedback routes
-# ---------------------------------------------------------------------------
+@app.post("/auth/resend-confirmation")
+async def resend_confirmation(request: Request) -> dict:
+    """
+    Re-send the confirmation email for a pending (unconfirmed) account.
+    Called when user hits "Resend confirmation" link after failed sign-in.
+    Always returns 200 to prevent email enumeration.
+    """
+    body = await request.json()
+    email = body.get("email", "").lower().strip()
+    if not email or "@" not in email:
+        return {"ok": False, "message": "Please enter a valid email address."}
+
+    from app.email_auth import _pending, _confirmed, _get_token_serializer, _send_email_async
+    import time as _t
+
+    # Already confirmed — tell them to just sign in
+    if email in _confirmed:
+        return {"ok": True, "message": "Your email is already confirmed. Please sign in."}
+
+    pending = _pending.get(email)
+    if not pending:
+        # Not pending and not confirmed — account doesn't exist or was lost on restart
+        return {
+            "ok":     True,
+            "message": (
+                "If an account with that email is awaiting confirmation, "
+                "a new link has been sent. If you haven't signed up yet, "
+                "please create a new account."
+            ),
+        }
+
+    # Generate a fresh token (old one may have expired)
+    new_token = _get_token_serializer().dumps(email, salt="email-confirm")
+    pending["token"]      = new_token
+    pending["created_at"] = _t.time()
+    _pending[email]       = pending
+
+    app_url     = _os.getenv("APP_URL", "https://mypytutor.onrender.com")
+    confirm_url = f"{app_url}/auth/confirm?token={new_token}"
+    name        = pending.get("name", "Learner")
+
+    html_body = f"""<!DOCTYPE html>
+<html>
+<body style="font-family:Arial,sans-serif;background:#0f1117;color:#e2e8f0;padding:32px;">
+  <div style="max-width:520px;margin:0 auto;background:#1a202c;border-radius:16px;
+              padding:32px;border:1px solid #2d3748;">
+    <h1 style="color:#63b3ed;font-size:1.4rem;margin-bottom:8px;">🐍 MyPy Tutor</h1>
+    <h2 style="color:#e2e8f0;font-size:1.1rem;margin-bottom:16px;">Confirm your email address</h2>
+    <p style="color:#a0aec0;line-height:1.6;">Hi <strong style="color:#e2e8f0;">{name}</strong>,</p>
+    <p style="color:#a0aec0;line-height:1.6;margin-top:8px;">
+      Here is a fresh confirmation link for your MyPy Tutor account.
+      Click the button below to activate your account.
+    </p>
+    <a href="{confirm_url}"
+       style="display:inline-block;margin-top:24px;background:#3182ce;color:#fff;
+              padding:12px 28px;border-radius:10px;text-decoration:none;
+              font-weight:bold;font-size:0.95rem;">
+      ✅ Confirm Email Address
+    </a>
+    <p style="color:#4a5568;font-size:0.78rem;margin-top:24px;line-height:1.5;">
+      This link expires in 24 hours. If you didn't create an account, ignore this email.
+    </p>
+    <hr style="border:none;border-top:1px solid #2d3748;margin:20px 0;">
+    <p style="color:#4a5568;font-size:0.75rem;">MyPy Tutor · Teamsamikoko Global Academy</p>
+  </div>
+</body>
+</html>"""
+    text_body = (
+        f"Hi {name},\n\nConfirm your MyPy Tutor account:\n{confirm_url}\n\n"
+        f"This link expires in 24 hours.\n— MyPy Tutor Team"
+    )
+    _send_email_async(email, "Confirm your MyPy Tutor account", html_body, text_body)
+
+    # Check if email is actually configured — if not, auto-confirm instead
+    from app.email_auth import confirm_email_token as _cet
+    email_user = _os.getenv("EMAIL_USER", "")
+    email_pass = _os.getenv("EMAIL_PASS", "")
+    if not email_user or not email_pass or email_user == "your-gmail@gmail.com":
+        success, msg = _cet(new_token)
+        if success:
+            return {"ok": True, "auto_confirmed": True,
+                    "message": "Account confirmed! You can now sign in."}
+
+    log_activity("system", "auth:resend_confirmation", f"email={email}")
+    return {
+        "ok":     True,
+        "message": (
+            f"A new confirmation link has been sent to {email}. "
+            "Please check your inbox and spam folder."
+        ),
+    }
+
+
+@app.post("/admin/users/confirm-email")
+async def admin_confirm_email(request: Request) -> dict:
+    """Admin: manually confirm a user's email (useful when SMTP is broken)."""
+    _require_admin(request)
+    body  = await request.json()
+    email = body.get("email", "").lower().strip()
+    if not email:
+        raise HTTPException(status_code=400, detail="email required")
+
+    from app.email_auth import _pending, _confirmed, confirm_email_token as _cet
+
+    if email in _confirmed:
+        return {"ok": True, "message": f"{email} is already confirmed."}
+
+    pending = _pending.get(email)
+    if not pending:
+        raise HTTPException(status_code=404, detail=f"No pending account for {email}")
+
+    success, message = _cet(pending["token"])
+    log_activity("admin", "admin:manual_confirm", f"email={email}")
+    return {"ok": success, "message": message}
+
+
+
 
 @app.post("/feedback/message")
 async def message_feedback(fb: MessageFeedback) -> dict:
