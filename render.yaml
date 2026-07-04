@@ -9,6 +9,10 @@ services:
         sync: false          # set manually in Render dashboard
       - key: SESSION_SECRET
         sync: false          # random 32+ char string for session tokens
+      - key: ADMIN_EMAIL
+        sync: false          # admin login email — e.g. tega.com.ng@gmail.com
+      - key: ADMIN_PASSWORD
+        sync: false          # admin login password (plain text or SHA-256 hash)
       - key: GOOGLE_CLIENT_ID
         sync: false          # set manually in Render dashboard
       - key: GOOGLE_CLIENT_SECRET
