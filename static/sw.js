@@ -1,19 +1,18 @@
 /**
- * MyPy Tutor — Service Worker v3
+ * MyPy Tutor — Service Worker v7
  *
  * Cache strategy:
- *  - App shell (HTML, manifest, icons, CDN assets) → Cache-first, update in background
- *  - API calls (POST/GET to backend routes) → Network-first, offline JSON fallback
- *  - Navigation requests → Cache-first, serve cached shell if offline
+ *  - Same-origin static assets (HTML, CSS, icons, manifest) → Cache-first
+ *  - Same-origin API calls → Network-first (POST = network-only)
+ *  - Navigation requests → Network-first, cached shell offline fallback
+ *  - Cross-origin requests (Google, CDN, analytics) → PASS THROUGH (never cache)
+ *    Caching cross-origin URLs would violate CSP connect-src and cause console errors.
  */
 
-const CACHE_VERSION = 'mypy-tutor-v6';
+const CACHE_VERSION = 'mypy-tutor-v7';
 const OFFLINE_URL   = '/';
 
-// App shell to pre-cache on install — do NOT include sw.js itself
-// NOTE: External CDN URLs are intentionally excluded — they are loaded
-// by the page directly via <script defer> and cached by the browser,
-// not via the service worker (avoids CSP connect-src violations).
+// Only pre-cache same-origin assets we fully control
 const PRECACHE_URLS = [
   '/',
   '/manifest.json',
@@ -23,15 +22,43 @@ const PRECACHE_URLS = [
   '/icons/icon-512.png',
 ];
 
-// All backend API prefixes — always network-first
+// Same-origin API path prefixes — always network-first
 const API_PREFIXES = [
   '/chat', '/quiz', '/course', '/progress', '/topics',
   '/health', '/exercise', '/feedback', '/auth', '/certificate',
-  '/courses',
+  '/courses', '/referral', '/coupons', '/invoices', '/conversations',
+  '/assignments', '/lessons', '/admin', '/webhooks', '/supabase',
+  '/history',
 ];
+
+// Domains the SW must NEVER intercept — pass straight through to the browser
+// (these are external resources that violate CSP if fetched via SW)
+const PASSTHROUGH_ORIGINS = new Set([
+  'accounts.google.com',
+  'oauth2.googleapis.com',
+  'www.googletagmanager.com',
+  'www.google-analytics.com',
+  'analytics.google.com',
+  'region1.google-analytics.com',
+  'lh3.googleusercontent.com',
+  'fonts.googleapis.com',
+  'fonts.gstatic.com',
+  'cdn.jsdelivr.net',
+  'cdnjs.cloudflare.com',
+]);
+
+const APP_ORIGIN = self.location.origin;
 
 function isApiRequest(pathname) {
   return API_PREFIXES.some(p => pathname.startsWith(p));
+}
+
+function isSameOrigin(url) {
+  return url.origin === APP_ORIGIN;
+}
+
+function isPassthrough(url) {
+  return PASSTHROUGH_ORIGINS.has(url.hostname) || !isSameOrigin(url);
 }
 
 // ── Install ───────────────────────────────────────────────────────────────────
@@ -57,25 +84,35 @@ self.addEventListener('activate', event => {
 // ── Fetch ─────────────────────────────────────────────────────────────────────
 self.addEventListener('fetch', event => {
   const { request } = event;
+
+  // Skip non-http(s) requests (chrome-extension, data:, etc.)
+  if (!request.url.startsWith('http')) return;
+
   const url = new URL(request.url);
 
-  // Skip non-http(s) requests (chrome-extension, etc.)
-  if (!url.protocol.startsWith('http')) return;
+  // ── RULE 1: Always pass through external/cross-origin requests ────────────
+  // Never intercept Google Auth, Analytics, CDN, profile images, fonts, etc.
+  // Doing so triggers CSP connect-src violations in the console.
+  if (isPassthrough(url)) return;
 
+  // ── RULE 2: API calls (same-origin) ──────────────────────────────────────
   if (isApiRequest(url.pathname)) {
-    // API: always try network first
     if (request.method === 'POST') {
       event.respondWith(networkOnlyWithFallback(request));
     } else {
       event.respondWith(networkFirst(request));
     }
-  } else if (request.mode === 'navigate') {
-    // Page navigation: cache-first → fallback to cached shell
-    event.respondWith(navigationHandler(request));
-  } else {
-    // Static assets: cache-first → fetch and cache
-    event.respondWith(cacheFirst(request));
+    return;
   }
+
+  // ── RULE 3: Page navigations ──────────────────────────────────────────────
+  if (request.mode === 'navigate') {
+    event.respondWith(navigationHandler(request));
+    return;
+  }
+
+  // ── RULE 4: Same-origin static assets ────────────────────────────────────
+  event.respondWith(cacheFirst(request));
 });
 
 // ── Strategies ────────────────────────────────────────────────────────────────
@@ -135,6 +172,8 @@ async function navigationHandler(request) {
     }
   } catch { /* offline */ }
   const cached = await caches.match(OFFLINE_URL);
-  return cached || new Response('<h1>Offline</h1><p>Please reconnect to use MyPy Tutor.</p>',
-    { status: 503, headers: { 'Content-Type': 'text/html' } });
+  return cached || new Response(
+    '<h1>Offline</h1><p>Please reconnect to use MyPy Tutor.</p>',
+    { status: 503, headers: { 'Content-Type': 'text/html' } }
+  );
 }

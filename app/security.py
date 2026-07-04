@@ -211,9 +211,11 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             "https://www.google-analytics.com "
             "https://analytics.google.com "
             "https://region1.google-analytics.com "
+            "https://www.googletagmanager.com "
             "https://oauth2.googleapis.com "
             "https://fonts.googleapis.com "
-            "https://fonts.gstatic.com; "
+            "https://fonts.gstatic.com "
+            "https://lh3.googleusercontent.com; "
             # Frames: Google GSI sign-in iframe
             "frame-src https://accounts.google.com; "
             # Workers (service worker)
