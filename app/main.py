@@ -400,21 +400,32 @@ async def auth_me(user=Depends(require_user)) -> AuthResponse:
 async def auth_signup(request: EmailSignUpWithCode) -> dict:
     """
     Register with email + password.
-    Optional access_code: validated now, redeemed on email confirmation.
-    Tier is NOT granted until the email is confirmed — prevents abuse.
+    Optional code field accepts BOTH:
+    - Access codes (admin-generated, grant a tier after email confirmation)
+    - Referral codes (user-generated, track discount, credited after payment)
+    If the code is invalid, signup still proceeds — we just skip the reward.
     """
     pw_hash = hash_password(request.password)
 
-    # Validate access code BEFORE registering (fail fast with clear message)
+    # Validate code — check access_codes table first, then referrals
     access_code = request.access_code.strip().upper() if request.access_code else ""
-    code_rec = None
+    code_rec      = None   # access code record
+    referral_rec  = None   # referral code record
+    code_type     = None   # "access" | "referral"
+
     if access_code:
         code_rec = validate_access_code(access_code)
-        if not code_rec:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid or already-used access code. Please check and try again."
-            )
+        if code_rec:
+            code_type = "access"
+        else:
+            # Try as a referral code
+            referral_rec = get_referral_code(access_code)
+            if referral_rec and referral_rec.get("uses", 0) < referral_rec.get("max_uses", 50):
+                code_type = "referral"
+            else:
+                # Invalid code — don't block signup, just warn
+                logger.info("Unrecognised code at signup: %s — proceeding without reward", access_code)
+                access_code = ""  # clear so we don't try to apply it
 
     success, message = register_email(request.email, request.name, pw_hash)
     if not success:
@@ -423,12 +434,14 @@ async def auth_signup(request: EmailSignUpWithCode) -> dict:
     from app.email_auth import _make_learner_id, _pending
     learner_id = _make_learner_id(request.email)
 
-    # Store the access code in pending data — applied after email confirmation
-    if access_code and code_rec:
+    # Store code info in pending — applied on email confirmation
+    if access_code and code_type == "access" and code_rec:
         _pending[request.email.lower()]["access_code"] = access_code
         _pending[request.email.lower()]["access_tier"] = code_rec["tier"]
+    elif access_code and code_type == "referral" and referral_rec:
+        _pending[request.email.lower()]["referral_code"] = access_code
 
-    # Mirror to Supabase (pre-confirm stub — real data added on confirm)
+    # Mirror to Supabase
     import threading as _thr
     _thr.Thread(
         target=sb_upsert_profile,
@@ -437,10 +450,15 @@ async def auth_signup(request: EmailSignUpWithCode) -> dict:
     ).start()
 
     response = {"ok": True, "message": message}
-    if code_rec:
+    if code_type == "access" and code_rec:
         tier_labels = {"tier1": "Pro Learner", "tier2": "Career Builder", "tier3": "Elite"}
-        response["code_accepted"] = True
+        response["code_accepted"]   = True
+        response["code_type"]       = "access"
         response["tier_on_confirm"] = tier_labels.get(code_rec["tier"], code_rec["tier"])
+    elif code_type == "referral":
+        response["code_accepted"] = True
+        response["code_type"]     = "referral"
+        response["discount_pct"]  = 10
     return response
 
 
@@ -1887,6 +1905,126 @@ async def admin_create_coupon(body: CouponCreate, request: Request) -> dict:
     return {"ok": True, "code": body.code.upper(),
             "discount_pct": body.discount_pct,
             "message": f"Coupon {body.code.upper()} created."}
+
+
+# ---------------------------------------------------------------------------
+# ACCESS CODE admin routes  (generate per-tier, optionally send via email)
+# ---------------------------------------------------------------------------
+
+class _AccessCodeSend(_BM):
+    tier:          str   # "tier1" | "tier2" | "tier3"
+    sent_to_email: str   = ""
+    expires_days:  int   = 30
+
+
+@app.get("/admin/access-codes")
+async def admin_list_access_codes(request: Request) -> dict:
+    """Return all admin-generated access codes."""
+    _require_admin(request)
+    codes = get_all_access_codes()
+    return {"codes": codes, "total": len(codes)}
+
+
+@app.post("/admin/access-codes/generate")
+async def admin_generate_access_code(body: _AccessCodeSend, request: Request) -> dict:
+    """
+    Generate an access code for a given tier.
+    Optionally send it to an email address.
+    The recipient enters this code at signup to get automatic tier access.
+    """
+    _require_admin(request)
+    if body.tier not in ("tier1", "tier2", "tier3"):
+        raise HTTPException(status_code=400, detail="Invalid tier. Use tier1, tier2, or tier3.")
+
+    import secrets as _sec, time as _t
+    code       = _sec.token_hex(4).upper()
+    expires_at = _t.time() + body.expires_days * 86400
+
+    create_access_code(
+        code=code,
+        tier=body.tier,
+        sent_to_email=body.sent_to_email.lower().strip(),
+        expires_at=expires_at,
+    )
+
+    tier_labels = {"tier1": "Pro Learner", "tier2": "Career Builder", "tier3": "Elite"}
+    tier_label  = tier_labels.get(body.tier, body.tier)
+    app_url     = _os.getenv("APP_URL", "https://mypytutor.onrender.com")
+
+    email_sent = False
+    if body.sent_to_email and "@" in body.sent_to_email:
+        try:
+            from app.email_auth import _send_email_async
+            html = f"""<!DOCTYPE html>
+<html lang="en">
+<body style="font-family:Arial,Helvetica,sans-serif;background:#f4f6f9;padding:32px 16px;">
+<table width="600" cellpadding="0" cellspacing="0"
+       style="max-width:600px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;">
+  <tr><td style="background:linear-gradient(135deg,#0d2b6e,#1a3f9a);padding:28px 36px;text-align:center;">
+    <div style="font-size:1.8rem;">🐍</div>
+    <h1 style="color:#fff;font-size:1.3rem;margin:6px 0 0;">MyPy Tutor &mdash; Premium Access</h1>
+  </td></tr>
+  <tr><td style="padding:32px 36px;">
+    <p style="color:#1a202c;font-size:1rem;">You have received a <strong>{tier_label}</strong>
+    access code for <strong>MyPy Tutor</strong>!</p>
+    <div style="text-align:center;margin:28px 0;">
+      <div style="background:#f0f7ff;border:2px dashed #3182ce;border-radius:12px;padding:20px;display:inline-block;">
+        <p style="color:#718096;font-size:0.8rem;margin:0 0 6px;text-transform:uppercase;letter-spacing:0.08em;">
+          Your Access Code</p>
+        <p style="font-size:2rem;font-weight:800;color:#0d2b6e;letter-spacing:0.12em;margin:0;">{code}</p>
+        <p style="color:#4a5568;font-size:0.78rem;margin:8px 0 0;">
+          Grants: <strong style="color:#0d2b6e;">{tier_label}</strong> &middot; Valid for {body.expires_days} days</p>
+      </div>
+    </div>
+    <ol style="margin:10px 0;padding-left:20px;color:#4a5568;font-size:0.88rem;line-height:1.8;">
+      <li>Go to <a href="{app_url}" style="color:#3182ce;">{app_url}</a></li>
+      <li>Click <strong>Sign Up</strong> and enter your details</li>
+      <li>Enter code <strong style="color:#0d2b6e;">{code}</strong> in the &ldquo;Access / Referral Code&rdquo; field</li>
+      <li>Confirm your email &mdash; {tier_label} access is activated automatically!</li>
+    </ol>
+    <div style="text-align:center;margin-top:24px;">
+      <a href="{app_url}" style="background:#0d2b6e;color:#fff;text-decoration:none;
+         font-weight:700;padding:13px 32px;border-radius:8px;display:inline-block;font-size:0.95rem;">
+        🚀 Create My Account</a>
+    </div>
+  </td></tr>
+  <tr><td style="background:#0d2b6e;padding:18px 36px;text-align:center;">
+    <p style="color:rgba(255,255,255,0.75);font-size:0.73rem;margin:0;">
+      MyPy Tutor &middot; Teamsamikoko Global Academy &middot; &ldquo;Learn Smarter. Code Better. Build the Future.&rdquo;
+    </p>
+  </td></tr>
+</table>
+</body>
+</html>"""
+            text = (
+                f"Your MyPy Tutor access code: {code}\n"
+                f"Tier: {tier_label} | Valid for {body.expires_days} days\n\n"
+                f"Sign up at {app_url} and enter this code to activate {tier_label} access.\n\n"
+                f"— MyPy Tutor Team"
+            )
+            _send_email_async(
+                body.sent_to_email,
+                f"Your MyPy Tutor Access Code — {tier_label}",
+                html, text,
+            )
+            email_sent = True
+        except Exception as exc:
+            logger.warning("Access code email send failed: %s", exc)
+
+    log_activity("admin", "access_code:generated",
+                 f"code={code} tier={body.tier} email={body.sent_to_email or 'none'}")
+
+    return {
+        "ok":         True,
+        "code":       code,
+        "tier":       body.tier,
+        "tier_label": tier_label,
+        "sent_to":    body.sent_to_email or None,
+        "email_sent": email_sent,
+        "expires_days": body.expires_days,
+        "message":    f"Access code {code} generated for {tier_label}."
+                      + (f" Sent to {body.sent_to_email}." if email_sent else ""),
+    }
 
 
 @app.get("/admin/invoices")

@@ -346,6 +346,26 @@ def confirm_email_token(token: str) -> tuple[bool, str]:
         except Exception as exc:
             logger.warning("Access code tier grant failed: %s", exc)
 
+    # Apply referral code AFTER confirmation — track that this user was referred
+    referral_code = user_data.get("referral_code", "")
+    if referral_code:
+        try:
+            from app.db import use_referral_code as _urc
+            # payment_amount=0 at signup; real bonus credited on payment webhook
+            applied = _urc(
+                referral_code,
+                used_by_email=email,
+                used_by_id=user_data["learner_id"],
+                discount_pct=10,
+                payment_amount=0,
+            )
+            if applied:
+                logger.info("Referral code %s recorded for %s (bonus credited on payment)", referral_code, email)
+            else:
+                logger.info("Referral code %s exhausted or invalid at confirmation for %s", referral_code, email)
+        except Exception as exc:
+            logger.warning("Referral code redemption failed (non-fatal): %s", exc)
+
     # Mirror to Supabase — survives Render ephemeral restarts
     try:
         from app.supabase_client import sb_upsert_email_account
