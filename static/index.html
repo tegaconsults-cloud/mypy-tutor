@@ -2516,7 +2516,21 @@
           body: JSON.stringify({ email, password }),
         });
         const data = await res.json();
-        if (!res.ok) { _setAuthError(data.error || data.detail || 'Sign in failed.'); return; }
+        if (!res.ok) {
+          const msg = data.error || data.detail || 'Sign in failed.';
+          // Show resend link when email not confirmed yet
+          if (msg.toLowerCase().includes('confirm')) {
+            const errEl = document.getElementById('auth-modal-error');
+            errEl.innerHTML =
+              msg + '<br/><a href="#" onclick="resendConfirmation(\'' + email.replace(/'/g,"") + '\',event)" ' +
+              'style="color:#60a5fa;font-size:0.82rem;text-decoration:underline;margin-top:6px;display:inline-block">' +
+              '📧 Resend confirmation email</a>';
+            errEl.style.display = 'block';
+          } else {
+            _setAuthError(msg);
+          }
+          return;
+        }
         localStorage.setItem(SESSION_KEY, data.token);
         setLoggedIn(data);
         closeAuthModal();
@@ -2524,6 +2538,49 @@
         _setAuthError('Network error. Please try again.');
       } finally {
         btn.disabled = false; btn.textContent = 'Sign In';
+      }
+    }
+
+    // ── Resend confirmation email ─────────────────────────────────────────────
+    async function resendConfirmation(email, evt) {
+      if (evt) evt.preventDefault();
+      if (!email) email = document.getElementById('signin-email').value.trim();
+      if (!email) { _setAuthError('Enter your email above first.'); return; }
+      const errEl = document.getElementById('auth-modal-error');
+      errEl.innerHTML = '⏳ Sending confirmation email…';
+      errEl.style.display = 'block';
+      errEl.style.color = '#90cdf4';
+      try {
+        const res = await fetch('/auth/resend-confirmation', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        });
+        const data = await res.json();
+        if (data.auto_confirmed) {
+          // Server auto-confirmed (SMTP not set up) — sign them in immediately
+          _setAuthSuccess('✅ Account confirmed! Signing you in…');
+          errEl.style.display = 'none';
+          const siRes = await fetch('/auth/signin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password: document.getElementById('signin-password').value }),
+          });
+          if (siRes.ok) {
+            const siData = await siRes.json();
+            localStorage.setItem(SESSION_KEY, siData.token);
+            setLoggedIn(siData);
+            closeAuthModal();
+          } else {
+            _setAuthSuccess('✅ Account confirmed! Please sign in below.');
+          }
+        } else {
+          errEl.style.color = data.ok ? '#68d391' : '#fc8181';
+          errEl.innerHTML = (data.ok ? '✅ ' : '❌ ') + (data.message || 'Done.');
+        }
+      } catch (_) {
+        errEl.style.color = '#fc8181';
+        errEl.innerHTML = '❌ Network error. Please try again.';
       }
     }
 
