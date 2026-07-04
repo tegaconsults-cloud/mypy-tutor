@@ -189,19 +189,21 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             "https://accounts.google.com "
             "https://www.googletagmanager.com "
             "https://www.google-analytics.com; "
-            # Styles: self + inline + CDN + Google GSI stylesheet + Google Fonts
+            # Styles: self + inline + CDN + Google GSI + Google Fonts stylesheet
             "style-src 'self' 'unsafe-inline' "
             "https://cdnjs.cloudflare.com "
             "https://accounts.google.com "
             "https://fonts.googleapis.com; "
-            # Fonts: self + CDN + Google Fonts
-            "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; "
-            # Images: self + data URIs + GA + GTM
+            # Fonts: self + CDN + Google Fonts gstatic
+            "font-src 'self' "
+            "https://cdnjs.cloudflare.com "
+            "https://fonts.gstatic.com; "
+            # Images: self + data URIs + GA + GTM + Google profile pictures
             "img-src 'self' data: "
             "https://www.google-analytics.com "
             "https://www.googletagmanager.com "
             "https://lh3.googleusercontent.com; "
-            # Fetch / XHR / WebSocket — includes CDN domains the SW fetches during precache
+            # Fetch / XHR / WebSocket — CDN domains SW fetches during precache + OAuth
             "connect-src 'self' "
             "https://cdn.jsdelivr.net "
             "https://cdnjs.cloudflare.com "

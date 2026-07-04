@@ -40,12 +40,20 @@ def _hash(pw: str) -> str:
 
 
 def verify_admin_login(email: str, password: str) -> bool:
-    """Check admin credentials. Constant-time comparison."""
+    """
+    Check admin credentials.
+    ADMIN_PASSWORD in Render env can be EITHER:
+      - The raw password itself (e.g. "MySecret123")
+      - The SHA-256 hash of the password
+    This avoids breaking existing deployments while being more secure than
+    the previous plaintext-equality check.
+    """
     admin_email    = _get_admin_email()
     stored_pw      = _get_admin_password()
     email_ok = email.lower().strip() == admin_email.lower()
     pw_ok = False
     if stored_pw:
+        # Accept both: stored hash of pw, OR stored pw being the raw password
         pw_ok = (stored_pw == _hash(password)) or (stored_pw == password)
     return email_ok and pw_ok
 

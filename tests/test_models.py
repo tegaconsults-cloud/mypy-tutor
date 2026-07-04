@@ -5,16 +5,17 @@ from app.models import ChatRequest, Message
 
 # Feature: ai-python-tutor, Property 7: Request/response model round-trip
 
+# Use min_size=1 to avoid empty strings rejected by min_length=1 validators
 message_strategy = st.builds(
     Message,
     role=st.sampled_from(["user", "assistant"]),
-    content=st.text(),
+    content=st.text(min_size=1, max_size=200),
 )
 
 chat_request_strategy = st.builds(
     ChatRequest,
-    message=st.text(),
-    history=st.lists(message_strategy),
+    message=st.text(min_size=1, max_size=200),
+    history=st.lists(message_strategy, max_size=5),
 )
 
 

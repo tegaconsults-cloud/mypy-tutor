@@ -17,7 +17,7 @@ _client = Groq(api_key=_api_key)
 def get_completion(
     system_prompt: str,
     messages: list[dict],
-    model: str = "llama-3.1-8b-instant",
+    model: str = "llama-3.3-70b-versatile",
     temperature: float = 0.3,
 ) -> str:
     """
