@@ -2350,7 +2350,7 @@
     let currentUser = null;
     const SESSION_KEY = 'mypy_tutor_session';
 
-    function openAuthModal() {
+    function openAuthModal(tab) {
       const overlay = document.getElementById('auth-modal-overlay');
       if (!overlay) return;   // DOM not ready yet — skip
       overlay.classList.add('open');
@@ -2358,7 +2358,7 @@
       if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
       const successEl = document.getElementById('auth-success-msg');
       if (successEl) { successEl.style.display = 'none'; successEl.textContent = ''; }
-      switchAuthTab('signin');
+      switchAuthTab(tab || 'signin');
     }
     function closeAuthModal() {
       const overlay = document.getElementById('auth-modal-overlay');
@@ -2368,13 +2368,16 @@
       if (e.target === document.getElementById('auth-modal-overlay')) closeAuthModal();
     }
 
-    function switchAuthTab(tab) {
+    function switchAuthTab(tab, keepMsg) {
       document.getElementById('auth-signin-form').style.display = tab === 'signin' ? 'flex' : 'none';
       document.getElementById('auth-signup-form').style.display = tab === 'signup' ? 'flex' : 'none';
       document.getElementById('tab-signin').classList.toggle('active', tab === 'signin');
       document.getElementById('tab-signup').classList.toggle('active', tab === 'signup');
       document.getElementById('auth-modal-error').style.display = 'none';
-      document.getElementById('auth-success-msg').classList.remove('visible');
+      // Only clear success message on user-initiated tab switches, not programmatic ones
+      if (!keepMsg) {
+        document.getElementById('auth-success-msg').classList.remove('visible');
+      }
     }
 
     function _setAuthError(msg) {
@@ -2412,17 +2415,81 @@
           body:    JSON.stringify(body),
         });
         const data = await res.json();
-        if (!res.ok) { _setAuthError(data.error || data.detail || 'Sign up failed.'); return; }
-        let msg = '✅ ' + data.message;
-        if (data.code_accepted && data.code_type === 'access' && data.tier_on_confirm) {
-          msg += ` 🎉 Access code accepted — ${data.tier_on_confirm} tier unlocked on confirmation!`;
-        } else if (data.code_accepted && data.code_type === 'referral') {
-          msg += ` 🎁 Referral code applied! You get 10% off your first subscription.`;
+        if (!res.ok) {
+          _setAuthError(data.error || data.detail || 'Sign up failed.');
+          return;
         }
-        _setAuthSuccess(msg);
-        document.getElementById('signup-password').value = '';
-        if (document.getElementById('signup-refcode'))
-          document.getElementById('signup-refcode').value = '';
+
+        // Build success message
+        let msg = data.message || 'Account created!';
+
+        // If the server auto-confirmed (dev/no-email mode), message contains "Welcome"
+        // → log them straight in without needing email confirmation
+        const autoConfirmed = msg.toLowerCase().includes('welcome') ||
+                              msg.toLowerCase().includes('confirmed');
+
+        if (data.code_accepted && data.code_type === 'access' && data.tier_on_confirm) {
+          msg += ` 🎉 Access code accepted — ${data.tier_on_confirm} tier unlocked!`;
+        } else if (data.code_accepted && data.code_type === 'referral') {
+          msg += ` 🎁 Referral code applied — 10% off your first subscription!`;
+        }
+
+        if (autoConfirmed) {
+          // Server auto-confirmed → sign them in immediately
+          _setAuthSuccess('✅ ' + msg + ' Signing you in…');
+          document.getElementById('signup-password').value = '';
+          if (document.getElementById('signup-refcode'))
+            document.getElementById('signup-refcode').value = '';
+
+          // Auto sign-in with the credentials they just entered
+          setTimeout(async () => {
+            try {
+              const siRes = await fetch('/auth/signin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password }),
+              });
+              const siData = await siRes.json();
+              if (siRes.ok && siData.token) {
+                localStorage.setItem(SESSION_KEY, siData.token);
+                setLoggedIn(siData);
+                closeAuthModal();
+                // Welcome toast
+                const t = document.createElement('div');
+                t.style.cssText = 'position:fixed;top:70px;left:50%;transform:translateX(-50%);background:#276749;color:#68d391;border-radius:12px;padding:14px 24px;font-size:0.92rem;font-weight:700;z-index:9999;max-width:90vw;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.4)';
+                t.textContent = `🎉 Welcome to MyPy Tutor, ${siData.name?.split(' ')[0] || 'Learner'}! Let's start learning.`;
+                document.body.appendChild(t);
+                setTimeout(() => t.remove(), 5000);
+              } else {
+                // Auto sign-in failed — fall through to manual sign-in
+                _setAuthSuccess('✅ Account created! Please sign in below.');
+                switchAuthTab('signin');
+                document.getElementById('signin-email').value = email;
+              }
+            } catch (_) {
+              _setAuthSuccess('✅ Account created! Please sign in below.');
+              switchAuthTab('signin');
+              document.getElementById('signin-email').value = email;
+            }
+          }, 600);
+
+        } else {
+          // Email confirmation required — show message and switch to sign-in after delay
+          // Keep password & code in case user needs to retry — DON'T clear them yet
+          _setAuthSuccess('✅ ' + msg);
+          // Pre-fill the sign-in email so user can quickly sign in after confirming
+          document.getElementById('signin-email').value = email;
+          // Clear sensitive fields
+          document.getElementById('signup-password').value = '';
+          if (document.getElementById('signup-refcode'))
+            document.getElementById('signup-refcode').value = '';
+          // After 4 seconds, switch to sign-in tab so user knows what to do next
+          setTimeout(() => {
+            switchAuthTab('signin', true);  // keepMsg=true so success message stays visible
+            _setAuthSuccess('📧 Check your email to confirm your account, then sign in here.');
+          }, 4000);
+        }
+
       } catch (err) {
         _setAuthError('Network error. Please try again.');
       } finally {
@@ -3042,8 +3109,12 @@
           toast.style.cssText = 'position:fixed;top:70px;left:50%;transform:translateX(-50%);background:#276749;color:#68d391;border-radius:12px;padding:12px 20px;font-size:0.9rem;font-weight:600;z-index:9999;max-width:90vw;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.4)';
           toast.textContent = '✅ ' + decoded;
           document.body.appendChild(toast);
-          setTimeout(() => toast.remove(), 6000);
-          setTimeout(() => { openAuthModal(); switchAuthTab('signin'); }, 800);
+          setTimeout(() => toast.remove(), 7000);
+          // Open sign-in tab with a helpful prompt
+          setTimeout(() => {
+            openAuthModal('signin');
+            _setAuthSuccess('✅ Email confirmed! Sign in below to start learning.');
+          }, 800);
         } else {
           const toast = document.createElement('div');
           toast.style.cssText = 'position:fixed;top:70px;left:50%;transform:translateX(-50%);background:#3b1a1a;color:#fc8181;border-radius:12px;padding:12px 20px;font-size:0.9rem;font-weight:600;z-index:9999;max-width:90vw;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.4)';
