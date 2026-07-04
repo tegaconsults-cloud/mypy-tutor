@@ -171,10 +171,19 @@ def generate_certificate_html(
   body{{font-family:'Lato',sans-serif;display:flex;align-items:center;justify-content:center;padding:16px;min-height:100vh;}}
   .page{{width:100%;max-width:960px;position:relative;}}
   @media print{{
-    html,body{{background:#fff!important;padding:0;height:auto}}
+    html,body{{background:{BG}!important;padding:0;height:auto;
+               -webkit-print-color-adjust:exact!important;
+               print-color-adjust:exact!important;
+               color-adjust:exact!important;}}
     .page{{max-width:100%;width:297mm;height:210mm}}
     .no-print{{display:none!important}}
     @page{{size:A4 landscape;margin:0}}
+  }}
+  /* Force color printing for all decorated elements */
+  .frame,.header,.header *,.corner{{
+    -webkit-print-color-adjust:exact!important;
+    print-color-adjust:exact!important;
+    color-adjust:exact!important;
   }}
 
   /* ═══ OUTER FRAME ═══ */

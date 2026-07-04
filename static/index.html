@@ -2269,10 +2269,11 @@
 
     // ── Email Sign Up ─────────────────────────────────────────────────────────
     async function handleEmailSignUp() {
-      const name     = document.getElementById('signup-name').value.trim();
-      const email    = document.getElementById('signup-email').value.trim();
-      const password = document.getElementById('signup-password').value;
-      const btn      = document.getElementById('signup-submit-btn');
+      const name       = document.getElementById('signup-name').value.trim();
+      const email      = document.getElementById('signup-email').value.trim();
+      const password   = document.getElementById('signup-password').value;
+      const accessCode = (document.getElementById('signup-refcode')?.value || '').trim().toUpperCase();
+      const btn        = document.getElementById('signup-submit-btn');
 
       if (!name)     { _setAuthError('Please enter your full name.'); return; }
       if (!email || !email.includes('@')) { _setAuthError('Please enter a valid email address.'); return; }
@@ -2282,15 +2283,23 @@
       document.getElementById('auth-modal-error').style.display = 'none';
 
       try {
+        const body = { name, email, password };
+        if (accessCode) body.access_code = accessCode;
         const res = await fetch('/auth/signup', {
-          method: 'POST',
+          method:  'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name, email, password }),
+          body:    JSON.stringify(body),
         });
         const data = await res.json();
         if (!res.ok) { _setAuthError(data.error || data.detail || 'Sign up failed.'); return; }
-        _setAuthSuccess('✅ ' + data.message);
+        let msg = '✅ ' + data.message;
+        if (data.code_accepted && data.tier_on_confirm) {
+          msg += ` 🎉 Your referral code grants you ${data.tier_on_confirm} access upon confirmation!`;
+        }
+        _setAuthSuccess(msg);
         document.getElementById('signup-password').value = '';
+        if (document.getElementById('signup-refcode'))
+          document.getElementById('signup-refcode').value = '';
       } catch (err) {
         _setAuthError('Network error. Please try again.');
       } finally {
@@ -3076,9 +3085,12 @@
 
       <!-- Sign Up form -->
       <div id="auth-signup-form" class="auth-form" style="display:none">
-        <input type="text" id="signup-name" placeholder="Full name" autocomplete="name" autocapitalize="words"/>
-        <input type="email" id="signup-email" placeholder="Email address" autocomplete="email" autocapitalize="none"/>
-        <input type="password" id="signup-password" placeholder="Password (min 8 characters)" autocomplete="new-password"/>
+        <input type="text"     id="signup-name"     placeholder="Full name"              autocomplete="name"         autocapitalize="words"/>
+        <input type="email"    id="signup-email"    placeholder="Email address"          autocomplete="email"        autocapitalize="none"/>
+        <input type="password" id="signup-password" placeholder="Password (min 8 chars)" autocomplete="new-password"/>
+        <input type="text"     id="signup-refcode"  placeholder="Referral / Access code (optional)"
+               style="text-transform:uppercase;letter-spacing:0.08em;"
+               maxlength="32" autocomplete="off"/>
         <button class="auth-submit-btn" id="signup-submit-btn" onclick="handleEmailSignUp()">Create Account</button>
       </div>
 
