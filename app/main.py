@@ -2322,15 +2322,16 @@ def _recover_from_supabase() -> None:
         logger.warning("Supabase email recovery failed: %s", exc)
 
     # ── Step 2: Recover learner progress ────────────────────────────────────
-    # Only restore progress rows that aren't already in SQLite.
+    # Always restore from Supabase — Supabase is the source of truth.
+    # Do NOT skip based on local_ids: the email account row was just
+    # written above, so local_ids would contain it but with zero progress.
     try:
-        local_ids = {r["learner_id"] for r in get_all_learners()}
         res = sb.table("learner_progress").select("*").limit(1000).execute()
         progress_rows = res.data or []
         restored = 0
         for row in progress_rows:
             lid = row.get("learner_id", "")
-            if not lid or lid in local_ids:
+            if not lid:
                 continue
             try:
                 save_profile_db(lid, {
@@ -2339,18 +2340,18 @@ def _recover_from_supabase() -> None:
                     "xp":                 row.get("xp", 0),
                     "badges":             json.loads(row.get("badges") or "[]"),
                     "topics_seen":        json.loads(row.get("topics_seen") or "[]"),
-                    "topic_progress":     {},
+                    "topic_progress":     json.loads(row.get("topic_progress") or "{}"),
                     "current_course":     row.get("current_course"),
                     "current_course_step":row.get("current_course_step", 0),
                     "completed_projects": json.loads(row.get("completed_projects") or "[]"),
                     "daily_prompts_used": 0,
                     "last_prompt_date":   "",
-                    "email":              "",
-                    "display_name":       "",
+                    "email":              row.get("email", ""),
+                    "display_name":       row.get("display_name", ""),
                 })
                 restored += 1
-            except Exception:
-                pass
+            except Exception as row_exc:
+                logger.debug("Progress row restore failed for %s: %s", lid, row_exc)
         if restored:
             logger.info("Supabase recovery: %d learner progress records restored", restored)
     except Exception as exc:
