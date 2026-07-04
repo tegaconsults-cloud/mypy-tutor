@@ -1999,47 +1999,101 @@ async def supabase_status() -> dict:
 
 def _recover_from_supabase() -> None:
     """
-    On startup: if SQLite is empty (Render ephemeral restart), pull both
-    learner progress AND email accounts from Supabase so the app has full
-    data immediately — users can log in and resume learning without delay.
+    CRITICAL STARTUP RECOVERY — runs on every boot.
 
-    Email account recovery is handled inside _load_confirmed_from_db()
-    (called just before this). This function handles learner progress only.
+    Render free tier wipes the filesystem on every deploy.
+    This function:
+    1. Pulls ALL email accounts from Supabase → writes to SQLite + in-memory
+    2. Pulls ALL learner progress from Supabase → writes to SQLite
+    3. Logs exactly what was recovered so we can debug
+
+    Called AFTER init_db() and _load_confirmed_from_db().
+    Safe to call even when Supabase is not configured (no-ops gracefully).
     """
-    if not sb_enabled():
-        return
-    from app.supabase_client import get_supabase
-    from app.db import get_all_learners, save_profile_db
+    from app.supabase_client import sb_enabled, get_supabase
+    from app.db import (get_all_learners, save_profile_db,
+                        save_email_account, get_all_confirmed_emails)
+    from app.email_auth import _confirmed, _by_id
     import json
+
+    if not sb_enabled():
+        logger.info("Supabase not configured — skipping cloud recovery")
+        return
+
+    sb = get_supabase()
+    if not sb:
+        return
+
+    # ── Step 1: Recover email accounts ──────────────────────────────────────
+    # Always pull from Supabase regardless of SQLite state.
+    # This ensures fresh deploys recover all users immediately.
     try:
-        sb = get_supabase()
-        if get_all_learners():
-            logger.info("SQLite learner_profiles intact — skipping Supabase progress recovery")
-            return
-        logger.info("Recovering learner progress from Supabase…")
-        res = sb.table("learner_progress").select("*").limit(500).execute()
-        recovered = 0
-        for row in (res.data or []):
-            lid = row.get("learner_id", "")
-            if not lid:
+        res = sb.table("email_accounts") \
+                .select("email,learner_id,full_name,password_hash,confirmed") \
+                .eq("confirmed", True) \
+                .execute()
+        accounts = res.data or []
+        new_count = 0
+        for acct in accounts:
+            email = acct.get("email", "").lower()
+            lid   = acct.get("learner_id", "")
+            name  = acct.get("full_name", "")
+            pw    = acct.get("password_hash", "")
+            if not email or not lid:
                 continue
-            save_profile_db(lid, {
-                "tier":               row.get("tier", "free"),
-                "level":              row.get("level", "beginner"),
-                "xp":                 row.get("xp", 0),
-                "badges":             json.loads(row.get("badges") or "[]"),
-                "topics_seen":        json.loads(row.get("topics_seen") or "[]"),
-                "topic_progress":     {},
-                "current_course":     row.get("current_course"),
-                "current_course_step":row.get("current_course_step", 0),
-                "completed_projects": json.loads(row.get("completed_projects") or "[]"),
-                "daily_prompts_used": 0,
-                "last_prompt_date":   "",
-            })
-            recovered += 1
-        logger.info("Recovered %d learner progress records from Supabase", recovered)
+            # Only add if not already in memory (avoid overwriting active session)
+            if email not in _confirmed:
+                user = {"name": name, "email": email,
+                        "learner_id": lid, "password_hash": pw, "token": ""}
+                _confirmed[email] = user
+                _by_id[lid]       = user
+                # Repopulate SQLite
+                try:
+                    save_email_account(email=email, name=name, learner_id=lid,
+                                       password_hash=pw, token="", confirmed=True)
+                except Exception:
+                    pass
+                new_count += 1
+        if accounts:
+            logger.info("Supabase recovery: %d email accounts (%d new to memory)",
+                        len(accounts), new_count)
     except Exception as exc:
-        logger.warning("Supabase progress recovery failed (non-fatal): %s", exc)
+        logger.warning("Supabase email recovery failed: %s", exc)
+
+    # ── Step 2: Recover learner progress ────────────────────────────────────
+    # Only restore progress rows that aren't already in SQLite.
+    try:
+        local_ids = {r["learner_id"] for r in get_all_learners()}
+        res = sb.table("learner_progress").select("*").limit(1000).execute()
+        progress_rows = res.data or []
+        restored = 0
+        for row in progress_rows:
+            lid = row.get("learner_id", "")
+            if not lid or lid in local_ids:
+                continue
+            try:
+                save_profile_db(lid, {
+                    "tier":               row.get("tier", "free"),
+                    "level":              row.get("level", "beginner"),
+                    "xp":                 row.get("xp", 0),
+                    "badges":             json.loads(row.get("badges") or "[]"),
+                    "topics_seen":        json.loads(row.get("topics_seen") or "[]"),
+                    "topic_progress":     {},
+                    "current_course":     row.get("current_course"),
+                    "current_course_step":row.get("current_course_step", 0),
+                    "completed_projects": json.loads(row.get("completed_projects") or "[]"),
+                    "daily_prompts_used": 0,
+                    "last_prompt_date":   "",
+                    "email":              "",
+                    "display_name":       "",
+                })
+                restored += 1
+            except Exception:
+                pass
+        if restored:
+            logger.info("Supabase recovery: %d learner progress records restored", restored)
+    except Exception as exc:
+        logger.warning("Supabase progress recovery failed: %s", exc)
 
 
 # Run recovery at startup (after DB is initialised)
@@ -2062,6 +2116,7 @@ async def get_profile_data(learner_id: str) -> dict:
         "bio":          db_profile.get("bio", ""),
         "location":     db_profile.get("location", ""),
         "website":      db_profile.get("website", ""),
+        "photo_url":    db_profile.get("photo_url", ""),
         "email":        lp.email or "",
         "level":        lp.level,
         "tier":         lp.tier,
@@ -2080,6 +2135,7 @@ async def update_profile(learner_id: str, body: UserProfileUpdate) -> dict:
         bio=body.bio,
         location=body.location,
         website=body.website,
+        photo_url=body.photo_url,
     )
     # Mirror display_name to LearnerProfile in memory + SQLite
     lp = get_profile(learner_id)

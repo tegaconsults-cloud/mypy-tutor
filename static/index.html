@@ -1096,18 +1096,37 @@
 
           <!-- Avatar + name card -->
           <div class="progress-card" style="display:flex;align-items:center;gap:16px">
-            <div id="prof-avatar-ring"
-                 style="width:72px;height:72px;border-radius:50%;flex-shrink:0;
-                        background:linear-gradient(135deg,#3b82f6,#8b5cf6);
-                        display:flex;align-items:center;justify-content:center;
-                        font-size:1.8rem;font-weight:800;color:#fff;
-                        box-shadow:0 0 20px rgba(59,130,246,0.35);">
+            <!-- Clickable avatar with upload overlay -->
+            <div style="position:relative;flex-shrink:0;cursor:pointer" onclick="document.getElementById('prof-photo-input').click()" title="Click to upload photo">
+              <div id="prof-avatar-ring"
+                   style="width:72px;height:72px;border-radius:50%;
+                          background:linear-gradient(135deg,#3b82f6,#8b5cf6);
+                          display:flex;align-items:center;justify-content:center;
+                          font-size:1.8rem;font-weight:800;color:#fff;
+                          box-shadow:0 0 20px rgba(59,130,246,0.35);
+                          overflow:hidden;position:relative;">
+                <img id="prof-avatar-img" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover;border-radius:50%"/>
+                <span id="prof-avatar-initials"></span>
+              </div>
+              <div style="position:absolute;bottom:2px;right:2px;background:#3b82f6;
+                          border-radius:50%;width:22px;height:22px;display:flex;
+                          align-items:center;justify-content:center;font-size:0.65rem;
+                          border:2px solid var(--bg-card)">📷</div>
+              <input type="file" id="prof-photo-input" accept="image/*" style="display:none"
+                     onchange="uploadProfilePhoto(this)"/>
             </div>
-            <div style="min-width:0">
+            <div style="min-width:0;flex:1">
               <div style="font-size:1.1rem;font-weight:800;color:#f1f5f9;letter-spacing:-0.02em" id="prof-display-name">—</div>
               <div style="font-size:0.8rem;color:#64748b;margin-top:2px" id="prof-email-display">—</div>
               <div id="prof-tier-badge" style="display:inline-block;margin-top:6px;font-size:0.62rem;font-weight:800;text-transform:uppercase;letter-spacing:0.08em;padding:2px 10px;border-radius:999px;background:rgba(59,130,246,0.15);color:#93c5fd;border:1px solid rgba(59,130,246,0.3)">Free Plan</div>
             </div>
+            <!-- Sign Out button -->
+            <button onclick="signOut()" title="Sign Out"
+              style="flex-shrink:0;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);
+                     color:#fca5a5;border-radius:10px;padding:8px 12px;font-size:0.8rem;
+                     font-weight:600;cursor:pointer;white-space:nowrap;transition:var(--transition)">
+              🚪 Sign Out
+            </button>
           </div>
 
           <!-- Edit profile form -->
@@ -1140,6 +1159,21 @@
                      box-shadow:0 4px 14px rgba(59,130,246,0.35)">
               Save Changes
             </button>
+          </div>
+
+          <!-- Security card -->
+          <div class="progress-card" style="display:flex;flex-direction:column;gap:12px">
+            <h3 style="color:#f1f5f9;font-size:0.97rem;font-weight:700">🔐 Security</h3>
+            <p style="font-size:0.82rem;color:#64748b;line-height:1.5">
+              To change your password, we'll send a secure reset link to your email address.
+            </p>
+            <button onclick="requestPwChangeFromProfile()" id="prof-pw-btn"
+              style="width:100%;background:transparent;border:1px solid rgba(59,130,246,0.4);
+                     color:#93c5fd;border-radius:10px;padding:11px;font-size:0.88rem;
+                     font-weight:600;cursor:pointer;font-family:var(--font);transition:var(--transition)">
+              📧 Send Password Reset Link
+            </button>
+            <div id="prof-pw-msg" style="display:none;font-size:0.82rem;text-align:center"></div>
           </div>
 
           <!-- Quick links card -->
@@ -1714,6 +1748,16 @@
       } catch (_) {}
     }
 
+    // ── Password visibility toggle ───────────────────────────────────────────
+    function togglePw(inputId, btn) {
+      const inp = document.getElementById(inputId);
+      if (!inp) return;
+      const show = inp.type === 'password';
+      inp.type   = show ? 'text' : 'password';
+      btn.textContent = show ? '🙈' : '👁';
+      btn.style.color = show ? '#60a5fa' : '#64748b';
+    }
+
     // ── Profile panel ─────────────────────────────────────────────────────────
     let _profileCache = null;
 
@@ -1762,13 +1806,20 @@
     }
 
     function _populateProfileUI(data) {
-      // Avatar initials
-      const ring  = document.getElementById('prof-avatar-ring');
-      const name  = data.display_name || currentUser?.name || '';
-      const email = data.email || currentUser?.email || '';
-      if (ring) {
-        const initials = (name || email || 'U').split(' ').map(w => w[0]).slice(0,2).join('').toUpperCase();
-        ring.textContent = initials;
+      // Avatar initials + photo
+      const ring     = document.getElementById('prof-avatar-ring');
+      const img      = document.getElementById('prof-avatar-img');
+      const initials = document.getElementById('prof-avatar-initials');
+      const name     = data.display_name || currentUser?.name || '';
+      const email    = data.email || currentUser?.email || '';
+      const photo    = data.photo_url || currentUser?.picture || '';
+      if (img && photo) {
+        img.src = photo; img.style.display = 'block';
+        if (initials) initials.style.display = 'none';
+      } else if (initials) {
+        initials.textContent = (name || email || 'U').split(' ').map(w => w[0]).slice(0,2).join('').toUpperCase();
+        initials.style.display = '';
+        if (img) img.style.display = 'none';
       }
       // Fields
       const setEl = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val || '—'; };
@@ -1849,6 +1900,76 @@
       el.style.display = 'block';
       el.style.color   = ok ? '#6ee7b7' : '#fca5a5';
       el.textContent   = text;
+    }
+
+    // ── Profile photo upload ──────────────────────────────────────────────────
+    function uploadProfilePhoto(input) {
+      const file = input.files?.[0];
+      if (!file) return;
+      if (file.size > 2 * 1024 * 1024) {
+        _showProfMsg('Photo must be under 2 MB.', false); return;
+      }
+      const reader = new FileReader();
+      reader.onload = e => {
+        const dataUrl = e.target.result;
+        // Show immediately in UI
+        const img      = document.getElementById('prof-avatar-img');
+        const initials = document.getElementById('prof-avatar-initials');
+        if (img) { img.src = dataUrl; img.style.display = 'block'; }
+        if (initials) initials.style.display = 'none';
+        // Update user chip avatar too
+        const chipAvatar = document.getElementById('user-avatar');
+        const chipFallback = document.getElementById('user-avatar-fallback');
+        if (chipAvatar) { chipAvatar.src = dataUrl; chipAvatar.style.display = 'block'; }
+        if (chipFallback) chipFallback.style.display = 'none';
+        // Save to profile as photo_url (base64 stored in user_profiles)
+        const lid = getLearnerId();
+        if (lid === 'default') return;
+        fetch(`/auth/profile/${lid}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            display_name: document.getElementById('prof-inp-name')?.value || '',
+            bio:          document.getElementById('prof-inp-bio')?.value || '',
+            location:     document.getElementById('prof-inp-location')?.value || '',
+            website:      document.getElementById('prof-inp-website')?.value || '',
+            photo_url:    dataUrl,
+          }),
+        })
+        .then(r => r.json())
+        .then(() => _showProfMsg('✅ Photo updated!', true))
+        .catch(() => _showProfMsg('Photo saved locally only.', false));
+      };
+      reader.readAsDataURL(file);
+    }
+
+    // ── Password change via email link ────────────────────────────────────────
+    async function requestPwChangeFromProfile() {
+      const authType = localStorage.getItem('mpt_auth_type') || '';
+      const pwMsgEl  = document.getElementById('prof-pw-msg');
+      if (authType === 'google') {
+        if (pwMsgEl) { pwMsgEl.style.display='block'; pwMsgEl.style.color='#f59e0b'; pwMsgEl.textContent='Google accounts — change your password at myaccount.google.com'; }
+        return;
+      }
+      const email = localStorage.getItem('mpt_user_email') || '';
+      if (!email) {
+        if (pwMsgEl) { pwMsgEl.style.display='block'; pwMsgEl.style.color='#fca5a5'; pwMsgEl.textContent='Could not determine email. Please sign out and back in.'; }
+        return;
+      }
+      const btn = document.getElementById('prof-pw-btn');
+      if (btn) { btn.disabled=true; btn.textContent='Sending…'; }
+      try {
+        await fetch('/auth/forgot-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email }),
+        });
+        if (pwMsgEl) { pwMsgEl.style.display='block'; pwMsgEl.style.color='#6ee7b7'; pwMsgEl.textContent=`✅ Reset link sent to ${email}. Check your inbox.`; }
+      } catch {
+        if (pwMsgEl) { pwMsgEl.style.display='block'; pwMsgEl.style.color='#fca5a5'; pwMsgEl.textContent='Network error. Please try again.'; }
+      } finally {
+        if (btn) { btn.disabled=false; btn.textContent='📧 Send Password Reset Link'; }
+      }
     }
 
     // ── Progress panel ────────────────────────────────────────────────────────
@@ -3073,11 +3194,17 @@
       <!-- Sign In form -->
       <div id="auth-signin-form" class="auth-form">
         <input type="email" id="signin-email" placeholder="Email address" autocomplete="email" autocapitalize="none"/>
-        <input type="password" id="signin-password" placeholder="Password" autocomplete="current-password"/>
+        <div style="position:relative;display:flex;align-items:center">
+          <input type="password" id="signin-password" placeholder="Password" autocomplete="current-password" style="width:100%;padding-right:42px"/>
+          <button type="button" onclick="togglePw('signin-password',this)"
+            style="position:absolute;right:10px;background:transparent;border:none;
+                   color:#64748b;cursor:pointer;font-size:1rem;padding:4px;line-height:1"
+            aria-label="Show password">👁</button>
+        </div>
         <button class="auth-submit-btn" id="signin-submit-btn" onclick="handleEmailSignIn()">Sign In</button>
-        <p style="text-align:center;margin-top:8px;">
+        <p style="text-align:center;margin-top:4px;">
           <a href="#" onclick="showForgotPassword(event)"
-             style="color:#63b3ed;font-size:0.82rem;text-decoration:none;">
+             style="color:#60a5fa;font-size:0.82rem;text-decoration:none;">
             Forgot password?
           </a>
         </p>
