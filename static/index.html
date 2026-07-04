@@ -992,6 +992,14 @@
         <div id="recent-topics"><span style="font-size:0.78rem;color:#4a5568">None yet.</span></div>
       </div>
 
+      <!-- My Account section — visible when signed in -->
+      <div class="sidebar-section" id="sidebar-account-section" style="display:none">
+        <h4>My Account</h4>
+        <button class="sidebar-btn" onclick="switchPanel('profile'); closeSidebar()">👤 Edit Profile</button>
+        <button class="sidebar-btn" onclick="switchPanel('progress'); closeSidebar()">📊 Progress &amp; Badges</button>
+        <button class="sidebar-btn" onclick="openReferralModal(); closeSidebar()">🔗 Referral Code</button>
+      </div>
+
       <!-- Feedback button in sidebar -->
       <div class="sidebar-section" style="margin-top:auto;padding-top:8px;border-top:1px solid #2d3748;">
         <button onclick="openFeedbackModal(); closeSidebar();"
@@ -2601,6 +2609,9 @@
 
       // Use authenticated learner_id for all API calls
       window._learnerId = data.learner_id;
+      // Show My Account section in sidebar
+      const acctSection = document.getElementById('sidebar-account-section');
+      if (acctSection) acctSection.style.display = 'block';
       refreshSidebar();
       refreshPromptCount();
 
@@ -2623,13 +2634,15 @@
 
     function signOut() {
       localStorage.removeItem(SESSION_KEY);
-      localStorage.removeItem('mpt_conv_id');    // clear conversation on sign-out
-      localStorage.removeItem('mpt_auth_type');  // clear auth type
+      localStorage.removeItem('mpt_conv_id');
+      localStorage.removeItem('mpt_auth_type');
       localStorage.removeItem('mpt_user_email');
       localStorage.removeItem('mpt_user_name');
       localStorage.removeItem('mpt_learner_id');
       currentUser = null;
       window._learnerId = 'default';
+      const acctSection = document.getElementById('sidebar-account-section');
+      if (acctSection) acctSection.style.display = 'none';
       document.getElementById('auth-btn').style.display = 'flex';
       document.getElementById('user-chip').style.display = 'none';
       closeUserDropdown();
@@ -2783,6 +2796,48 @@
       _sidebarRefreshTimer = setTimeout(_origRefreshSidebar, 3000);
     }
 
+    // ── Referral Modal ────────────────────────────────────────────────────────
+    function openReferralModal() {
+      const overlay = document.getElementById('referral-modal-overlay');
+      if (!overlay) return;
+      overlay.style.display = 'flex';
+      // Fetch referral code
+      const lid = getLearnerId();
+      if (lid === 'default') return;
+      fetch(`/referral/${lid}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          if (!d) return;
+          document.getElementById('referral-code-display').textContent = d.code || '—';
+          document.getElementById('referral-uses-display').textContent = d.uses || 0;
+          document.getElementById('referral-max-display').textContent  = d.max_uses || 50;
+          const appUrl = 'https://mypytutor.onrender.com';
+          document.getElementById('referral-share-text').textContent =
+            `"${appUrl} — use code ${d.code} for 20% off!"`;
+        })
+        .catch(() => {});
+    }
+
+    function closeReferralModal() {
+      const overlay = document.getElementById('referral-modal-overlay');
+      if (overlay) overlay.style.display = 'none';
+      document.getElementById('referral-copy-msg').style.display = 'none';
+    }
+
+    function copyReferralCode() {
+      const code = document.getElementById('referral-code-display').textContent.trim();
+      if (!code || code === 'Loading…') return;
+      const msg = `Join MyPy Tutor — Python AI tutor by Sir. Tega. Use code ${code} for 20% off! https://mypytutor.onrender.com`;
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(msg).then(() => {
+          document.getElementById('referral-copy-msg').style.display = 'block';
+          setTimeout(() => {
+            document.getElementById('referral-copy-msg').style.display = 'none';
+          }, 3000);
+        });
+      }
+    }
+
     // ── Init — wrapped in DOMContentLoaded to guarantee all HTML exists ────────
     document.addEventListener('DOMContentLoaded', function initApp() {
       loadTopics();
@@ -2907,6 +2962,63 @@
         style="background:transparent;border:1px solid #2d3748;color:#718096;border-radius:8px;padding:10px;font-size:0.84rem;cursor:pointer;">
         Maybe Later
       </button>
+    </div>
+  </div>
+
+  <!-- ── Referral Modal ── -->
+  <div id="referral-modal-overlay" onclick="if(event.target===this)closeReferralModal()"
+       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);
+              backdrop-filter:blur(10px);z-index:1000;
+              align-items:center;justify-content:center;padding:20px;">
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:24px;
+                padding:32px 28px;width:100%;max-width:400px;
+                display:flex;flex-direction:column;gap:18px;position:relative;
+                box-shadow:var(--shadow-lg);animation:modalIn 0.22s ease">
+      <button onclick="closeReferralModal()"
+              style="position:absolute;top:14px;right:16px;background:var(--bg-elevated);
+                     border:1px solid var(--border);color:var(--text-muted);
+                     border-radius:8px;width:30px;height:30px;cursor:pointer;
+                     display:flex;align-items:center;justify-content:center">✕</button>
+
+      <div style="text-align:center">
+        <div style="font-size:2rem;margin-bottom:6px">🔗</div>
+        <h2 style="font-size:1.1rem;font-weight:800;color:var(--text-primary);letter-spacing:-0.02em">Your Referral Code</h2>
+        <p style="font-size:0.84rem;color:var(--text-secondary);margin-top:6px;line-height:1.55">
+          Share this code with friends. They get <strong>20% off</strong> their first subscription,
+          and your account is tracked as the referrer.
+        </p>
+      </div>
+
+      <div style="background:var(--bg-elevated);border:2px dashed var(--border-focus);
+                  border-radius:14px;padding:20px;text-align:center">
+        <div id="referral-code-display"
+             style="font-family:monospace;font-size:1.6rem;font-weight:800;
+                    color:#60a5fa;letter-spacing:0.15em">
+          Loading…
+        </div>
+        <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px">
+          <span id="referral-uses-display">0</span> / <span id="referral-max-display">50</span> uses
+        </div>
+      </div>
+
+      <button onclick="copyReferralCode()"
+              style="width:100%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);
+                     color:#fff;border:none;border-radius:12px;padding:13px;
+                     font-size:0.93rem;font-weight:700;cursor:pointer;
+                     font-family:var(--font);box-shadow:0 4px 14px rgba(59,130,246,0.35);
+                     transition:var(--transition)">
+        📋 Copy Code
+      </button>
+
+      <div id="referral-copy-msg" style="text-align:center;font-size:0.82rem;
+                                          color:#6ee7b7;display:none">
+        ✅ Copied to clipboard!
+      </div>
+
+      <p style="font-size:0.76rem;color:var(--text-muted);text-align:center;line-height:1.5">
+        Share via:<br/>
+        <span id="referral-share-text" style="color:var(--text-secondary)"></span>
+      </p>
     </div>
   </div>
 
