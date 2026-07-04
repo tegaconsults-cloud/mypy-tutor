@@ -7,7 +7,7 @@
  *  - Navigation requests → Cache-first, serve cached shell if offline
  */
 
-const CACHE_VERSION = 'mypy-tutor-v5';
+const CACHE_VERSION = 'mypy-tutor-v6';
 const OFFLINE_URL   = '/';
 
 // App shell to pre-cache on install — do NOT include sw.js itself

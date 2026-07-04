@@ -1696,10 +1696,10 @@
     }
 
     // ── Refresh sidebar ───────────────────────────────────────────────────────
-    // Cache progress for 30 s to avoid a fetch on every single chat message.
+    // Cache progress for 60 s to avoid repeated fetches on every chat message.
     let _progressCache = null;
     let _progressCacheTs = 0;
-    const _PROGRESS_TTL = 30_000; // ms
+    const _PROGRESS_TTL = 60_000; // ms — refresh at most once per minute
 
     async function _fetchProgress(force = false) {
       const now = Date.now();
@@ -3044,12 +3044,12 @@
       }
     }
 
-    // ── Refresh sidebar (debounced — max once per 3s to reduce API calls) ────
+    // ── Refresh sidebar (debounced — max once per 5s to reduce API calls) ────
     let _sidebarRefreshTimer = null;
     const _origRefreshSidebar = refreshSidebar;
     function refreshSidebar() {
       clearTimeout(_sidebarRefreshTimer);
-      _sidebarRefreshTimer = setTimeout(_origRefreshSidebar, 3000);
+      _sidebarRefreshTimer = setTimeout(_origRefreshSidebar, 5000);
     }
 
     // ── Referral Modal ────────────────────────────────────────────────────────
