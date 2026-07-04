@@ -2944,7 +2944,7 @@
           document.getElementById('referral-bonus-display').textContent   = '₦' + bal.toFixed(2);
           const appUrl = 'https://mypytutor.onrender.com';
           document.getElementById('referral-share-text').textContent =
-            `"${appUrl} — use code ${d.code} for 10% off!"`;
+            `Join MyPy Tutor, your best AI AND PYTHON TUTOR. Use code ${d.code} for 10% off your first subscription! ${appUrl}`;
         })
         .catch(() => {});
     }
@@ -2958,7 +2958,7 @@
     function copyReferralCode() {
       const code = document.getElementById('referral-code-display').textContent.trim();
       if (!code || code === 'Loading…') return;
-      const msg = `Join MyPy Tutor — Python AI tutor by Sir. Tega. Use code ${code} for 10% off your first subscription! https://mypytutor.onrender.com`;
+      const msg = `Join MyPy Tutor, your best AI AND PYTHON TUTOR. Use code ${code} for 10% off your first subscription! https://mypytutor.onrender.com`;
       if (navigator.clipboard) {
         navigator.clipboard.writeText(msg).then(() => {
           document.getElementById('referral-copy-msg').style.display = 'block';
@@ -3115,7 +3115,7 @@
         <div style="font-size:2rem;margin-bottom:6px">🔗</div>
         <h2 style="font-size:1.1rem;font-weight:800;color:var(--text-primary);letter-spacing:-0.02em">Your Referral Code</h2>
         <p style="font-size:0.84rem;color:var(--text-secondary);margin-top:6px;line-height:1.55">
-          Share this code with friends. They get <strong>20% off</strong> their first subscription,
+          Share this code with friends. They get <strong>10% off</strong> their first subscription,
           and your account is tracked as the referrer.
         </p>
       </div>
@@ -3150,7 +3150,7 @@
                   border-radius:10px;padding:12px;font-size:0.8rem;color:var(--text-secondary);
                   line-height:1.6">
         <strong style="color:#93c5fd">How it works:</strong><br/>
-        • Share your code — friends enter it at signup<br/>
+        • Share your code friends enter it at signup<br/>
         • They get <strong>10% discount</strong> on their first subscription<br/>
         • You earn <strong>10% bonus</strong> of their payment amount<br/>
         • Bonus is credited automatically when they pay

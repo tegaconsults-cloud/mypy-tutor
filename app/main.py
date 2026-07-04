@@ -345,6 +345,13 @@ async def auth_google_callback(code: str = None, error: str = None) -> JSONRespo
         payload = verify_google_token(id_token)
         user    = get_or_create_user(payload)
         token   = create_session_token(user.learner_id)
+        # Store email + name in the LearnerProfile so admin can see them
+        lp = get_profile(user.learner_id)
+        if not lp.email or not lp.display_name:
+            lp.email        = user.email
+            lp.display_name = user.name
+            from app.progress import save_profile as _sp
+            _sp(lp)
         # Mirror to Supabase
         sb_upsert_profile(user.learner_id, user.email, user.name)
 
@@ -1671,6 +1678,14 @@ async def apply_coupon(body: CouponValidate) -> dict:
 # REFERRAL routes
 # ---------------------------------------------------------------------------
 
+# REFERRAL routes — specific paths BEFORE dynamic /{learner_id}
+@app.get("/referral/balance/{learner_id}")
+async def referral_balance(learner_id: str) -> dict:
+    """Return referral bonus balance and earnings history."""
+    validate_learner_id(learner_id)
+    return get_referral_bonus_balance(learner_id)
+
+
 @app.get("/referral/{learner_id}")
 async def get_my_referral(learner_id: str) -> dict:
     validate_learner_id(learner_id)
@@ -1678,11 +1693,11 @@ async def get_my_referral(learner_id: str) -> dict:
     if existing:
         uses = get_referral_uses(existing["code"])
         return {
-            "code":        existing["code"],
-            "uses":        existing["uses"],
-            "max_uses":    existing["max_uses"],
+            "code":          existing["code"],
+            "uses":          existing["uses"],
+            "max_uses":      existing["max_uses"],
             "bonus_balance": round(existing.get("bonus_balance", 0), 2),
-            "recent_uses": uses[:10],
+            "recent_uses":   uses[:10],
         }
     import secrets as _sec
     code    = _sec.token_hex(4).upper()
@@ -1691,13 +1706,6 @@ async def get_my_referral(learner_id: str) -> dict:
     create_referral_code(code, learner_id, email)
     return {"code": code, "uses": 0, "max_uses": 50,
             "bonus_balance": 0.0, "recent_uses": []}
-
-
-@app.get("/referral/balance/{learner_id}")
-async def referral_balance(learner_id: str) -> dict:
-    """Return referral bonus balance and earnings history."""
-    validate_learner_id(learner_id)
-    return get_referral_bonus_balance(learner_id)
 
 
 @app.post("/referral/use")
