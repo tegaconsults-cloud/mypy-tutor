@@ -280,9 +280,9 @@ def register_email(email: str, name: str, password_hash: str) -> tuple[bool, str
     email_user = _cfg("EMAIL_USER")
     email_pass = _cfg("EMAIL_PASS")
 
-    if not email_user or not email_pass:
-        # Dev mode — no email credentials, auto-confirm immediately
-        logger.warning("DEV MODE: auto-confirming %s (EMAIL_USER/EMAIL_PASS not set)", email)
+    if not email_user or not email_pass or email_user == "your-gmail@gmail.com":
+        # Dev mode or placeholder credentials — auto-confirm immediately
+        logger.warning("DEV MODE / unconfigured email: auto-confirming %s", email)
         return confirm_email_token(token)
 
     return True, (

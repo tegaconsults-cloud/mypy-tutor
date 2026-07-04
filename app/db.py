@@ -279,6 +279,7 @@ def init_db() -> None:
             "ALTER TABLE referrals ADD COLUMN bonus_balance REAL DEFAULT 0",
             "ALTER TABLE referral_uses ADD COLUMN referrer_bonus REAL DEFAULT 0",
             "ALTER TABLE referral_uses ADD COLUMN referee_discount REAL DEFAULT 0",
+            "ALTER TABLE user_profiles ADD COLUMN photo_url TEXT DEFAULT ''",
         ]
         for sql in _migrations:
             try:
@@ -924,18 +925,20 @@ def get_all_access_codes() -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def update_user_profile_db(learner_id: str, display_name: str,
-                             bio: str, location: str, website: str) -> None:
+                             bio: str, location: str, website: str,
+                             photo_url: str = "") -> None:
     with get_db() as conn:
         conn.execute("""
-        INSERT INTO user_profiles (learner_id, display_name, bio, location, website)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO user_profiles (learner_id, display_name, bio, location, website, photo_url)
+        VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(learner_id) DO UPDATE SET
             display_name = excluded.display_name,
             bio          = excluded.bio,
             location     = excluded.location,
             website      = excluded.website,
+            photo_url    = CASE WHEN excluded.photo_url != '' THEN excluded.photo_url ELSE user_profiles.photo_url END,
             updated_at   = unixepoch()
-        """, (learner_id, display_name[:80], bio[:500], location[:100], website[:200]))
+        """, (learner_id, display_name[:80], bio[:500], location[:100], website[:200], photo_url))
 
 
 def get_user_profile_db(learner_id: str) -> dict:
