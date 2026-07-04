@@ -125,7 +125,7 @@ label{font-size:.74rem;color:#718096;display:block;margin-bottom:3px}
       <div id="p-users" class="page">
         <h2>👥 Users</h2>
         <div class="sec"><div style="overflow-x:auto"><table id="users-table">
-          <thead><tr><th>ID</th><th>Tier</th><th>Level</th><th>XP</th><th>Topics</th><th>Courses</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Name / Email / ID</th><th>Tier</th><th>Level</th><th>XP</th><th>Topics</th><th>Courses</th><th>Actions</th></tr></thead>
           <tbody id="users-body"><tr><td colspan="7" style="color:#4a5568">Loading…</td></tr></tbody>
         </table></div></div>
       </div>
@@ -372,8 +372,14 @@ async function loadUsers(){
   const r=await api('/admin/users'); const d=await r.json();
   document.getElementById('users-body').innerHTML=d.learner_profiles.map(u=>{
     const tc={free:'grey',tier1:'bg',tier2:'gy',tier3:'gr'}[u.tier]||'grey';
+    const email = u.email || '—';
+    const name  = u.name  || u.learner_id.substring(0,14)+'…';
     return `<tr>
-      <td style="font-size:.72rem;color:#4a5568">${u.learner_id}</td>
+      <td>
+        <div style="font-weight:600;font-size:.82rem;color:#e2e8f0">${name}</div>
+        <div style="font-size:.7rem;color:#4a5568">${email}</div>
+        <div style="font-size:.65rem;color:#2d3748;margin-top:1px">${u.learner_id}</div>
+      </td>
       <td><span class="badge ${tc}">${u.tier}</span></td>
       <td>${u.level}</td><td>${u.xp}</td><td>${u.topics_seen}</td><td>${u.courses_done}</td>
       <td>
@@ -390,8 +396,10 @@ async function viewUser(lid){
     `<tr><td>${t}</td><td>${tp.lessons}</td><td>${tp.exercises_passed}/${tp.exercises_attempted}</td>
     <td><span class="badge ${tp.weak?'gr':'gg'}">${tp.weak?'gap':'ok'}</span></td></tr>`
   ).join('');
-  openModal(`<h3 style="color:#90cdf4;margin-bottom:12px">User: ${lid}</h3>
+  openModal(`<h3 style="color:#90cdf4;margin-bottom:12px">User: ${u.name || lid}</h3>
     <div style="font-size:.85rem;line-height:2;margin-bottom:14px">
+      <b>Email:</b> ${u.email || '—'}<br>
+      <b>Learner ID:</b> <span style="font-family:monospace;font-size:.78rem;color:#4a5568">${lid}</span><br>
       <b>Tier:</b> <span class="badge ${u.tier==='free'?'grey':'bg'}">${u.tier}</span> &nbsp;
       <b>Level:</b> ${u.level} &nbsp; <b>XP:</b> ${u.xp}<br>
       <b>Prompts today:</b> ${u.prompts_today} &nbsp; <b>Current course:</b> ${u.current_course||'—'}<br>

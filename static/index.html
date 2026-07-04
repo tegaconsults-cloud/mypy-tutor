@@ -997,7 +997,7 @@
         <h4>My Account</h4>
         <button class="sidebar-btn" onclick="switchPanel('profile'); closeSidebar()">👤 Edit Profile</button>
         <button class="sidebar-btn" onclick="switchPanel('progress'); closeSidebar()">📊 Progress &amp; Badges</button>
-        <button class="sidebar-btn" onclick="openReferralModal(); closeSidebar()">🔗 Referral Code</button>
+        <button class="sidebar-btn" onclick="openReferralModal(); closeSidebar()">🔗 Referral &amp; Bonus</button>
       </div>
 
       <!-- Feedback button in sidebar -->
@@ -2810,19 +2810,20 @@
       const overlay = document.getElementById('referral-modal-overlay');
       if (!overlay) return;
       overlay.style.display = 'flex';
-      // Fetch referral code
       const lid = getLearnerId();
       if (lid === 'default') return;
       fetch(`/referral/${lid}`)
         .then(r => r.ok ? r.json() : null)
         .then(d => {
           if (!d) return;
-          document.getElementById('referral-code-display').textContent = d.code || '—';
-          document.getElementById('referral-uses-display').textContent = d.uses || 0;
-          document.getElementById('referral-max-display').textContent  = d.max_uses || 50;
+          document.getElementById('referral-code-display').textContent    = d.code || '—';
+          document.getElementById('referral-uses-display').textContent    = d.uses || 0;
+          document.getElementById('referral-max-display').textContent     = d.max_uses || 50;
+          const bal = d.bonus_balance || 0;
+          document.getElementById('referral-bonus-display').textContent   = '₦' + bal.toFixed(2);
           const appUrl = 'https://mypytutor.onrender.com';
           document.getElementById('referral-share-text').textContent =
-            `"${appUrl} — use code ${d.code} for 20% off!"`;
+            `"${appUrl} — use code ${d.code} for 10% off!"`;
         })
         .catch(() => {});
     }
@@ -2836,7 +2837,7 @@
     function copyReferralCode() {
       const code = document.getElementById('referral-code-display').textContent.trim();
       if (!code || code === 'Loading…') return;
-      const msg = `Join MyPy Tutor — Python AI tutor by Sir. Tega. Use code ${code} for 20% off! https://mypytutor.onrender.com`;
+      const msg = `Join MyPy Tutor — Python AI tutor by Sir. Tega. Use code ${code} for 10% off your first subscription! https://mypytutor.onrender.com`;
       if (navigator.clipboard) {
         navigator.clipboard.writeText(msg).then(() => {
           document.getElementById('referral-copy-msg').style.display = 'block';
@@ -3008,6 +3009,30 @@
         <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px">
           <span id="referral-uses-display">0</span> / <span id="referral-max-display">50</span> uses
         </div>
+      </div>
+
+      <!-- Bonus balance card -->
+      <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.25);
+                  border-radius:12px;padding:14px;text-align:center">
+        <div style="font-size:0.72rem;color:#6ee7b7;font-weight:700;text-transform:uppercase;
+                    letter-spacing:0.08em;margin-bottom:4px">Your Referral Bonus Balance</div>
+        <div id="referral-bonus-display"
+             style="font-size:1.6rem;font-weight:800;color:#34d399">
+          ₦0.00
+        </div>
+        <div style="font-size:0.72rem;color:var(--text-muted);margin-top:4px">
+          10% of each referred user's first payment
+        </div>
+      </div>
+
+      <div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);
+                  border-radius:10px;padding:12px;font-size:0.8rem;color:var(--text-secondary);
+                  line-height:1.6">
+        <strong style="color:#93c5fd">How it works:</strong><br/>
+        • Share your code — friends enter it at signup<br/>
+        • They get <strong>10% discount</strong> on their first subscription<br/>
+        • You earn <strong>10% bonus</strong> of their payment amount<br/>
+        • Bonus is credited automatically when they pay
       </div>
 
       <button onclick="copyReferralCode()"

@@ -91,6 +91,8 @@ from app.db import (
     create_access_code, validate_access_code, redeem_access_code, get_all_access_codes,
     # user profiles
     update_user_profile_db, get_user_profile_db,
+    # referral balance
+    get_referral_bonus_balance,
 )
 from app.supabase_client import (
     sb_upsert_profile, sb_get_or_create_conversation,
@@ -885,6 +887,31 @@ async def paystack_webhook(request: Request) -> dict:
                             amount_ngn, plan_label, "paystack")
             # Sync updated tier to Supabase profile
             sb_update_tier(learner_id, tier)
+            # Credit 10% bonus to referrer if the user came via a referral code
+            try:
+                from app.db import get_referral_uses as _gru, get_db as _gdb
+                # Find if this learner used a referral code
+                with _gdb() as _conn:
+                    ref_use = _conn.execute(
+                        "SELECT code FROM referral_uses WHERE used_by_id=? OR used_by_email=? LIMIT 1",
+                        (learner_id, email)
+                    ).fetchone()
+                if ref_use:
+                    _ref_code = ref_use["code"]
+                    bonus = round(amount_ngn * 0.10, 2)
+                    with _gdb() as _conn:
+                        _conn.execute(
+                            "UPDATE referrals SET bonus_balance=bonus_balance+? WHERE code=?",
+                            (bonus, _ref_code)
+                        )
+                        _conn.execute(
+                            "UPDATE referral_uses SET referrer_bonus=referrer_bonus+?, "
+                            "referee_discount=? WHERE code=? AND (used_by_id=? OR used_by_email=?) LIMIT 1",
+                            (bonus, round(amount_ngn * 0.10, 2), _ref_code, learner_id, email)
+                        )
+                    logger.info("Credited ₦%s referral bonus to code %s on payment", bonus, _ref_code)
+            except Exception as rb_exc:
+                logger.debug("Referral bonus credit failed (non-fatal): %s", rb_exc)
             logger.info("Paystack webhook: upgraded %s → %s | invoice=%s", email, tier, invoice_id)
 
     return {"ok": True}
@@ -1052,10 +1079,15 @@ async def admin_list_users(request: Request) -> dict:
     users = []
     for lid, profile in ls.items():
         info = id_to_email.get(lid, {})
+        # For Google users, get email/name from the auth store
+        from app.auth import _users as _auth_users
+        auth_info = _auth_users.get(lid)
+        email = info.get("email") or (auth_info.email if auth_info else "") or profile.email or ""
+        name  = info.get("name")  or (auth_info.name  if auth_info else "") or profile.display_name or ""
         users.append({
             "learner_id":    lid,
-            "email":         info.get("email", profile.email or ""),
-            "name":          info.get("name", profile.display_name or ""),
+            "email":         email,
+            "name":          name,
             "tier":          profile.tier,
             "level":         profile.level,
             "xp":            profile.xp,
@@ -1645,27 +1677,51 @@ async def get_my_referral(learner_id: str) -> dict:
     existing = get_learner_referral_code(learner_id)
     if existing:
         uses = get_referral_uses(existing["code"])
-        return {"code": existing["code"], "uses": existing["uses"],
-                "max_uses": existing["max_uses"], "recent_uses": uses[:10]}
+        return {
+            "code":        existing["code"],
+            "uses":        existing["uses"],
+            "max_uses":    existing["max_uses"],
+            "bonus_balance": round(existing.get("bonus_balance", 0), 2),
+            "recent_uses": uses[:10],
+        }
     import secrets as _sec
     code    = _sec.token_hex(4).upper()
     profile = get_profile(learner_id)
     email   = profile.email or learner_id
     create_referral_code(code, learner_id, email)
-    return {"code": code, "uses": 0, "max_uses": 50, "recent_uses": []}
+    return {"code": code, "uses": 0, "max_uses": 50,
+            "bonus_balance": 0.0, "recent_uses": []}
+
+
+@app.get("/referral/balance/{learner_id}")
+async def referral_balance(learner_id: str) -> dict:
+    """Return referral bonus balance and earnings history."""
+    validate_learner_id(learner_id)
+    return get_referral_bonus_balance(learner_id)
 
 
 @app.post("/referral/use")
 async def use_referral(body: ReferralUse) -> dict:
+    """
+    Record that a new user signed up with a referral code.
+    Referee gets 10% discount; referrer gets 10% bonus credited.
+    payment_amount can be passed in the body for accurate calculation.
+    """
     ref = get_referral_code(body.code)
     if not ref or ref["uses"] >= ref["max_uses"]:
         raise HTTPException(status_code=404, detail="Referral code is invalid or exhausted.")
-    ok = use_referral_code(body.code, body.email, body.learner_id, discount_pct=20)
+    # Default payment_amount = 0 at signup (calculated properly on payment webhook)
+    payment_amount = getattr(body, 'payment_amount', 0) or 0
+    ok = use_referral_code(body.code, body.email, body.learner_id,
+                           discount_pct=10, payment_amount=payment_amount)
     if not ok:
         raise HTTPException(status_code=400, detail="Could not apply referral code.")
     log_activity(body.learner_id, "referral:used", f"code={body.code}")
-    return {"ok": True, "discount_pct": 20,
-            "message": "Referral applied! You get 20% off your first subscription."}
+    return {
+        "ok": True,
+        "discount_pct": 10,
+        "message": "Referral applied! You get 10% off your first subscription.",
+    }
 
 
 # ---------------------------------------------------------------------------
