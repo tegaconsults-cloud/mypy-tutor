@@ -238,16 +238,28 @@ def sb_sync_progress(learner_id: str, profile_dict: dict) -> None:
         return
     try:
         import json
+        # Serialize topic_progress — it's a dict of TopicProgress objects or dicts
+        tp_raw = profile_dict.get("topic_progress", {})
+        if isinstance(tp_raw, dict):
+            tp_serialized = json.dumps({
+                k: v if isinstance(v, dict) else v.model_dump() if hasattr(v, "model_dump") else {}
+                for k, v in tp_raw.items()
+            })
+        else:
+            tp_serialized = "{}"
         sb.table("learner_progress").upsert({
-            "learner_id":         learner_id,
-            "level":              profile_dict.get("level", "beginner"),
-            "xp":                 profile_dict.get("xp", 0),
-            "tier":               profile_dict.get("tier", "free"),
-            "badges":             json.dumps(profile_dict.get("badges", [])),
-            "topics_seen":        json.dumps(profile_dict.get("topics_seen", [])),
-            "current_course":     profile_dict.get("current_course"),
-            "current_course_step":profile_dict.get("current_course_step", 0),
-            "completed_projects": json.dumps(profile_dict.get("completed_projects", [])),
+            "learner_id":          learner_id,
+            "level":               profile_dict.get("level", "beginner"),
+            "xp":                  profile_dict.get("xp", 0),
+            "tier":                profile_dict.get("tier", "free"),
+            "badges":              json.dumps(profile_dict.get("badges", [])),
+            "topics_seen":         json.dumps(profile_dict.get("topics_seen", [])),
+            "topic_progress":      tp_serialized,
+            "current_course":      profile_dict.get("current_course"),
+            "current_course_step": profile_dict.get("current_course_step", 0),
+            "completed_projects":  json.dumps(profile_dict.get("completed_projects", [])),
+            "email":               profile_dict.get("email", ""),
+            "display_name":        profile_dict.get("display_name", ""),
         }, on_conflict="learner_id").execute()
     except Exception as exc:
         logger.debug("sb_sync_progress failed: %s", exc)

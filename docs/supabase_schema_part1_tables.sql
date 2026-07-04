@@ -53,9 +53,12 @@ create table if not exists learner_progress (
   tier                text not null default 'free',
   badges              jsonb not null default '[]',
   topics_seen         jsonb not null default '[]',
+  topic_progress      jsonb not null default '{}',
   current_course      text,
   current_course_step integer not null default 0,
   completed_projects  jsonb not null default '[]',
+  email               text not null default '',
+  display_name        text not null default '',
   updated_at          timestamptz default now()
 );
 drop trigger if exists trg_progress_updated_at on learner_progress;
