@@ -204,6 +204,7 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
       <button class="nb" data-p="activity">🔍 Activity</button>
       <button class="nb" data-p="payments">💳 Payments</button>
       <button class="nb" data-p="certificates">🎓 Certificates</button>
+      <button class="nb" data-p="access-codes">🔑 Access Codes</button>
       <button class="nb" data-p="feedback">💬 Feedback</button>
       <button class="nb" data-p="announce">📢 Announce</button>
       <button class="nb" data-p="team">👨‍💼 Team</button>
@@ -296,6 +297,39 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
           <thead><tr><th>Cert ID</th><th>Name</th><th>Learner ID</th><th>Level</th><th>Date</th><th></th></tr></thead>
           <tbody id="certs-body"><tr><td colspan="6" style="color:#4a5568">Loading…</td></tr></tbody>
         </table></div></div>
+      </div>
+
+      <!-- ACCESS CODES -->
+      <div id="p-access-codes" class="page">
+        <h2>🔑 Access Codes</h2>
+        <p style="color:#718096;font-size:.82rem;margin-bottom:14px">
+          Generate a tier-granting code for a specific user. When they sign up and enter the code,
+          they get automatic tier access on email confirmation.
+        </p>
+        <div class="g2">
+          <div class="sec">
+            <h3>Generate New Code</h3>
+            <div class="fr"><label>Tier</label>
+              <select id="ac-tier">
+                <option value="tier1">Pro Learner (Tier 1)</option>
+                <option value="tier2">Career Builder (Tier 2)</option>
+                <option value="tier3">Elite (Tier 3)</option>
+              </select>
+            </div>
+            <div class="fr"><label>Send to Email (optional)</label>
+              <input id="ac-email" type="email" placeholder="user@example.com" />
+            </div>
+            <div class="fr"><label>Expires In (days)</label>
+              <input id="ac-days" type="number" value="30" min="1" max="365" />
+            </div>
+            <button class="btn" onclick="generateAccessCode()">🔑 Generate &amp; Send</button>
+            <div id="ac-result" style="margin-top:12px;display:none"></div>
+          </div>
+          <div class="sec">
+            <h3>All Codes</h3>
+            <div id="ac-list">Loading…</div>
+          </div>
+        </div>
       </div>
 
       <!-- FEEDBACK -->
@@ -451,7 +485,7 @@ function nav(p){
   document.querySelectorAll('.nb').forEach(b=>b.classList.toggle('active',b.dataset.p===p));
   document.querySelectorAll('.page').forEach(pg=>pg.classList.toggle('active',pg.id==='p-'+p));
   ({dashboard:loadDashboard,users:loadUsers,activity:loadActivity,payments:loadPayments,
-    certificates:loadCerts,feedback:loadFeedback,announce:loadAnnounce,
+    certificates:loadCerts,'access-codes':loadAccessCodes,feedback:loadFeedback,announce:loadAnnounce,
     team:loadTeam,tasks:loadTasks,files:loadFiles})[p]?.();
 }
 document.querySelectorAll('.nb').forEach(b=>b.addEventListener('click',()=>nav(b.dataset.p)));
@@ -694,6 +728,55 @@ async function createTask(){
 async function updateTask(id,status){
   await api('/admin/tasks/'+id+'/status?status='+status,{method:'POST'});
   toast('Task updated'); loadTasks();
+}
+
+// ── Access Codes ───────────────────────────────────────────────────────────
+async function loadAccessCodes(){
+  const r=await api('/admin/access-codes'); const d=await r.json();
+  const tierLabel={tier1:'Pro Learner',tier2:'Career Builder',tier3:'Elite'};
+  const tierClass={tier1:'bg',tier2:'gy',tier3:'gr'};
+  document.getElementById('ac-list').innerHTML=(d.codes||[]).length
+    ? `<div style="overflow-x:auto"><table>
+        <thead><tr><th>Code</th><th>Tier</th><th>Sent To</th><th>Used</th><th>Expires</th></tr></thead>
+        <tbody>`+
+        (d.codes).map(c=>{
+          const used=c.used?'<span class="badge gg">used</span>':'<span class="badge grey">unused</span>';
+          const exp=c.expires_at>0?new Date(c.expires_at*1000).toLocaleDateString():'never';
+          return `<tr>
+            <td><code style="font-size:.82rem;color:#93c5fd;letter-spacing:.06em">${c.code}</code></td>
+            <td><span class="badge ${tierClass[c.tier]||'grey'}">${tierLabel[c.tier]||c.tier}</span></td>
+            <td style="font-size:.74rem;color:#718096">${c.sent_to_email||'—'}</td>
+            <td>${used}</td>
+            <td style="font-size:.74rem;color:#718096">${exp}</td>
+          </tr>`;
+        }).join('')+
+      `</tbody></table></div>`
+    : '<span style="color:#4a5568;font-size:.82rem">No access codes generated yet.</span>';
+}
+
+async function generateAccessCode(){
+  const tier=document.getElementById('ac-tier').value;
+  const email=document.getElementById('ac-email').value.trim();
+  const days=parseInt(document.getElementById('ac-days').value)||30;
+  const resEl=document.getElementById('ac-result');
+  resEl.style.display='block';
+  resEl.innerHTML='<span style="color:#718096">Generating…</span>';
+  const r=await api('/admin/access-codes/generate',{method:'POST',
+    body:JSON.stringify({tier,sent_to_email:email,expires_days:days})});
+  const d=await r.json();
+  if(r.ok){
+    const tierLabel={tier1:'Pro Learner',tier2:'Career Builder',tier3:'Elite'};
+    resEl.innerHTML=`<div class="alert-g">
+      ✅ Code generated: <strong style="font-size:1.1rem;letter-spacing:.1em;color:#93c5fd">${d.code}</strong>
+      &nbsp;→&nbsp;<strong>${tierLabel[d.tier]||d.tier}</strong>
+      ${d.email_sent?`<br/><span style="font-size:.8rem">📧 Sent to ${d.sent_to}</span>`:''}
+      ${!email?'<br/><span style="font-size:.8rem;color:#fbbf24">⚠ No email entered — share code manually</span>':''}
+    </div>`;
+    document.getElementById('ac-email').value='';
+    loadAccessCodes();
+  } else {
+    resEl.innerHTML=`<div class="alert-r">❌ ${d.detail||d.error||'Failed'}</div>`;
+  }
 }
 
 // ── Files ──────────────────────────────────────────────────────────────────

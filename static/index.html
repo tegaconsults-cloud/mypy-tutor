@@ -2414,8 +2414,10 @@
         const data = await res.json();
         if (!res.ok) { _setAuthError(data.error || data.detail || 'Sign up failed.'); return; }
         let msg = '✅ ' + data.message;
-        if (data.code_accepted && data.tier_on_confirm) {
-          msg += ` 🎉 Your referral code grants you ${data.tier_on_confirm} access upon confirmation!`;
+        if (data.code_accepted && data.code_type === 'access' && data.tier_on_confirm) {
+          msg += ` 🎉 Access code accepted — ${data.tier_on_confirm} tier unlocked on confirmation!`;
+        } else if (data.code_accepted && data.code_type === 'referral') {
+          msg += ` 🎁 Referral code applied! You get 10% off your first subscription.`;
         }
         _setAuthSuccess(msg);
         document.getElementById('signup-password').value = '';
