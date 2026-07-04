@@ -276,6 +276,9 @@ def init_db() -> None:
         _migrations = [
             "ALTER TABLE learner_profiles ADD COLUMN email TEXT DEFAULT ''",
             "ALTER TABLE learner_profiles ADD COLUMN display_name TEXT DEFAULT ''",
+            "ALTER TABLE referrals ADD COLUMN bonus_balance REAL DEFAULT 0",
+            "ALTER TABLE referral_uses ADD COLUMN referrer_bonus REAL DEFAULT 0",
+            "ALTER TABLE referral_uses ADD COLUMN referee_discount REAL DEFAULT 0",
         ]
         for sql in _migrations:
             try:
@@ -668,18 +671,30 @@ def get_referral_code(code: str) -> dict | None:
 
 
 def use_referral_code(code: str, used_by_email: str, used_by_id: str,
-                       discount_pct: int = 20) -> bool:
-    """Record a referral use. Returns False if code is exhausted or invalid."""
+                       discount_pct: int = 10,
+                       payment_amount: float = 0) -> bool:
+    """
+    Record a referral use.
+    - Referee gets 10% discount (tracked via discount_pct).
+    - Referrer gets 10% bonus of the payment credited to their bonus_balance.
+    Returns False if code is exhausted or invalid.
+    """
     ref = get_referral_code(code)
     if not ref or ref["uses"] >= ref["max_uses"]:
         return False
+    referrer_bonus   = round(payment_amount * 0.10, 2)
+    referee_discount = round(payment_amount * 0.10, 2)
     with get_db() as conn:
         conn.execute(
-            "UPDATE referrals SET uses=uses+1 WHERE code=?", (code.upper(),)
+            "UPDATE referrals SET uses=uses+1, bonus_balance=bonus_balance+? WHERE code=?",
+            (referrer_bonus, code.upper())
         )
         conn.execute(
-            "INSERT INTO referral_uses (code,used_by_email,used_by_id,discount_pct) VALUES (?,?,?,?)",
-            (code.upper(), used_by_email.lower(), used_by_id, discount_pct)
+            "INSERT INTO referral_uses "
+            "(code,used_by_email,used_by_id,discount_pct,referrer_bonus,referee_discount) "
+            "VALUES (?,?,?,?,?,?)",
+            (code.upper(), used_by_email.lower(), used_by_id,
+             discount_pct, referrer_bonus, referee_discount)
         )
     return True
 
@@ -705,6 +720,22 @@ def get_learner_referral_code(owner_id: str) -> dict | None:
             "SELECT * FROM referrals WHERE owner_id=?", (owner_id,)
         ).fetchone()
     return dict(row) if row else None
+
+
+def get_referral_bonus_balance(owner_id: str) -> dict:
+    """Return the referrer's bonus balance and use history."""
+    code_rec = get_learner_referral_code(owner_id)
+    if not code_rec:
+        return {"balance": 0.0, "uses": 0, "code": None, "history": []}
+    code  = code_rec["code"]
+    uses  = get_referral_uses(code)
+    total = sum(u.get("referrer_bonus", 0) for u in uses)
+    return {
+        "code":    code,
+        "balance": round(total, 2),
+        "uses":    code_rec.get("uses", 0),
+        "history": uses[:20],
+    }
 
 
 # ---------------------------------------------------------------------------
