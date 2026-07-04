@@ -3310,10 +3310,17 @@
 
       <!-- Sign Up form -->
       <div id="auth-signup-form" class="auth-form" style="display:none">
-        <input type="text"     id="signup-name"     placeholder="Full name"              autocomplete="name"         autocapitalize="words"/>
-        <input type="email"    id="signup-email"    placeholder="Email address"          autocomplete="email"        autocapitalize="none"/>
-        <input type="password" id="signup-password" placeholder="Password (min 8 chars)" autocomplete="new-password"/>
-        <input type="text"     id="signup-refcode"  placeholder="Referral / Access code (optional)"
+        <input type="text"  id="signup-name"  placeholder="Full name"     autocomplete="name"  autocapitalize="words"/>
+        <input type="email" id="signup-email" placeholder="Email address" autocomplete="email" autocapitalize="none"/>
+        <div style="position:relative;display:flex;align-items:center">
+          <input type="password" id="signup-password" placeholder="Password (min 8 chars)"
+                 autocomplete="new-password" style="width:100%;padding-right:42px"/>
+          <button type="button" onclick="togglePw('signup-password',this)"
+            style="position:absolute;right:10px;background:transparent;border:none;
+                   color:#64748b;cursor:pointer;font-size:1rem;padding:4px;line-height:1"
+            aria-label="Show password">👁</button>
+        </div>
+        <input type="text" id="signup-refcode" placeholder="Referral / Access code (optional)"
                style="text-transform:uppercase;letter-spacing:0.08em;"
                maxlength="32" autocomplete="off"/>
         <button class="auth-submit-btn" id="signup-submit-btn" onclick="handleEmailSignUp()">Create Account</button>
