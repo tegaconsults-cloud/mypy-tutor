@@ -31,13 +31,18 @@ BADGES = {
 
 
 def get_profile(learner_id: str) -> LearnerProfile:
-    """Load from cache, then SQLite, then create new."""
+    """
+    Load profile with 3-tier fallback:
+    1. In-memory cache (_store) — fastest, always checked first
+    2. SQLite — persisted local DB
+    3. Supabase — cloud source of truth, used when SQLite is empty after a restart
+    """
     if learner_id in _store:
         return _store[learner_id]
+
     # Try loading from SQLite
     row = load_profile(learner_id)
     if row:
-        # Reconstruct topic_progress from JSON
         tp_raw = json.loads(row.get("topic_progress", "{}"))
         topic_progress = {
             k: TopicProgress(**v) if isinstance(v, dict) else v
@@ -61,10 +66,83 @@ def get_profile(learner_id: str) -> LearnerProfile:
         )
         _store[learner_id] = profile
         return profile
-    # Create new profile
+
+    # SQLite miss — try Supabase directly (covers the window between restart and
+    # background recovery completing, or first sign-in on a fresh deploy)
+    try:
+        from app.supabase_client import sb_load_progress, sb_enabled
+        if sb_enabled():
+            sb_row = sb_load_progress(learner_id)
+            if sb_row:
+                tp_raw = {}
+                raw_tp = sb_row.get("topic_progress", "{}")
+                if isinstance(raw_tp, str):
+                    try:
+                        tp_raw = json.loads(raw_tp)
+                    except Exception:
+                        tp_raw = {}
+                elif isinstance(raw_tp, dict):
+                    tp_raw = raw_tp
+
+                topic_progress = {
+                    k: TopicProgress(**v) if isinstance(v, dict) else v
+                    for k, v in tp_raw.items()
+                }
+                badges_raw = sb_row.get("badges", "[]")
+                topics_raw = sb_row.get("topics_seen", "[]")
+                projects_raw = sb_row.get("completed_projects", "[]")
+
+                profile = LearnerProfile(
+                    learner_id=learner_id,
+                    tier=sb_row.get("tier", "free"),
+                    level=sb_row.get("level", "beginner"),
+                    xp=sb_row.get("xp", 0),
+                    badges=json.loads(badges_raw) if isinstance(badges_raw, str) else (badges_raw or []),
+                    topics_seen=json.loads(topics_raw) if isinstance(topics_raw, str) else (topics_raw or []),
+                    topic_progress=topic_progress,
+                    current_course=sb_row.get("current_course"),
+                    current_course_step=sb_row.get("current_course_step", 0),
+                    completed_projects=json.loads(projects_raw) if isinstance(projects_raw, str) else (projects_raw or []),
+                    daily_prompts_used=0,
+                    last_prompt_date="",
+                    email=sb_row.get("email", ""),
+                    display_name=sb_row.get("display_name", ""),
+                )
+                _store[learner_id] = profile
+                # Backfill SQLite so next request is fast
+                _backfill_sqlite(learner_id, profile)
+                return profile
+    except Exception as sb_exc:
+        import logging as _log
+        _log.getLogger(__name__).debug("Supabase get_profile fallback failed for %s: %s", learner_id, sb_exc)
+
+    # Truly new user — create blank profile
     profile = LearnerProfile(learner_id=learner_id)
     _store[learner_id] = profile
     return profile
+
+
+def _backfill_sqlite(learner_id: str, profile: LearnerProfile) -> None:
+    """Write a Supabase-recovered profile back to SQLite so reads are fast next time."""
+    try:
+        tp_dict = {k: v.model_dump() for k, v in profile.topic_progress.items()}
+        save_profile_db(learner_id, {
+            "tier":               profile.tier,
+            "level":              profile.level,
+            "xp":                 profile.xp,
+            "badges":             profile.badges,
+            "topics_seen":        profile.topics_seen,
+            "topic_progress":     tp_dict,
+            "current_course":     profile.current_course,
+            "current_course_step":profile.current_course_step,
+            "completed_projects": profile.completed_projects,
+            "daily_prompts_used": profile.daily_prompts_used,
+            "last_prompt_date":   profile.last_prompt_date,
+            "email":              profile.email,
+            "display_name":       profile.display_name,
+        })
+    except Exception:
+        pass
 
 
 def save_profile(profile: LearnerProfile) -> None:
