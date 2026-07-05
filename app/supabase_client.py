@@ -386,3 +386,163 @@ def sb_save_payment(payment_id: str, email: str, name: str,
         }, on_conflict="id").execute()
     except Exception as exc:
         logger.warning("sb_save_payment failed: %s", exc)
+
+
+# ---------------------------------------------------------------------------
+# Pending confirmations  (survives Render restarts so email links still work)
+# ---------------------------------------------------------------------------
+
+def sb_save_pending_confirmation(email: str, learner_id: str,
+                                  full_name: str, password_hash: str,
+                                  token: str) -> None:
+    """
+    Save an unconfirmed registration to Supabase pending_confirmations table.
+    Allows confirmation links to work even after a Render restart wipes _pending.
+    """
+    sb = get_supabase()
+    if not sb:
+        return
+    try:
+        import time as _t
+        sb.table("pending_confirmations").upsert({
+            "email":         email.lower(),
+            "learner_id":    learner_id,
+            "full_name":     full_name,
+            "password_hash": password_hash,
+            "token":         token,
+            "created_at":    _t.time(),
+        }, on_conflict="email").execute()
+    except Exception as exc:
+        logger.debug("sb_save_pending_confirmation failed for %s: %s", email, exc)
+
+
+def sb_delete_pending_confirmation(email: str) -> None:
+    """Remove a confirmed user from the pending_confirmations table."""
+    sb = get_supabase()
+    if not sb:
+        return
+    try:
+        sb.table("pending_confirmations").delete().eq("email", email.lower()).execute()
+    except Exception as exc:
+        logger.debug("sb_delete_pending_confirmation failed for %s: %s", email, exc)
+
+
+def sb_load_pending_confirmations() -> list[dict]:
+    """
+    Load all pending (unconfirmed) registrations from Supabase.
+    Called on startup to repopulate _pending so old confirmation links still work.
+    Returns list of dicts with: email, learner_id, full_name, password_hash, token, created_at.
+    """
+    sb = get_supabase()
+    if not sb:
+        return []
+    try:
+        import time as _t
+        cutoff = _t.time() - (60 * 60 * 24)  # 24 hours ago — ignore expired
+        res = (
+            sb.table("pending_confirmations")
+            .select("email,learner_id,full_name,password_hash,token,created_at")
+            .gt("created_at", cutoff)
+            .execute()
+        )
+        rows = res.data or []
+        # Add created_at_ts field (numeric) for age check in email_auth.py
+        for r in rows:
+            r["created_at_ts"] = float(r.get("created_at") or 0)
+        return rows
+    except Exception as exc:
+        logger.debug("sb_load_pending_confirmations failed: %s", exc)
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Password reset tokens  (survives Render restarts)
+# ---------------------------------------------------------------------------
+
+def sb_save_reset_token(token: str, email: str) -> None:
+    """Persist a password reset token to Supabase."""
+    sb = get_supabase()
+    if not sb:
+        return
+    try:
+        import time as _t
+        sb.table("password_reset_tokens").upsert({
+            "token":      token,
+            "email":      email.lower(),
+            "used":       False,
+            "created_at": _t.time(),
+        }, on_conflict="token").execute()
+    except Exception as exc:
+        logger.debug("sb_save_reset_token failed: %s", exc)
+
+
+def sb_load_reset_token(token: str) -> dict | None:
+    """Load a reset token from Supabase. Returns None if not found or already used."""
+    sb = get_supabase()
+    if not sb:
+        return None
+    try:
+        res = (
+            sb.table("password_reset_tokens")
+            .select("token,email,used,created_at")
+            .eq("token", token)
+            .eq("used", False)
+            .single()
+            .execute()
+        )
+        return res.data
+    except Exception:
+        return None
+
+
+def sb_mark_reset_token_used(token: str) -> None:
+    """Mark a reset token as used in Supabase."""
+    sb = get_supabase()
+    if not sb:
+        return
+    try:
+        sb.table("password_reset_tokens").update({"used": True}).eq("token", token).execute()
+    except Exception as exc:
+        logger.debug("sb_mark_reset_token_used failed: %s", exc)
+
+
+# ---------------------------------------------------------------------------
+# Referral codes  (mirror to Supabase for restart recovery)
+# ---------------------------------------------------------------------------
+
+def sb_mirror_referral_code(code: str, owner_id: str, owner_email: str,
+                              max_uses: int = 50, reward_tier: str = "tier1") -> None:
+    """
+    Persist a user-generated referral code to Supabase referral_codes table.
+    Called whenever a new code is created so it survives Render restarts.
+    """
+    sb = get_supabase()
+    if not sb:
+        return
+    try:
+        sb.table("referral_codes").upsert({
+            "code":        code.upper(),
+            "owner_id":    owner_id,
+            "owner_email": owner_email.lower(),
+            "max_uses":    max_uses,
+            "reward_tier": reward_tier,
+            "uses":        0,
+            "bonus_balance": 0.0,
+        }, on_conflict="code").execute()
+        logger.debug("Mirrored referral code %s to Supabase", code)
+    except Exception as exc:
+        logger.debug("sb_mirror_referral_code failed for %s: %s", code, exc)
+
+
+def sb_update_referral_stats(code: str, uses: int, bonus_balance: float) -> None:
+    """Update the uses and bonus_balance for a referral code in Supabase."""
+    sb = get_supabase()
+    if not sb:
+        return
+    try:
+        sb.table("referral_codes").update({
+            "uses":          uses,
+            "bonus_balance": bonus_balance,
+        }).eq("code", code.upper()).execute()
+    except Exception as exc:
+        logger.debug("sb_update_referral_stats failed for %s: %s", code, exc)

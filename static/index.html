@@ -2624,7 +2624,8 @@
       if (pw1.length < 8) { _setAuthError('Password must be at least 8 characters.'); return; }
       if (pw1 !== pw2) { _setAuthError('Passwords do not match.'); return; }
       const token = new URLSearchParams(window.location.search).get('token') ||
-                    (window._resetToken || '');
+                    window._resetToken ||
+                    (function(){ try { return sessionStorage.getItem('mpt_reset_token') || ''; } catch(_){ return ''; } })();
       if (!token) { _setAuthError('Invalid reset link.'); return; }
       btn.disabled = true; btn.textContent = 'Updating…';
       try {
@@ -2639,6 +2640,9 @@
         msg.textContent = '✅ ' + (data.message || 'Password updated! You can now sign in.');
         msg.style.display = 'block';
         document.getElementById('auth-reset-form').style.display = 'none';
+        // Clear stored token — prevent reuse
+        window._resetToken = null;
+        try { sessionStorage.removeItem('mpt_reset_token'); } catch (_) {}
         // Clean URL
         window.history.replaceState({}, '', '/');
         setTimeout(() => switchAuthTab('signin'), 2000);
@@ -3144,7 +3148,10 @@
 
       // ── Password reset link ────────────────────────────────────────────────
       if (authStatus === 'reset' && token) {
+        // Store in sessionStorage so it survives a page refresh
+        // (window._resetToken would be lost on reload)
         window._resetToken = token;
+        try { sessionStorage.setItem('mpt_reset_token', token); } catch (_) {}
         window.history.replaceState({}, '', '/');
         // Open auth modal and show reset form
         setTimeout(() => {

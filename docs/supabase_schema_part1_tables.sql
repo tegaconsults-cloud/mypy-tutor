@@ -111,3 +111,35 @@ create table if not exists payments (
   status     text not null default 'confirmed',
   created_at timestamptz default now()
 );
+
+-- 9. PENDING EMAIL CONFIRMATIONS
+create table if not exists pending_confirmations (
+  email         text primary key,
+  learner_id    text not null default '',
+  full_name     text not null default '',
+  password_hash text not null default '',
+  token         text not null default '',
+  created_at    double precision not null default extract(epoch from now())
+);
+
+-- 10. PASSWORD RESET TOKENS
+create table if not exists password_reset_tokens (
+  token      text primary key,
+  email      text not null default '',
+  used       boolean not null default false,
+  created_at double precision not null default extract(epoch from now())
+);
+create index if not exists idx_prt_email on password_reset_tokens (email);
+
+-- 11. REFERRAL CODES (mirror of SQLite referrals for restart recovery)
+create table if not exists referral_codes (
+  code          text primary key,
+  owner_id      text not null default '',
+  owner_email   text not null default '',
+  max_uses      integer not null default 50,
+  reward_tier   text not null default 'tier1',
+  uses          integer not null default 0,
+  bonus_balance numeric not null default 0,
+  created_at    timestamptz default now()
+);
+create index if not exists idx_refcodes_owner on referral_codes (owner_id);

@@ -432,15 +432,40 @@ async def auth_signup(request: EmailSignUpWithCode) -> dict:
     if not success:
         raise HTTPException(status_code=400, detail=message)
 
-    from app.email_auth import _make_learner_id, _pending
+    from app.email_auth import _make_learner_id, _pending, _confirmed
     learner_id = _make_learner_id(request.email)
 
-    # Store code info in pending — applied on email confirmation
+    # Store code info in pending — applied on email confirmation.
+    # IMPORTANT: register_email() may auto-confirm (dev/no-SMTP mode), in which
+    # case _pending[email] is deleted by confirm_email_token(). We must check
+    # _pending still has the entry before writing to it, and apply codes directly
+    # to the already-confirmed user if auto-confirm happened.
+    email_lower = request.email.lower()
     if access_code and code_type == "access" and code_rec:
-        _pending[request.email.lower()]["access_code"] = access_code
-        _pending[request.email.lower()]["access_tier"] = code_rec["tier"]
+        if email_lower in _pending:
+            _pending[email_lower]["access_code"] = access_code
+            _pending[email_lower]["access_tier"] = code_rec["tier"]
+        elif email_lower in _confirmed:
+            # Auto-confirmed path — apply access code directly now
+            try:
+                from app.db import validate_access_code as _vac, redeem_access_code as _rac, upgrade_tier_db
+                vcode = _vac(access_code)
+                if vcode:
+                    _rac(access_code, email_lower, learner_id)
+                    upgrade_tier_db(learner_id, code_rec["tier"])
+                    logger.info("Access code %s applied directly (auto-confirm) for %s", access_code, email_lower)
+            except Exception as exc:
+                logger.warning("Direct access code apply failed: %s", exc)
     elif access_code and code_type == "referral" and referral_rec:
-        _pending[request.email.lower()]["referral_code"] = access_code
+        if email_lower in _pending:
+            _pending[email_lower]["referral_code"] = access_code
+        elif email_lower in _confirmed:
+            # Auto-confirmed — record referral use directly
+            try:
+                from app.db import use_referral_code as _urc
+                _urc(access_code, email_lower, learner_id, discount_pct=10, payment_amount=0)
+            except Exception as exc:
+                logger.warning("Direct referral record failed: %s", exc)
 
     # Mirror to Supabase
     import threading as _thr
@@ -1837,6 +1862,13 @@ async def get_my_referral(learner_id: str) -> dict:
     profile = get_profile(learner_id)
     email   = profile.email or learner_id
     create_referral_code(code, learner_id, email)
+    # Mirror to Supabase so it survives Render restarts
+    import threading as _rt
+    _rt.Thread(
+        target=_mirror_referral_code_to_supabase,
+        args=(code, learner_id, email),
+        daemon=False,
+    ).start()
     return {"code": code, "uses": 0, "max_uses": 50,
             "bonus_balance": 0.0, "recent_uses": []}
 
@@ -2258,6 +2290,15 @@ async def supabase_status() -> dict:
 # STARTUP — Supabase data recovery on Render restart
 # ---------------------------------------------------------------------------
 
+def _mirror_referral_code_to_supabase(code: str, owner_id: str, owner_email: str,
+                                        max_uses: int = 50, reward_tier: str = "tier1") -> None:
+    """Mirror a newly-created referral code to Supabase referral_codes table."""
+    try:
+        from app.supabase_client import sb_mirror_referral_code
+        sb_mirror_referral_code(code, owner_id, owner_email, max_uses, reward_tier)
+    except Exception as exc:
+        logger.debug("Referral code Supabase mirror failed (non-fatal): %s", exc)
+
 def _recover_from_supabase() -> None:
     """
     CRITICAL STARTUP RECOVERY — runs on every boot.
@@ -2356,6 +2397,44 @@ def _recover_from_supabase() -> None:
             logger.info("Supabase recovery: %d learner progress records restored", restored)
     except Exception as exc:
         logger.warning("Supabase progress recovery failed: %s", exc)
+
+    # ── Step 3: Recover referral codes ──────────────────────────────────────
+    # User-generated referral codes live in SQLite but that's wiped on restart.
+    # We store them in Supabase referral_codes table and recover on boot.
+    try:
+        res = sb.table("referral_codes") \
+                .select("code,owner_id,owner_email,max_uses,reward_tier,uses,bonus_balance") \
+                .execute()
+        ref_rows = res.data or []
+        recovered_refs = 0
+        for rr in ref_rows:
+            code = rr.get("code", "").upper()
+            if not code:
+                continue
+            try:
+                from app.db import create_referral_code as _crc, get_referral_code as _grc, get_db as _gdb
+                # Only insert if not already present in SQLite
+                if not _grc(code):
+                    _crc(
+                        code=code,
+                        owner_id=rr.get("owner_id", ""),
+                        owner_email=rr.get("owner_email", ""),
+                        max_uses=rr.get("max_uses", 50),
+                        reward_tier=rr.get("reward_tier", "tier1"),
+                    )
+                    # Restore uses and bonus_balance
+                    with _gdb() as _conn:
+                        _conn.execute(
+                            "UPDATE referrals SET uses=?, bonus_balance=? WHERE code=?",
+                            (rr.get("uses", 0), rr.get("bonus_balance", 0), code)
+                        )
+                    recovered_refs += 1
+            except Exception as rr_exc:
+                logger.debug("Referral code restore failed for %s: %s", code, rr_exc)
+        if recovered_refs:
+            logger.info("Supabase recovery: %d referral codes restored", recovered_refs)
+    except Exception as exc:
+        logger.debug("Supabase referral code recovery failed (non-fatal): %s", exc)
 
 
 # Run recovery in a background thread — never blocks the first incoming request.

@@ -87,7 +87,9 @@ def _load_confirmed_from_db() -> None:
 
     if loaded > 0:
         logger.info("Loaded %d confirmed accounts from SQLite", loaded)
-        return  # SQLite is intact — no need to hit Supabase
+        # Still try to recover pending confirmations even when SQLite has confirmed users
+        _recover_pending_from_supabase()
+        return  # SQLite is intact — no need to hit Supabase for confirmed users
 
     # SQLite is empty (Render ephemeral restart wiped the disk).
     # Recover from Supabase and repopulate SQLite at the same time.
@@ -125,6 +127,42 @@ def _load_confirmed_from_db() -> None:
         logger.info("Recovered %d email accounts from Supabase", recovered)
     except Exception as exc:
         logger.warning("Supabase email recovery failed (non-fatal): %s", exc)
+
+    # Also recover pending confirmations
+    _recover_pending_from_supabase()
+
+
+def _recover_pending_from_supabase() -> None:
+    """
+    Restore unconfirmed pending registrations from Supabase on startup.
+    This ensures confirmation links sent before a Render restart still work.
+    """
+    try:
+        from app.supabase_client import sb_load_pending_confirmations
+        pending_list = sb_load_pending_confirmations()
+        now = time.time()
+        recovered = 0
+        for p in pending_list:
+            email = p.get("email", "").lower()
+            if not email or email in _confirmed or email in _pending:
+                continue
+            # Skip tokens older than 24 hours (expired)
+            created = p.get("created_at_ts", now)
+            if (now - created) > CONFIRM_MAX_AGE:
+                continue
+            _pending[email] = {
+                "name":          p.get("full_name", ""),
+                "email":         email,
+                "learner_id":    p.get("learner_id", _make_learner_id(email)),
+                "password_hash": p.get("password_hash", ""),
+                "token":         p.get("token", ""),
+                "created_at":    created,
+            }
+            recovered += 1
+        if recovered:
+            logger.info("Recovered %d pending confirmations from Supabase", recovered)
+    except Exception as exc:
+        logger.debug("Pending confirmation recovery failed (non-fatal): %s", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -250,6 +288,14 @@ def register_email(email: str, name: str, password_hash: str) -> tuple[bool, str
         "token":         token,
         "created_at":    time.time(),
     }
+
+    # Persist pending registration to Supabase so confirmation links survive
+    # Render restarts (Render wipes in-memory state on every deploy)
+    try:
+        from app.supabase_client import sb_save_pending_confirmation
+        sb_save_pending_confirmation(email, learner_id, name, password_hash, token)
+    except Exception as _pe:
+        logger.debug("Could not persist pending to Supabase (non-fatal): %s", _pe)
 
     app_url     = _cfg("APP_URL", "https://mypytutor.onrender.com")
     confirm_url = f"{app_url}/auth/confirm?token={token}"
@@ -384,13 +430,15 @@ def confirm_email_token(token: str) -> tuple[bool, str]:
 
     # Mirror to Supabase — survives Render ephemeral restarts
     try:
-        from app.supabase_client import sb_upsert_email_account
+        from app.supabase_client import sb_upsert_email_account, sb_delete_pending_confirmation
         sb_upsert_email_account(
             email=email,
             learner_id=user_data["learner_id"],
             full_name=user_data["name"],
             password_hash=user_data["password_hash"],
         )
+        # Remove the pending confirmation row now that the account is confirmed
+        sb_delete_pending_confirmation(email)
     except Exception as exc:
         logger.warning("Supabase email account sync failed: %s", exc)
 
@@ -588,6 +636,13 @@ def request_password_reset(email: str) -> tuple[bool, str]:
         except Exception as exc:
             logger.warning("Could not save reset token to DB: %s", exc)
 
+        # Also persist to Supabase so token survives Render restarts
+        try:
+            from app.supabase_client import sb_save_reset_token
+            sb_save_reset_token(token, email)
+        except Exception as exc:
+            logger.debug("Supabase reset token save failed (non-fatal): %s", exc)
+
         reset_url  = f"{_cfg('APP_URL', 'https://mypytutor.onrender.com')}/?auth=reset&token={token}"
         first_name = user.get("name", "Learner").split()[0]
 
@@ -660,7 +715,17 @@ def confirm_password_reset(token: str, new_password: str) -> tuple[bool, str]:
         from app.db import load_reset_token, mark_reset_token_used, update_password_hash
         record = load_reset_token(token)
         if not record:
-            return False, "This reset link has already been used or is invalid."
+            # SQLite may have been wiped on restart — check Supabase
+            try:
+                from app.supabase_client import sb_load_reset_token, sb_mark_reset_token_used
+                record = sb_load_reset_token(token)
+                if not record:
+                    return False, "This reset link has already been used or is invalid."
+                # Backfill to SQLite for mark_used
+                save_reset_token(token, email)
+                sb_mark_reset_token_used(token)
+            except Exception:
+                return False, "This reset link has already been used or is invalid."
         mark_reset_token_used(token)
         new_hash = hash_password(new_password)
         update_password_hash(email, new_hash)
