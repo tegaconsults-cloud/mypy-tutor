@@ -697,6 +697,19 @@ def use_referral_code(code: str, used_by_email: str, used_by_id: str,
             (code.upper(), used_by_email.lower(), used_by_id,
              discount_pct, referrer_bonus, referee_discount)
         )
+    # Mirror updated stats to Supabase so they survive Render restarts
+    try:
+        updated = get_referral_code(code)
+        if updated:
+            from app.supabase_client import sb_update_referral_stats
+            import threading as _t
+            _t.Thread(
+                target=sb_update_referral_stats,
+                args=(code, updated["uses"], updated.get("bonus_balance", 0)),
+                daemon=False,
+            ).start()
+    except Exception:
+        pass
     return True
 
 
