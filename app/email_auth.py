@@ -207,14 +207,20 @@ def _send_email(to: str, subject: str, html_body: str, text_body: str) -> bool:
 
 
 def _send_email_async(to: str, subject: str, html_body: str, text_body: str) -> None:
-    """Fire-and-forget email send in a daemon thread — never blocks the request."""
+    """
+    Fire-and-forget email send.
+    Uses a NON-DAEMON thread so it survives even when the main thread is idle.
+    Daemon threads are killed by Python when the process has no other work —
+    which kills SMTP connections mid-handshake on Render free tier.
+    """
     import threading
     t = threading.Thread(
         target=_send_email,
         args=(to, subject, html_body, text_body),
-        daemon=True,
+        daemon=False,   # NON-daemon: process keeps running until email is sent
         name=f"email-{to[:20]}",
     )
+    t.daemon = False
     t.start()
 
 
