@@ -1198,13 +1198,13 @@ async def paystack_webhook(request: Request) -> dict:
                         ).fetchone()
                     if ref_use:
                         _ref_code = ref_use["code"]
-                        bonus = round(amount_ngn * 0.10, 2)
+                        bonus = round(amount_ngn * 0.05, 2)  # 5% to referrer
                         with _gdb() as _conn:
                             _conn.execute(
                                 "UPDATE referrals SET bonus_balance=bonus_balance+? WHERE code=?",
                                 (bonus, _ref_code)
                             )
-                        logger.info("Credited ₦%s referral bonus for code %s", bonus, _ref_code)
+                        logger.info("Credited ₦%s referral bonus (5%%) for code %s", bonus, _ref_code)
                 except Exception as rb_exc:
                     logger.debug("Referral bonus credit failed: %s", rb_exc)
 
@@ -1655,6 +1655,37 @@ async def admin_activity(request: Request) -> dict:
     return {"activity": activity}
 
 
+@app.get("/admin/referrals")
+async def admin_referrals(request: Request) -> dict:
+    """Admin: all referral codes with usage stats and bonus balances."""
+    _require_admin(request)
+    from app.db import get_db as _gdb, get_referral_uses
+    with _gdb() as _conn:
+        refs = _conn.execute(
+            "SELECT * FROM referrals ORDER BY uses DESC"
+        ).fetchall()
+    result = []
+    import datetime as _dt
+    for r in refs:
+        d = dict(r)
+        d["created_at_fmt"] = _dt.datetime.fromtimestamp(d["created_at"]).strftime("%Y-%m-%d")
+        d["bonus_balance"]  = round(d.get("bonus_balance", 0), 2)
+        uses = get_referral_uses(d["code"])
+        total_referee_discount = sum(u.get("referee_discount", 0) for u in uses)
+        total_referrer_bonus   = sum(u.get("referrer_bonus", 0) for u in uses)
+        d["total_referee_discount"] = round(total_referee_discount, 2)
+        d["total_referrer_bonus"]   = round(total_referrer_bonus, 2)
+        d["recent_uses"] = uses[:5]
+        result.append(d)
+    total_bonus_outstanding = sum(r["bonus_balance"] for r in result)
+    return {
+        "referrals":               result,
+        "total":                   len(result),
+        "total_bonus_outstanding": round(total_bonus_outstanding, 2),
+        "split_info":              "10% discount to referee · 5% bonus to referrer",
+    }
+
+
 @app.post("/admin/announce")
 async def admin_announce(request: Request) -> dict:
     _require_admin(request)
@@ -2035,13 +2066,12 @@ async def get_my_referral(learner_id: str) -> dict:
 async def use_referral(body: ReferralUse) -> dict:
     """
     Record that a new user signed up with a referral code.
-    Referee gets 10% discount; referrer gets 10% bonus credited.
+    Referee gets 10% discount; referrer gets 5% bonus credited (total 15%).
     payment_amount can be passed in the body for accurate calculation.
     """
     ref = get_referral_code(body.code)
     if not ref or ref["uses"] >= ref["max_uses"]:
         raise HTTPException(status_code=404, detail="Referral code is invalid or exhausted.")
-    # Default payment_amount = 0 at signup (calculated properly on payment webhook)
     payment_amount = getattr(body, 'payment_amount', 0) or 0
     ok = use_referral_code(body.code, body.email, body.learner_id,
                            discount_pct=10, payment_amount=payment_amount)

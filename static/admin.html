@@ -205,6 +205,7 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
       <button class="nb" data-p="payments">💳 Payments</button>
       <button class="nb" data-p="certificates">🎓 Certificates</button>
       <button class="nb" data-p="access-codes">🔑 Access Codes</button>
+      <button class="nb" data-p="referrals">🔗 Referrals</button>
       <button class="nb" data-p="feedback">💬 Feedback</button>
       <button class="nb" data-p="announce">📢 Announce</button>
       <button class="nb" data-p="team">👨‍💼 Team</button>
@@ -346,6 +347,31 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
             <div id="ac-list">Loading…</div>
           </div>
         </div>
+      </div>
+
+      <!-- REFERRALS -->
+      <div id="p-referrals" class="page">
+        <h2>🔗 Referral Programme</h2>
+        <div class="sec" style="background:rgba(52,211,153,0.05);border-color:rgba(52,211,153,0.2);margin-bottom:14px">
+          <h3 style="color:#34d399">Split: 10% discount to referee · 5% bonus to referrer</h3>
+          <p style="font-size:.78rem;color:#718096;margin-top:4px">
+            Bonuses are credited automatically when a referred user makes their first payment.
+            Outstanding balances are shown below.
+          </p>
+        </div>
+        <div class="cards" id="ref-summary-cards">
+          <div class="card"><div class="v" id="ref-total">—</div><div class="l">Total Codes</div></div>
+          <div class="card g"><div class="v" id="ref-total-uses">—</div><div class="l">Total Uses</div></div>
+          <div class="card gold"><div class="v" id="ref-bonus-outstanding">—</div><div class="l">Bonus Outstanding (₦)</div></div>
+        </div>
+        <div class="sec"><div style="overflow-x:auto"><table>
+          <thead><tr>
+            <th>Code</th><th>Owner</th><th>Uses</th>
+            <th>Referee Discount (₦)</th><th>Referrer Bonus (₦)</th>
+            <th>Balance (₦)</th><th>Created</th>
+          </tr></thead>
+          <tbody id="referrals-body"><tr><td colspan="7" style="color:#4a5568">Loading…</td></tr></tbody>
+        </table></div></div>
       </div>
 
       <!-- FEEDBACK -->
@@ -501,7 +527,8 @@ function nav(p){
   document.querySelectorAll('.nb').forEach(b=>b.classList.toggle('active',b.dataset.p===p));
   document.querySelectorAll('.page').forEach(pg=>pg.classList.toggle('active',pg.id==='p-'+p));
   ({dashboard:loadDashboard,users:loadUsers,activity:loadActivity,payments:loadPayments,
-    certificates:loadCerts,'access-codes':loadAccessCodes,feedback:loadFeedback,announce:loadAnnounce,
+    certificates:loadCerts,'access-codes':loadAccessCodes,referrals:loadReferrals,
+    feedback:loadFeedback,announce:loadAnnounce,
     team:loadTeam,tasks:loadTasks,files:loadFiles})[p]?.();
 }
 document.querySelectorAll('.nb').forEach(b=>b.addEventListener('click',()=>nav(b.dataset.p)));
@@ -744,6 +771,28 @@ async function createTask(){
 async function updateTask(id,status){
   await api('/admin/tasks/'+id+'/status?status='+status,{method:'POST'});
   toast('Task updated'); loadTasks();
+}
+
+// ── Referrals ──────────────────────────────────────────────────────────────
+async function loadReferrals(){
+  const r=await api('/admin/referrals'); const d=await r.json();
+  document.getElementById('ref-total').textContent=d.total||0;
+  document.getElementById('ref-total-uses').textContent=(d.referrals||[]).reduce((s,x)=>s+x.uses,0);
+  document.getElementById('ref-bonus-outstanding').textContent='₦'+(d.total_bonus_outstanding||0).toLocaleString();
+  document.getElementById('referrals-body').innerHTML=(d.referrals||[]).length
+    ? (d.referrals).map(r=>`<tr>
+        <td><code style="font-size:.82rem;color:#93c5fd;letter-spacing:.08em">${r.code}</code></td>
+        <td style="font-size:.74rem">
+          <div style="color:#e2e8f0">${r.owner_email}</div>
+          <div style="color:#4a5568">${r.owner_id}</div>
+        </td>
+        <td><strong>${r.uses}</strong>/${r.max_uses}</td>
+        <td style="color:#34d399">₦${r.total_referee_discount.toLocaleString()}</td>
+        <td style="color:#60a5fa">₦${r.total_referrer_bonus.toLocaleString()}</td>
+        <td style="color:#fbbf24;font-weight:700">₦${r.bonus_balance.toLocaleString()}</td>
+        <td style="color:#4a5568;font-size:.72rem">${r.created_at_fmt}</td>
+      </tr>`).join('')
+    : '<tr><td colspan="7" style="color:#4a5568">No referral codes yet.</td></tr>';
 }
 
 // ── Access Codes ───────────────────────────────────────────────────────────
