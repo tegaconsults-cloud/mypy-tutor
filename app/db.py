@@ -246,6 +246,17 @@ def init_db() -> None:
             website      TEXT DEFAULT '',
             updated_at   REAL DEFAULT (unixepoch())
         );
+
+        -- Individual course purchases (separate from tier bundles)
+        CREATE TABLE IF NOT EXISTS course_purchases (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            learner_id  TEXT NOT NULL,
+            course_name TEXT NOT NULL,
+            amount_ngn  REAL DEFAULT 0,
+            payment_ref TEXT DEFAULT '',
+            purchased_at REAL DEFAULT (unixepoch()),
+            UNIQUE(learner_id, course_name)
+        );
         """)
 
         # ── PASS 2: All indexes (tables guaranteed to exist now) ─────────────
@@ -268,6 +279,8 @@ def init_db() -> None:
             ON payments (user_email);
         CREATE INDEX IF NOT EXISTS idx_access_codes_email
             ON access_codes (sent_to_email);
+        CREATE INDEX IF NOT EXISTS idx_course_purchases_learner
+            ON course_purchases (learner_id);
         """)
 
         # ── Schema migrations — add new columns to existing tables ──────────
@@ -963,3 +976,53 @@ def get_user_profile_db(learner_id: str) -> dict:
         return dict(row)
     return {"learner_id": learner_id, "display_name": "",
             "bio": "", "location": "", "website": ""}
+
+
+# ---------------------------------------------------------------------------
+# Course purchases — individual course access (separate from tier bundles)
+# ---------------------------------------------------------------------------
+
+def record_course_purchase(learner_id: str, course_name: str,
+                            amount_ngn: float = 0, payment_ref: str = "") -> None:
+    """Record that a learner has purchased individual access to a course."""
+    with get_db() as conn:
+        conn.execute("""
+        INSERT OR IGNORE INTO course_purchases
+          (learner_id, course_name, amount_ngn, payment_ref)
+        VALUES (?, ?, ?, ?)
+        """, (learner_id, course_name, amount_ngn, payment_ref))
+
+
+def has_course_purchase(learner_id: str, course_name: str) -> bool:
+    """Return True if the learner has individually purchased this course."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT id FROM course_purchases WHERE learner_id=? AND course_name=?",
+            (learner_id, course_name)
+        ).fetchone()
+    return row is not None
+
+
+def get_learner_courses(learner_id: str) -> list[str]:
+    """Return list of course names individually purchased by a learner."""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT course_name FROM course_purchases WHERE learner_id=?",
+            (learner_id,)
+        ).fetchall()
+    return [r["course_name"] for r in rows]
+
+
+def get_all_course_purchases() -> list[dict]:
+    """Admin: return all course purchases across all learners."""
+    import datetime as _dt
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM course_purchases ORDER BY purchased_at DESC LIMIT 1000"
+        ).fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["purchased_at_fmt"] = _dt.datetime.fromtimestamp(d["purchased_at"]).strftime("%Y-%m-%d %H:%M")
+        result.append(d)
+    return result

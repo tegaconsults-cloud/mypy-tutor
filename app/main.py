@@ -93,6 +93,8 @@ from app.db import (
     update_user_profile_db, get_user_profile_db,
     # referral balance
     get_referral_bonus_balance,
+    # course purchases
+    record_course_purchase, has_course_purchase, get_learner_courses,
 )
 from app.supabase_client import (
     sb_upsert_profile, sb_get_or_create_conversation,
@@ -761,6 +763,77 @@ async def list_courses(level: str = "beginner") -> dict:
     }
 
 
+@app.get("/courses/catalog")
+async def courses_catalog() -> dict:
+    """
+    Full course catalog with per-course pricing, tier bundles, and prompt plans.
+    Frontend uses this to render the separated pricing panels.
+    """
+    from app.courses import COURSE_CATALOG, TIER_PLANS, PROMPT_PLANS, COURSES
+    courses_detail = []
+    for name, meta in COURSE_CATALOG.items():
+        course = COURSES.get(name)
+        if course:
+            courses_detail.append({
+                "name":         name,
+                "display_name": course.description.split(" — ")[0] if " — " in course.description else name.replace("-", " ").title(),
+                "description":  course.description,
+                "level":        course.level,
+                "total_steps":  len(course.steps),
+                "price_ngn":    meta["price_ngn"],
+                "tier_unlocks": meta["tier_unlocks"],
+                "category":     meta["category"],
+                "badge":        meta["badge"],
+                "paystack_url": "https://paystack.shop/pay/vt_re4d3h52",
+            })
+    return {
+        "courses":       courses_detail,
+        "tier_plans":    list(TIER_PLANS.values()),
+        "prompt_plans":  list(PROMPT_PLANS.values()),
+    }
+
+
+@app.get("/courses/catalog/{course_name}/price")
+async def course_price(course_name: str) -> dict:
+    """Get the price and access details for a specific course."""
+    from app.courses import COURSE_CATALOG, COURSES
+    validate_course_name(course_name)
+    meta = COURSE_CATALOG.get(course_name)
+    course = COURSES.get(course_name)
+    if not meta or not course:
+        raise HTTPException(status_code=404, detail="Course not found.")
+    return {
+        "name":         course_name,
+        "price_ngn":    meta["price_ngn"],
+        "tier_unlocks": meta["tier_unlocks"],
+        "category":     meta["category"],
+        "paystack_url": "https://paystack.shop/pay/vt_re4d3h52",
+        "total_steps":  len(course.steps),
+    }
+
+
+@app.get("/learner/courses/{learner_id}")
+async def learner_courses(learner_id: str) -> dict:
+    """Return all courses a learner has access to (tier bundle + individually purchased)."""
+    validate_learner_id(learner_id)
+    from app.courses import COURSE_CATALOG
+    profile = get_profile(learner_id)
+    purchased = get_learner_courses(learner_id)
+    accessible = []
+    for name, meta in COURSE_CATALOG.items():
+        has_tier   = profile.tier in meta["tier_unlocks"]
+        has_bought = name in purchased
+        accessible.append({
+            "name":       name,
+            "badge":      meta["badge"],
+            "category":   meta["category"],
+            "price_ngn":  meta["price_ngn"],
+            "unlocked":   has_tier or has_bought,
+            "via":        "tier" if has_tier else ("purchase" if has_bought else "none"),
+        })
+    return {"learner_id": learner_id, "tier": profile.tier, "courses": accessible}
+
+
 @app.post("/course/start")
 async def start_course(learner_id: str, course_name: str) -> dict:
     validate_learner_id(learner_id)
@@ -772,31 +845,35 @@ async def start_course(learner_id: str, course_name: str) -> dict:
 
     profile = get_profile(learner_id)
 
-    TIER1_COURSES = {
-        "python-fundamentals", "python-strings",
-        "python-collections", "python-control-flow",
-    }
-    TIER2_COURSES = TIER1_COURSES | {
-        "python-functions-advanced", "python-oop", "python-modules-stdlib",
-    }
+    # Dynamic access check — driven by COURSE_CATALOG tier_unlocks
+    from app.courses import COURSE_CATALOG
+    meta = COURSE_CATALOG.get(course_name, {})
+    allowed_tiers = set(meta.get("tier_unlocks", []))
 
-    if profile.tier == "free":
+    # Also check if the user has individually purchased this course
+    from app.db import has_course_purchase
+    individually_purchased = has_course_purchase(learner_id, course_name)
+
+    if not individually_purchased and profile.tier not in allowed_tiers:
+        price = meta.get("price_ngn", 0)
+        badge = meta.get("badge", "📚")
+        category = meta.get("category", "Course")
+        tier_needed = "tier1" if "tier1" in allowed_tiers else \
+                      "tier2" if "tier2" in allowed_tiers else "tier3"
+        tier_names = {"tier1": "Beginner Bundle (₦8,000)", "tier2": "Intermediate Bundle (₦15,000)", "tier3": "Elite Bundle (₦35,000)"}
         return JSONResponse(status_code=402, content={
-            "error": "upgrade_required",
-            "upgrade_url": "https://paystack.shop/pay/vt_re4d3h52",
-            "message": "Courses require a Premium plan. Upgrade to Pro Learner or higher!",
-        })
-    if profile.tier == "tier1" and course_name not in TIER1_COURSES:
-        return JSONResponse(status_code=402, content={
-            "error": "upgrade_required",
-            "upgrade_url": "https://paystack.shop/pay/vt_re4d3h52",
-            "message": "This course requires Career Builder (Tier 2) or Elite (Tier 3). Upgrade to unlock!",
-        })
-    if profile.tier == "tier2" and course_name not in TIER2_COURSES:
-        return JSONResponse(status_code=402, content={
-            "error": "upgrade_required",
-            "upgrade_url": "https://paystack.shop/pay/vt_re4d3h52",
-            "message": "This course requires the Elite plan (Tier 3). Upgrade to unlock all advanced courses!",
+            "error":              "upgrade_required",
+            "course_name":        course_name,
+            "course_price_ngn":   price,
+            "course_badge":       badge,
+            "course_category":    category,
+            "bundle_option":      tier_names.get(tier_needed, "Premium"),
+            "paystack_url":       "https://paystack.shop/pay/vt_re4d3h52",
+            "message": (
+                f"{badge} **{course.description.split(' — ')[0]}** costs ₦{price:,} "
+                f"(or unlock with the {tier_names.get(tier_needed, 'Premium')}). "
+                f"Use the Courses & Plans section to purchase."
+            ),
         })
 
     profile.current_course      = course_name
