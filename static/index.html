@@ -35,10 +35,12 @@
     gtag('config', 'G-6NDGZ4LNQD');
   </script>
 
-  <!-- Fonts — Inter for premium typography -->
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
+  <!-- Fonts — Inter with graceful fallback. Uses @import so if Google Fonts
+       is unavailable (network block, timeout) the system font takes over
+       immediately with zero layout shift or blocking. -->
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+  </style>
   <!-- Premium design system -->
   <link rel="stylesheet" href="/premium.css" />
 

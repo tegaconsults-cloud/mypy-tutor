@@ -1555,6 +1555,7 @@ async def admin_files_list(request: Request) -> dict:
 async def admin_test_email(request: Request) -> dict:
     """
     Send a test email to verify SMTP configuration is working.
+    Returns the EXACT SMTP error string so you can diagnose without reading Render logs.
     POST body: { "to": "recipient@email.com" }
     """
     _require_admin(request)
@@ -1563,65 +1564,88 @@ async def admin_test_email(request: Request) -> dict:
     if not to or "@" not in to:
         raise HTTPException(status_code=400, detail="Provide a valid 'to' email address.")
 
-    # Show current SMTP config (values only, no secrets)
     email_user = _os.getenv("EMAIL_USER", "")
     email_pass = _os.getenv("EMAIL_PASS", "")
     email_host = _os.getenv("EMAIL_HOST", "smtp.gmail.com")
     email_port = _os.getenv("EMAIL_PORT", "587")
+    email_from = _os.getenv("EMAIL_FROM", "")
+
+    # Auto-fix EMAIL_FROM exactly as _send_email does
+    if not email_from or "<" not in email_from:
+        email_from_display = f"MyPy Tutor <{email_user}> (auto-fixed — set EMAIL_FROM properly)"
+    else:
+        email_from_display = email_from.strip().strip('"').strip("'")
 
     config_status = {
         "EMAIL_HOST":  email_host,
         "EMAIL_PORT":  email_port,
         "EMAIL_USER":  email_user if email_user else "❌ NOT SET",
-        "EMAIL_PASS":  "✅ set" if email_pass else "❌ NOT SET",
-        "EMAIL_FROM":  _os.getenv("EMAIL_FROM", "not set"),
+        "EMAIL_PASS":  f"✅ set ({len(email_pass)} chars)" if email_pass else "❌ NOT SET",
+        "EMAIL_FROM":  email_from if email_from else "❌ NOT SET (will default to MyPy Tutor <EMAIL_USER>)",
+        "EMAIL_FROM_EFFECTIVE": email_from_display,
         "APP_URL":     _os.getenv("APP_URL", "not set"),
     }
 
     if not email_user or not email_pass:
         return {
-            "ok": False,
-            "sent": False,
-            "config": config_status,
+            "ok": False, "sent": False, "config": config_status,
             "error": "EMAIL_USER or EMAIL_PASS not set in Render environment variables.",
         }
 
-    from app.email_auth import _send_email
-    import threading, queue
-
-    result_q: queue.Queue = queue.Queue()
+    # Run synchronously in a thread but capture the exact exception
+    import threading, queue as _q
+    result_q: _q.Queue = _q.Queue()
 
     def _try_send():
-        html = f"""<div style="font-family:Arial;background:#0f1117;color:#e2e8f0;padding:32px;max-width:500px;border-radius:12px;">
-        <h2 style="color:#63b3ed;">🐍 MyPy Tutor — Email Test</h2>
-        <p>✅ This is a test email from your MyPy Tutor admin panel.</p>
-        <p style="color:#68d391;font-weight:700;">Email delivery is working correctly!</p>
-        <hr style="border:none;border-top:1px solid #2d3748;margin:16px 0"/>
-        <p style="font-size:.78rem;color:#4a5568;">Sent from: {email_user}<br/>
-        Host: {email_host}:{email_port}</p>
-        </div>"""
-        text = f"MyPy Tutor email test.\nIf you see this, email delivery is working.\nFrom: {email_user}"
-        ok = _send_email(to, "MyPy Tutor — Email Test ✅", html, text)
-        result_q.put(ok)
+        import smtplib
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+        try:
+            ef = email_from.strip().strip('"').strip("'") if email_from and "<" in email_from \
+                 else f"MyPy Tutor <{email_user}>"
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = "MyPy Tutor — Email Test ✅"
+            msg["From"]    = ef
+            msg["To"]      = to
+            msg["Reply-To"] = email_user
+            html = (f'<div style="font-family:Arial;background:#0f1117;color:#e2e8f0;'
+                    f'padding:32px;border-radius:12px;">'
+                    f'<h2 style="color:#63b3ed;">🐍 MyPy Tutor — Email Test</h2>'
+                    f'<p style="color:#68d391;font-weight:700;">✅ Email delivery is working!</p>'
+                    f'<p style="font-size:.78rem;color:#4a5568;">From: {ef}<br/>'
+                    f'Host: {email_host}:{email_port}</p></div>')
+            txt  = f"MyPy Tutor email test — delivery working.\nFrom: {ef}"
+            msg.attach(MIMEText(txt, "plain", "utf-8"))
+            msg.attach(MIMEText(html, "html",  "utf-8"))
+            with smtplib.SMTP(email_host, int(email_port), timeout=20) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                server.login(email_user, email_pass)
+                server.sendmail(email_user, [to], msg.as_string())
+            result_q.put((True, ""))
+        except smtplib.SMTPAuthenticationError as e:
+            result_q.put((False, f"AUTH FAILED: {e} — Your Gmail App Password is wrong or expired. "
+                                 f"Go to myaccount.google.com/apppasswords, delete old 'MyPy Tutor' entry, "
+                                 f"create a new 16-char App Password, and update EMAIL_PASS on Render."))
+        except smtplib.SMTPException as e:
+            result_q.put((False, f"SMTP ERROR: {e}"))
+        except Exception as e:
+            result_q.put((False, f"ERROR: {type(e).__name__}: {e}"))
 
-    t = threading.Thread(target=_try_send, daemon=True)
+    t = threading.Thread(target=_try_send, daemon=False)
     t.start()
-    t.join(timeout=25)   # wait up to 25s for the result
+    t.join(timeout=28)
 
     if not result_q.empty():
-        ok = result_q.get()
+        ok, err = result_q.get()
         if ok:
             return {"ok": True, "sent": True, "to": to, "config": config_status}
-        else:
-            return {
-                "ok": False, "sent": False, "to": to, "config": config_status,
-                "error": "SMTP send failed — check Render logs for the exact error. "
-                         "Common causes: wrong Gmail App Password, 2FA not enabled on Gmail, "
-                         "or EMAIL_USER is not a Gmail address.",
-            }
+        return {"ok": False, "sent": False, "to": to, "config": config_status, "error": err}
+
     return {
         "ok": False, "sent": False, "to": to, "config": config_status,
-        "error": "Email send timed out after 25 seconds. Check your SMTP settings.",
+        "error": "Timed out after 28s. SMTP server not responding — check EMAIL_HOST/PORT.",
     }
 
 
