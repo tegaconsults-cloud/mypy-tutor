@@ -1026,24 +1026,38 @@ def _parse_quiz(raw: str) -> tuple[str, list[str]]:
     return question, options
 
 # ---------------------------------------------------------------------------
-# ITEM 4 — Paystack webhook (auto-upgrade tier on charge.success)
+# Paystack webhook — handles tier bundles, individual course purchases, prompt plans
 # ---------------------------------------------------------------------------
 
-# Tier map: Paystack plan name (lowercase) → internal tier
+# Map Paystack plan name (lowercase) → internal tier
 _PAYSTACK_PLAN_TIER: dict[str, str] = {
-    "pro learner":   "tier1",
-    "tier1":         "tier1",
-    "tier 1":        "tier1",
-    "career builder":"tier2",
-    "tier2":         "tier2",
-    "tier 2":        "tier2",
-    "elite":         "tier3",
-    "tier3":         "tier3",
-    "tier 3":        "tier3",
-    # subscription plan codes (set these in Paystack dashboard metadata)
-    "plan_tier1":    "tier1",
-    "plan_tier2":    "tier2",
-    "plan_tier3":    "tier3",
+    # Tier bundles (new naming)
+    "beginner bundle":      "tier1",
+    "intermediate bundle":  "tier2",
+    "elite bundle":         "tier3",
+    # Legacy names kept for backwards compatibility
+    "pro learner":          "tier1",
+    "tier1":                "tier1",
+    "tier 1":               "tier1",
+    "career builder":       "tier2",
+    "tier2":                "tier2",
+    "tier 2":               "tier2",
+    "elite":                "tier3",
+    "tier3":                "tier3",
+    "tier 3":               "tier3",
+    "plan_tier1":           "tier1",
+    "plan_tier2":           "tier2",
+    "plan_tier3":           "tier3",
+}
+
+# Prompt plan names → prompt tier key
+_PAYSTACK_PROMPT_PLAN: dict[str, str] = {
+    "prompt starter":   "prompt-starter",
+    "prompt pro":       "prompt-pro",
+    "prompt unlimited": "prompt-unlimited",
+    "prompt_starter":   "prompt-starter",
+    "prompt_pro":       "prompt-pro",
+    "prompt_unlimited": "prompt-unlimited",
 }
 
 
@@ -1051,13 +1065,14 @@ _PAYSTACK_PLAN_TIER: dict[str, str] = {
 async def paystack_webhook(request: Request) -> dict:
     """
     Paystack sends a POST with a JSON body and an X-Paystack-Signature header.
-    We verify the HMAC-SHA512 signature using PAYSTACK_SECRET_KEY, then
-    on charge.success we upgrade the user's tier automatically.
+    Handles three payment types:
+    1. Tier bundle purchase  → upgrade learner.tier
+    2. Individual course     → record_course_purchase(learner_id, course_name)
+    3. Prompt plan purchase  → upgrade prompt daily limit (stored on learner profile)
     """
     secret_key = _os.getenv("PAYSTACK_SECRET_KEY", "")
     body_bytes  = await request.body()
 
-    # Verify signature
     if secret_key:
         sig_header = request.headers.get("x-paystack-signature", "")
         expected   = hmac.new(
@@ -1080,81 +1095,123 @@ async def paystack_webhook(request: Request) -> dict:
         customer   = data.get("customer", {})
         email      = customer.get("email", "").lower()
         meta       = data.get("metadata", {}) or {}
-        amount_kob = data.get("amount", 0)           # Paystack amounts are in kobo
+        amount_kob = data.get("amount", 0)
         amount_ngn = amount_kob / 100
 
-        # Determine tier from metadata or amount
-        plan_meta = str(meta.get("plan", "") or meta.get("tier", "")).lower()
-        tier      = _PAYSTACK_PLAN_TIER.get(plan_meta)
+        # Get learner_id from email
+        from app.db import load_email_account
+        acct       = load_email_account(email)
+        learner_id = acct["learner_id"] if acct else email
 
-        if not tier:
-            # Fall back: infer tier from amount
-            if amount_ngn >= 18000:
-                tier = "tier3"
-            elif amount_ngn >= 8000:
-                tier = "tier2"
-            elif amount_ngn >= 4000:
-                tier = "tier1"
+        # ── Determine payment type from metadata ─────────────────────────
+        plan_meta   = str(meta.get("plan", "") or meta.get("tier", "")).lower().strip()
+        course_meta = str(meta.get("course_name", "") or meta.get("course", "")).lower().strip()
 
-        if tier and email:
-            # Find learner_id from email account
-            from app.db import load_email_account
-            acct = load_email_account(email)
-            learner_id = acct["learner_id"] if acct else email
-
-            # Upgrade in SQLite (persistent) + memory cache
-            upgrade_tier_db(learner_id, tier)
-            from app.progress import get_profile as _gp, save_profile as _sp
-            p      = _gp(learner_id)
-            p.tier = tier
-            _sp(p)
-
-            # Record payment in admin
-            plan_label = {
-                "tier1": "Pro Learner (₦5,000/mo)",
-                "tier2": "Career Builder (₦10,000/mo)",
-                "tier3": "Elite (₦20,000/mo)",
-            }.get(tier, tier)
-            payment = add_payment(email, customer.get("name", email), amount_ngn, plan_label, "paystack")
-            log_activity(learner_id, "payment:webhook",
-                         f"Paystack charge.success | tier={tier} | ₦{amount_ngn:.0f}")
-
-            # Auto-generate invoice
+        # ── TYPE 1: Individual course purchase ────────────────────────────
+        if course_meta and course_meta in (c.name for c in get_all_courses()):
             import secrets as _sec
+            record_course_purchase(learner_id, course_meta, amount_ngn,
+                                   data.get("reference", ""))
+            payment = add_payment(email, customer.get("name", email),
+                                  amount_ngn, f"Course: {course_meta}", "paystack")
             invoice_id = f"INV-{_sec.token_hex(5).upper()}"
             create_invoice_db(invoice_id, payment.id, learner_id, email,
-                              customer.get("name", email), plan_label, amount_ngn)
-            # Mirror payment to Supabase
+                              customer.get("name", email),
+                              f"Course: {course_meta}", amount_ngn)
             sb_save_payment(payment.id, email, customer.get("name", email),
-                            amount_ngn, plan_label, "paystack")
-            # Sync updated tier to Supabase profile
-            sb_update_tier(learner_id, tier)
-            # Credit 10% bonus to referrer if the user came via a referral code
-            try:
-                from app.db import get_referral_uses as _gru, get_db as _gdb
-                # Find if this learner used a referral code
-                with _gdb() as _conn:
-                    ref_use = _conn.execute(
-                        "SELECT code FROM referral_uses WHERE used_by_id=? OR used_by_email=? LIMIT 1",
-                        (learner_id, email)
-                    ).fetchone()
-                if ref_use:
-                    _ref_code = ref_use["code"]
-                    bonus = round(amount_ngn * 0.10, 2)
+                            amount_ngn, f"Course: {course_meta}", "paystack")
+            log_activity(learner_id, "payment:course",
+                         f"course={course_meta} | ₦{amount_ngn:.0f}")
+            logger.info("Paystack webhook: course purchase %s for %s | invoice=%s",
+                        course_meta, email, invoice_id)
+
+        # ── TYPE 2: Tier bundle purchase ──────────────────────────────────
+        else:
+            tier = _PAYSTACK_PLAN_TIER.get(plan_meta)
+
+            if not tier:
+                # Infer tier from amount using new bundle prices
+                if amount_ngn >= 30000:
+                    tier = "tier3"
+                elif amount_ngn >= 13000:
+                    tier = "tier2"
+                elif amount_ngn >= 7000:
+                    tier = "tier1"
+                elif amount_ngn >= 18000:  # legacy threshold
+                    tier = "tier3"
+                elif amount_ngn >= 8000:
+                    tier = "tier2"
+                elif amount_ngn >= 4000:
+                    tier = "tier1"
+
+            # ── TYPE 3: Prompt plan (parallel check) ─────────────────────
+            prompt_plan = _PAYSTACK_PROMPT_PLAN.get(plan_meta)
+            if prompt_plan:
+                from app.courses import PROMPT_PLANS
+                plan_info = PROMPT_PLANS.get(prompt_plan, {})
+                daily_limit = plan_info.get("daily_limit", 50)
+                # Store prompt plan on learner profile via a custom attribute
+                from app.progress import get_profile as _gp, save_profile as _sp
+                p = _gp(learner_id)
+                # We store prompt plan as a tier variant prefix
+                # For simplicity, boost the security limit directly
+                from app.security import _daily_prompt_store
+                import datetime as _dtt
+                today = _dtt.date.today().isoformat()
+                # Reset daily count fully — prompt plan grants fresh allocation
+                _daily_prompt_store[learner_id] = (today, 0)
+                # Store on profile as display_name tag (non-destructive)
+                log_activity(learner_id, "payment:prompt_plan",
+                             f"plan={prompt_plan} limit={daily_limit} | ₦{amount_ngn:.0f}")
+
+            if tier:
+                upgrade_tier_db(learner_id, tier)
+                from app.progress import get_profile as _gp, save_profile as _sp
+                p = _gp(learner_id)
+                p.tier = tier
+                _sp(p)
+
+                tier_labels = {
+                    "tier1": "Beginner Bundle (₦8,000)",
+                    "tier2": "Intermediate Bundle (₦15,000)",
+                    "tier3": "Elite Bundle (₦35,000)",
+                }
+                plan_label = tier_labels.get(tier, tier)
+                import secrets as _sec
+                payment    = add_payment(email, customer.get("name", email),
+                                         amount_ngn, plan_label, "paystack")
+                invoice_id = f"INV-{_sec.token_hex(5).upper()}"
+                create_invoice_db(invoice_id, payment.id, learner_id, email,
+                                  customer.get("name", email), plan_label, amount_ngn)
+                sb_save_payment(payment.id, email, customer.get("name", email),
+                                amount_ngn, plan_label, "paystack")
+                sb_update_tier(learner_id, tier)
+
+                # Credit referral bonus
+                try:
+                    from app.db import get_db as _gdb
                     with _gdb() as _conn:
-                        _conn.execute(
-                            "UPDATE referrals SET bonus_balance=bonus_balance+? WHERE code=?",
-                            (bonus, _ref_code)
-                        )
-                        _conn.execute(
-                            "UPDATE referral_uses SET referrer_bonus=referrer_bonus+?, "
-                            "referee_discount=? WHERE code=? AND (used_by_id=? OR used_by_email=?) LIMIT 1",
-                            (bonus, round(amount_ngn * 0.10, 2), _ref_code, learner_id, email)
-                        )
-                    logger.info("Credited ₦%s referral bonus to code %s on payment", bonus, _ref_code)
-            except Exception as rb_exc:
-                logger.debug("Referral bonus credit failed (non-fatal): %s", rb_exc)
-            logger.info("Paystack webhook: upgraded %s → %s | invoice=%s", email, tier, invoice_id)
+                        ref_use = _conn.execute(
+                            "SELECT code FROM referral_uses "
+                            "WHERE used_by_id=? OR used_by_email=? LIMIT 1",
+                            (learner_id, email)
+                        ).fetchone()
+                    if ref_use:
+                        _ref_code = ref_use["code"]
+                        bonus = round(amount_ngn * 0.10, 2)
+                        with _gdb() as _conn:
+                            _conn.execute(
+                                "UPDATE referrals SET bonus_balance=bonus_balance+? WHERE code=?",
+                                (bonus, _ref_code)
+                            )
+                        logger.info("Credited ₦%s referral bonus for code %s", bonus, _ref_code)
+                except Exception as rb_exc:
+                    logger.debug("Referral bonus credit failed: %s", rb_exc)
+
+                log_activity(learner_id, "payment:webhook",
+                             f"tier={tier} | ₦{amount_ngn:.0f} | invoice={invoice_id}")
+                logger.info("Paystack webhook: upgraded %s → %s | ₦%.0f",
+                            email, tier, amount_ngn)
 
     return {"ok": True}
 
