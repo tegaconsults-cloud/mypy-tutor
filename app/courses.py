@@ -312,6 +312,136 @@ COURSES: dict[str, Course] = {
             CourseStep(step=9,  title="Capstone Project",            description="Build a Python-powered AI assistant.", intent="codegen"),
         ],
     ),
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # AI & PROMPT ENGINEERING  (8 modules · 40 lessons · 56 exercises · 8 projects)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    "ai-prompt-engineering": Course(
+        name="ai-prompt-engineering",
+        level="advanced",
+        description="AI & Prompt Engineering — 8 modules covering foundations, prompt basics, advanced prompting, AI tools, automation, LLM APIs, RAG & agents, and ethics & careers.",
+        steps=[
+            # ── M1 · Foundations ─────────────────────────────────────────────
+            CourseStep(step=1,  title="What is AI & How LLMs Work",        description="Understand AI history, machine learning basics, neural networks, and how Large Language Models like GPT-4, Claude, and Llama generate text.", intent="concept"),
+            CourseStep(step=2,  title="Types of AI Models",                description="Generative vs discriminative models; text, image, code, and multimodal models — when to use which.", intent="concept"),
+            CourseStep(step=3,  title="Tokens, Context Windows & Temperature", description="How tokenisation works, context window limits, temperature/top-p/top-k parameters and their effects on output.", intent="concept"),
+            CourseStep(step=4,  title="Foundations Exercise",              description="Analyse a model's token count, adjust temperature settings, and compare outputs at different creativity levels.", intent="exercise"),
+            CourseStep(step=5,  title="Foundations Project",               description="Build a Python script that compares outputs from two LLM settings (temperature=0 vs 0.9) on the same prompt.", intent="codegen"),
+
+            # ── M2 · Prompt Basics ───────────────────────────────────────────
+            CourseStep(step=6,  title="Anatomy of a Great Prompt",         description="The four components of an effective prompt: role, context, task, and format. Why each matters.", intent="concept"),
+            CourseStep(step=7,  title="Zero-Shot Prompting",               description="Getting accurate results from a model with no examples — when it works and when it fails.", intent="concept"),
+            CourseStep(step=8,  title="One-Shot & Few-Shot Prompting",     description="Providing 1-5 examples to guide model behaviour — format examples, classification examples, code examples.", intent="concept"),
+            CourseStep(step=9,  title="Instruction Prompts vs Role Prompts", description="System instructions vs persona assignment — how framing changes model tone, depth, and accuracy.", intent="concept"),
+            CourseStep(step=10, title="Prompt Basics Exercise",            description="Rewrite 5 weak prompts into strong zero-shot and few-shot prompts and evaluate the difference in output quality.", intent="exercise"),
+            CourseStep(step=11, title="Prompt Basics Project",             description="Build a Python function that wraps any user question in a structured prompt template with role + context + format.", intent="codegen"),
+
+            # ── M3 · Advanced Prompting ──────────────────────────────────────
+            CourseStep(step=12, title="Chain-of-Thought (CoT) Prompting",  description="'Think step by step' — how CoT dramatically improves reasoning, maths, and multi-step problem solving.", intent="concept"),
+            CourseStep(step=13, title="Tree-of-Thought & Self-Consistency", description="Branching reasoning paths, voting across multiple completions, and when to use ToT vs CoT.", intent="concept"),
+            CourseStep(step=14, title="Prompt Chaining",                   description="Breaking complex tasks into a sequence of prompts where each output feeds the next — pipelines and workflows.", intent="concept"),
+            CourseStep(step=15, title="ReAct Prompting (Reason + Act)",    description="Combining reasoning and tool use in a single prompt — the foundation of agent behaviour.", intent="concept"),
+            CourseStep(step=16, title="Prompt Injection & Jailbreaking",   description="Understanding how prompt injection attacks work, why they matter for production systems, and how to defend against them.", intent="concept"),
+            CourseStep(step=17, title="Advanced Prompting Exercise",       description="Build a multi-step CoT prompt chain that solves a complex Python debugging scenario step by step.", intent="exercise"),
+            CourseStep(step=18, title="Advanced Prompting Project",        description="Implement a prompt chaining pipeline in Python: input → extract → analyse → summarise → format output.", intent="codegen"),
+
+            # ── M4 · AI Tools ────────────────────────────────────────────────
+            CourseStep(step=19, title="ChatGPT & Claude for Developers",   description="Using ChatGPT and Claude effectively — custom instructions, memory, plugins/tools, and API vs web interface.", intent="concept"),
+            CourseStep(step=20, title="GitHub Copilot & AI Code Assistants", description="Copilot, Cursor, Codeium — how AI code assistants work, inline completions, chat, and when not to trust them.", intent="concept"),
+            CourseStep(step=21, title="AI Image & Multimodal Tools",       description="DALL-E, Midjourney, Stable Diffusion — prompt structures for image generation; vision models for reading images.", intent="concept"),
+            CourseStep(step=22, title="AI Tools Exercise",                 description="Use a vision model API to extract structured data from an image and a code assistant to refactor a Python function.", intent="exercise"),
+            CourseStep(step=23, title="AI Tools Project",                  description="Build a Python tool that accepts an image, sends it to a vision model, and returns a structured JSON description.", intent="codegen"),
+
+            # ── M5 · Automation ──────────────────────────────────────────────
+            CourseStep(step=24, title="Automating Tasks with AI",          description="Identify repetitive tasks suitable for AI automation: data extraction, summarisation, classification, and generation.", intent="concept"),
+            CourseStep(step=25, title="Building Prompt Templates in Python", description="Create reusable, parameterised prompt templates with Python f-strings, Jinja2, and template classes.", intent="concept"),
+            CourseStep(step=26, title="AI Workflows & Pipelines",          description="Design multi-step automation pipelines: trigger → process → validate → output. Error handling and retries.", intent="concept"),
+            CourseStep(step=27, title="Automation Exercise",               description="Build a prompt template system that auto-generates personalised learning plans from student quiz results.", intent="exercise"),
+            CourseStep(step=28, title="Automation Project",                description="Create a Python script that reads a CSV of customer queries, classifies each with an LLM, and writes categorised responses.", intent="codegen"),
+
+            # ── M6 · LLM APIs ────────────────────────────────────────────────
+            CourseStep(step=29, title="OpenAI & Groq API Deep Dive",       description="Authentication, chat completions, streaming, function calling, embeddings, and rate limit handling with openai and groq SDKs.", intent="concept"),
+            CourseStep(step=30, title="Streaming Responses",               description="Implement streaming completions in Python — yield chunks in real time for responsive UIs.", intent="codegen"),
+            CourseStep(step=31, title="Function Calling & Tool Use",       description="Define JSON schemas for tools, let the LLM decide when to call them, and handle the response cycle.", intent="concept"),
+            CourseStep(step=32, title="Embeddings & Semantic Search",      description="Generate text embeddings, store in a vector index (FAISS/numpy), and retrieve semantically similar documents.", intent="concept"),
+            CourseStep(step=33, title="LLM APIs Exercise",                 description="Build a Python chatbot using the Groq API with conversation history, streaming output, and token usage logging.", intent="exercise"),
+            CourseStep(step=34, title="LLM APIs Project",                  description="Create a FastAPI service that wraps an LLM with function calling — the model can search a knowledge base tool.", intent="codegen"),
+
+            # ── M7 · RAG & Agents ────────────────────────────────────────────
+            CourseStep(step=35, title="Retrieval-Augmented Generation (RAG)", description="Why RAG beats fine-tuning for knowledge tasks: chunk documents, embed, retrieve top-k, inject into prompt.", intent="concept"),
+            CourseStep(step=36, title="Building a RAG Pipeline in Python",  description="End-to-end RAG with langchain or raw Python: load PDF → chunk → embed (OpenAI/sentence-transformers) → FAISS → query.", intent="codegen"),
+            CourseStep(step=37, title="AI Agents & Tool Use",               description="What agents are, the ReAct loop, planning, memory, and tool orchestration with LangChain Agents or raw Python.", intent="concept"),
+            CourseStep(step=38, title="RAG & Agents Exercise",              description="Build a Q&A agent that reads a company FAQ document and answers questions using RAG — no hallucinations.", intent="exercise"),
+            CourseStep(step=39, title="RAG & Agents Project",              description="Build a Python AI study assistant: ingests course notes, embeds them, and answers student questions with cited sources.", intent="codegen"),
+
+            # ── M8 · Ethics & Careers ────────────────────────────────────────
+            CourseStep(step=40, title="AI Ethics, Bias & Responsible Use",  description="Bias in training data, hallucinations, copyright, privacy (GDPR), dual-use risks, and ethical guidelines for AI products.", intent="concept"),
+            CourseStep(step=41, title="Prompt Engineering as a Career",     description="Job roles: Prompt Engineer, AI Product Manager, LLM Researcher — portfolio tips, certifications, salary ranges in 2025.", intent="concept"),
+            CourseStep(step=42, title="Staying Current in AI",              description="How to follow AI research: arXiv, Hugging Face, AI newsletters, GitHub trending — building your learning system.", intent="concept"),
+
+            # ── Final assessment ──────────────────────────────────────────────
+            CourseStep(step=43, title="AI & Prompt Engineering Quiz",      description="Comprehensive quiz across all 8 modules — LLM mechanics, prompting techniques, APIs, RAG, agents, and ethics.", intent="quiz"),
+            CourseStep(step=44, title="Capstone Project",                  description="Build a complete AI-powered Python application: RAG chatbot with a FastAPI backend, streaming responses, and a Streamlit UI.", intent="codegen"),
+        ],
+    ),
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # MACHINE LEARNING  (GFG curriculum — 7 modules, 30 steps)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    "machine-learning": Course(
+        name="machine-learning",
+        level="advanced",
+        description="Complete Machine Learning — all 7 GFG modules: ML pipeline, supervised learning, unsupervised learning, reinforcement learning, semi-supervised, forecasting, and deployment.",
+        steps=[
+            # ── Module 1: ML Pipeline ─────────────────────────────────────
+            CourseStep(step=1,  title="What is Machine Learning",        description="Introduction to ML, types (supervised, unsupervised, reinforcement), and the ML workflow/lifecycle.", intent="concept"),
+            CourseStep(step=2,  title="Data Preprocessing",              description="Data cleaning, feature scaling (normalisation & standardisation), feature extraction and feature engineering.", intent="concept"),
+            CourseStep(step=3,  title="Exploratory Data Analysis (EDA)", description="EDA in Python: describe(), visualise distributions, correlation heatmaps, and time-series visualisation.", intent="concept"),
+            CourseStep(step=4,  title="EDA Exercise",                    description="Perform full EDA on a sample dataset — summary stats, missing values, distribution plots, and correlation matrix.", intent="exercise"),
+            CourseStep(step=5,  title="Feature Selection Techniques",    description="Filter, wrapper, and embedded methods; variance threshold, mutual information, SelectKBest, and RFE.", intent="concept"),
+            CourseStep(step=6,  title="Model Evaluation",                description="Confusion matrix, precision, recall, F1-score, AUC-ROC curve, cross-validation, and hyperparameter tuning.", intent="concept"),
+
+            # ── Module 2: Supervised Learning ────────────────────────────
+            CourseStep(step=7,  title="Linear Regression",               description="Simple and multiple linear regression, gradient descent, OLS, scikit-learn implementation and evaluation.", intent="concept"),
+            CourseStep(step=8,  title="Logistic Regression",             description="Binary classification, sigmoid function, cost function, decision boundary, and sklearn LogisticRegression.", intent="concept"),
+            CourseStep(step=9,  title="Decision Trees",                  description="Tree structure, Gini impurity, entropy, information gain, sklearn DecisionTreeClassifier and Regressor.", intent="concept"),
+            CourseStep(step=10, title="Support Vector Machines (SVM)",   description="Hyperplane, support vectors, margin, kernel trick (RBF, polynomial), and GridSearchCV tuning.", intent="concept"),
+            CourseStep(step=11, title="k-Nearest Neighbours (k-NN)",     description="Distance metrics, choosing k with elbow method, decision boundaries, and sklearn KNeighborsClassifier.", intent="concept"),
+            CourseStep(step=12, title="Naive Bayes Classifiers",         description="Bayes theorem, Gaussian/Multinomial/Bernoulli/Complement Naive Bayes — when to use each.", intent="concept"),
+            CourseStep(step=13, title="Random Forest & Ensemble Learning", description="Bagging, Random Forest, boosting (AdaBoost, Gradient Boosting), and hyperparameter tuning in sklearn.", intent="concept"),
+            CourseStep(step=14, title="Supervised Learning Exercise",    description="Train, evaluate, and compare three classifiers on a real dataset using scikit-learn.", intent="exercise"),
+
+            # ── Module 3: Unsupervised Learning ──────────────────────────
+            CourseStep(step=15, title="K-Means Clustering",              description="K-Means algorithm, elbow method for optimal k, K-Means++, and sklearn KMeans.", intent="concept"),
+            CourseStep(step=16, title="Hierarchical & Density Clustering", description="Agglomerative clustering, DBSCAN, OPTICS — when to use each and sklearn implementations.", intent="concept"),
+            CourseStep(step=17, title="Dimensionality Reduction",        description="PCA, t-SNE, NMF, ICA, and Isomap — reduce features while preserving variance.", intent="concept"),
+            CourseStep(step=18, title="Association Rule Mining",         description="Apriori algorithm, FP-Growth, ECLAT, support/confidence/lift metrics for market basket analysis.", intent="concept"),
+            CourseStep(step=19, title="Unsupervised Learning Exercise",  description="Cluster a customer dataset with K-Means and visualise clusters with PCA reduction.", intent="exercise"),
+
+            # ── Module 4: Reinforcement Learning ─────────────────────────
+            CourseStep(step=20, title="Reinforcement Learning Fundamentals", description="MDP, Bellman equation, value iteration, Q-Learning, SARSA — the core RL concepts.", intent="concept"),
+            CourseStep(step=21, title="Policy & Actor-Critic Methods",   description="Monte Carlo methods, Actor-Critic algorithm, A3C, and Reinforce algorithm.", intent="concept"),
+
+            # ── Module 5: Semi-Supervised & Self-Supervised ───────────────
+            CourseStep(step=22, title="Semi-Supervised & Self-Supervised Learning", description="Self-training, pseudo-labelling, few-shot learning, and contrastive learning — when labelled data is scarce.", intent="concept"),
+
+            # ── Module 6: Forecasting Models ─────────────────────────────
+            CourseStep(step=23, title="Time Series Forecasting",         description="ARIMA, SARIMA, and Exponential Smoothing (Holt-Winters) for predicting sales, demand, and prices.", intent="concept"),
+            CourseStep(step=24, title="Forecasting Exercise",            description="Forecast a time series dataset using ARIMA and evaluate with RMSE and MAE.", intent="exercise"),
+
+            # ── Module 7: ML Deployment ───────────────────────────────────
+            CourseStep(step=25, title="Deploying ML Models",             description="Save models with joblib/pickle, build prediction APIs with Flask and FastAPI, deploy on Render/Heroku.", intent="concept"),
+            CourseStep(step=26, title="Streamlit & Gradio for ML",       description="Build interactive ML demos — upload data, run predictions, and visualise results with Streamlit and Gradio.", intent="codegen"),
+            CourseStep(step=27, title="MLOps Fundamentals",              description="CI/CD pipelines for ML, model versioning, monitoring, and end-to-end MLOps with GitHub Actions.", intent="concept"),
+            CourseStep(step=28, title="Deployment Exercise",             description="Wrap a trained sklearn model in a FastAPI endpoint, containerise it, and deploy to Render.", intent="exercise"),
+
+            # ── Final assessment ──────────────────────────────────────────
+            CourseStep(step=29, title="Machine Learning Quiz",           description="Comprehensive quiz covering all 7 ML modules — algorithms, metrics, and deployment.", intent="quiz"),
+            CourseStep(step=30, title="Capstone ML Project",             description="Build an end-to-end ML system: data cleaning → EDA → model training → evaluation → FastAPI deployment.", intent="codegen"),
+        ],
+    ),
 }
 
 # ---------------------------------------------------------------------------
@@ -349,7 +479,93 @@ PROJECT_PATHS: dict[str, list[str]] = {
         "python-databases",
         "web-apis",
         "prompt-engineering",
+        "ai-prompt-engineering",
+        "machine-learning",
     ],
+}
+
+# ---------------------------------------------------------------------------
+# Course catalog — per-course pricing (NGN)
+# Each course can be purchased independently OR unlocked via a tier plan.
+# ---------------------------------------------------------------------------
+
+COURSE_CATALOG: dict[str, dict] = {
+    # ── Beginner bundle (or buy individually)
+    "python-fundamentals":       {"price_ngn": 3500,  "tier_unlocks": ["tier1","tier2","tier3"], "category": "Python Basics",        "badge": "🐍"},
+    "python-strings":            {"price_ngn": 2500,  "tier_unlocks": ["tier1","tier2","tier3"], "category": "Python Basics",        "badge": "🔤"},
+    "python-collections":        {"price_ngn": 2500,  "tier_unlocks": ["tier1","tier2","tier3"], "category": "Python Basics",        "badge": "📦"},
+    "python-control-flow":       {"price_ngn": 2500,  "tier_unlocks": ["tier1","tier2","tier3"], "category": "Python Basics",        "badge": "🔀"},
+    # ── Intermediate
+    "python-functions-advanced": {"price_ngn": 4000,  "tier_unlocks": ["tier2","tier3"],         "category": "Intermediate Python",  "badge": "⚙️"},
+    "python-oop":                {"price_ngn": 4000,  "tier_unlocks": ["tier2","tier3"],         "category": "Intermediate Python",  "badge": "🏗️"},
+    "python-modules-stdlib":     {"price_ngn": 4000,  "tier_unlocks": ["tier2","tier3"],         "category": "Intermediate Python",  "badge": "📚"},
+    # ── Advanced
+    "python-dsa":                {"price_ngn": 6000,  "tier_unlocks": ["tier3"],                 "category": "Advanced Python",      "badge": "🧮"},
+    "numpy-mastery":             {"price_ngn": 5500,  "tier_unlocks": ["tier3"],                 "category": "Data Science",         "badge": "🔢"},
+    "pandas-mastery":            {"price_ngn": 5500,  "tier_unlocks": ["tier3"],                 "category": "Data Science",         "badge": "🐼"},
+    "data-science-python":       {"price_ngn": 6000,  "tier_unlocks": ["tier3"],                 "category": "Data Science",         "badge": "📊"},
+    "python-databases":          {"price_ngn": 5000,  "tier_unlocks": ["tier3"],                 "category": "Advanced Python",      "badge": "🗄️"},
+    "web-apis":                  {"price_ngn": 5000,  "tier_unlocks": ["tier3"],                 "category": "Advanced Python",      "badge": "🌐"},
+    "prompt-engineering":        {"price_ngn": 5000,  "tier_unlocks": ["tier3"],                 "category": "AI & Prompting",       "badge": "🤖"},
+    "ai-prompt-engineering":     {"price_ngn": 15000, "tier_unlocks": ["tier3"],                 "category": "AI & Prompting",       "badge": "🧠💬"},
+    "machine-learning":          {"price_ngn": 12000, "tier_unlocks": ["tier3"],                 "category": "Machine Learning",     "badge": "🧠"},
+}
+
+# ---------------------------------------------------------------------------
+# Subscription plans — AI prompting access (separate from course access)
+# ---------------------------------------------------------------------------
+
+PROMPT_PLANS: dict[str, dict] = {
+    "prompt-starter": {
+        "name":         "Prompt Starter",
+        "price_ngn":    2000,
+        "daily_limit":  50,
+        "description":  "50 AI prompts per day — perfect for casual learning and quick questions.",
+        "paystack_url": "https://paystack.shop/pay/vt_re4d3h52",
+    },
+    "prompt-pro": {
+        "name":         "Prompt Pro",
+        "price_ngn":    5000,
+        "daily_limit":  200,
+        "description":  "200 AI prompts per day — for serious learners who want deep, frequent help from Sir. Tega.",
+        "paystack_url": "https://paystack.shop/pay/vt_re4d3h52",
+    },
+    "prompt-unlimited": {
+        "name":         "Prompt Unlimited",
+        "price_ngn":    10000,
+        "daily_limit":  999999,
+        "description":  "Unlimited AI prompts — no cap, full access to Sir. Tega 24/7.",
+        "paystack_url": "https://paystack.shop/pay/vt_re4d3h52",
+    },
+}
+
+# ---------------------------------------------------------------------------
+# Tier plans — unlock course BUNDLES (separate from per-course or prompt plans)
+# ---------------------------------------------------------------------------
+
+TIER_PLANS: dict[str, dict] = {
+    "tier1": {
+        "name":         "Beginner Bundle",
+        "price_ngn":    8000,
+        "description":  "Unlock all 4 Beginner courses: Python Fundamentals, Strings, Collections, Control Flow.",
+        "courses":      ["python-fundamentals","python-strings","python-collections","python-control-flow"],
+        "paystack_url": "https://paystack.shop/pay/vt_re4d3h52",
+    },
+    "tier2": {
+        "name":         "Intermediate Bundle",
+        "price_ngn":    15000,
+        "description":  "Unlock all Beginner + Intermediate courses (7 total).",
+        "courses":      ["python-fundamentals","python-strings","python-collections","python-control-flow",
+                         "python-functions-advanced","python-oop","python-modules-stdlib"],
+        "paystack_url": "https://paystack.shop/pay/vt_re4d3h52",
+    },
+    "tier3": {
+        "name":         "Elite Bundle",
+        "price_ngn":    35000,
+        "description":  "Unlock ALL 15 courses including Machine Learning, Data Science, NumPy, Pandas, DSA, Web APIs, and AI.",
+        "courses":      list(COURSE_CATALOG.keys()),
+        "paystack_url": "https://paystack.shop/pay/vt_re4d3h52",
+    },
 }
 
 
