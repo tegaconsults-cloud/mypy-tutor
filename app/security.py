@@ -46,7 +46,7 @@ LEARNER_ID_RE     = re.compile(r"^[a-zA-Z0-9_\-]{1,64}$")
 COURSE_NAME_RE    = re.compile(r"^[a-zA-Z0-9_\-]{1,80}$")
 TOPIC_RE          = re.compile(r"^[a-zA-Z0-9 _\-&/]{1,100}$")
 
-# Free tier daily prompt limit
+# Free tier daily prompt limit — resets at 5am WAT (UTC+1)
 FREE_DAILY_LIMIT = 20
 
 # ---------------------------------------------------------------------------
@@ -91,17 +91,32 @@ import datetime as _dt
 _daily_prompt_store: dict[str, tuple[str, int]] = {}
 
 
+def _wat_date_key() -> str:
+    """
+    Return today's date string in WAT (UTC+1), but reset at 5am WAT.
+    Prompts used between 00:00–04:59 WAT count toward the previous day's quota.
+    This gives African learners a natural morning reset at 5am rather than midnight.
+    """
+    import datetime as _dt2
+    # WAT = UTC+1
+    wat_now = _dt2.datetime.utcnow() + _dt2.timedelta(hours=1)
+    # If before 5am WAT, it's still "yesterday's" quota window
+    if wat_now.hour < 5:
+        wat_now = wat_now - _dt2.timedelta(days=1)
+    return wat_now.strftime("%Y-%m-%d")
+
+
 def check_free_prompt_limit(learner_id: str, ip: str) -> tuple[bool, int]:
     """
-    Check if a free-tier user has exceeded their 20 prompts/day limit.
+    Check if a free-tier user has exceeded their 10 prompts/day limit.
+    Quota resets at 5am WAT (UTC+1).
     Returns (allowed: bool, used_count: int).
     Key is learner_id if not 'default', otherwise ip.
     """
     key = learner_id if learner_id and learner_id != "default" else ip
-    today = _dt.date.today().isoformat()
+    today = _wat_date_key()
     existing = _daily_prompt_store.get(key)
     if existing is None or existing[0] != today:
-        # New day or first time — evict yesterday's stale keys while we're here
         if len(_daily_prompt_store) > 5000:
             stale = [k for k, (d, _) in _daily_prompt_store.items() if d != today]
             for k in stale:
@@ -117,7 +132,7 @@ def check_free_prompt_limit(learner_id: str, ip: str) -> tuple[bool, int]:
 def increment_free_prompt_count(learner_id: str, ip: str) -> int:
     """Increment the daily prompt counter. Returns new count."""
     key = learner_id if learner_id and learner_id != "default" else ip
-    today = _dt.date.today().isoformat()
+    today = _wat_date_key()
     existing = _daily_prompt_store.get(key)
     if existing is None or existing[0] != today:
         _daily_prompt_store[key] = (today, 1)
@@ -131,7 +146,7 @@ def increment_free_prompt_count(learner_id: str, ip: str) -> int:
 def get_free_prompt_count(learner_id: str, ip: str) -> int:
     """Get current daily prompt count for a learner/IP."""
     key = learner_id if learner_id and learner_id != "default" else ip
-    today = _dt.date.today().isoformat()
+    today = _wat_date_key()
     existing = _daily_prompt_store.get(key)
     if existing is None or existing[0] != today:
         return 0

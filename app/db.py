@@ -685,19 +685,18 @@ def get_referral_code(code: str) -> dict | None:
 
 
 def use_referral_code(code: str, used_by_email: str, used_by_id: str,
-                       discount_pct: int = 10,
+                       discount_pct: int = 15,
                        payment_amount: float = 0) -> bool:
     """
     Record a referral use.
-    - Referee gets 10% discount (tracked via discount_pct).
-    - Referrer gets 10% bonus of the payment credited to their bonus_balance.
+    Split: 15% discount to referee, 5% bonus to referrer (total 20%).
     Returns False if code is exhausted or invalid.
     """
     ref = get_referral_code(code)
     if not ref or ref["uses"] >= ref["max_uses"]:
         return False
-    referrer_bonus   = round(payment_amount * 0.10, 2)
-    referee_discount = round(payment_amount * 0.10, 2)
+    referrer_bonus   = round(payment_amount * 0.05, 2)   # 5% to referrer
+    referee_discount = round(payment_amount * 0.15, 2)   # 15% to referee
     with get_db() as conn:
         conn.execute(
             "UPDATE referrals SET uses=uses+1, bonus_balance=bonus_balance+? WHERE code=?",

@@ -219,16 +219,58 @@ def _send_email(to: str, subject: str, html_body: str, text_body: str) -> bool:
         msg["Reply-To"] = email_user
         msg.attach(MIMEText(text_body, "plain", "utf-8"))
         msg.attach(MIMEText(html_body, "html",  "utf-8"))
+        raw = msg.as_string()
 
-        with smtplib.SMTP(email_host, email_port, timeout=20) as server:
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            server.login(email_user, email_pass)
-            server.sendmail(email_user, [to], msg.as_string())
+        def _try_starttls() -> bool:
+            """STARTTLS on port 587 — the standard path."""
+            with smtplib.SMTP(email_host, email_port, timeout=20) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                server.login(email_user, email_pass)
+                server.sendmail(email_user, [to], raw)
+            return True
 
-        logger.info("✅ Email sent to %s (subject: %s)", to, subject)
-        return True
+        def _try_ssl() -> bool:
+            """SSL on port 465 — fallback when port 587 is blocked."""
+            import ssl as _ssl
+            ctx = _ssl.create_default_context()
+            with smtplib.SMTP_SSL(email_host, 465, timeout=20, context=ctx) as server:
+                server.ehlo()
+                server.login(email_user, email_pass)
+                server.sendmail(email_user, [to], raw)
+            return True
+
+        # Try STARTTLS first; if the network blocks port 587 try SSL port 465
+        sent = False
+        last_exc: Exception | None = None
+        for attempt in (_try_starttls, _try_ssl):
+            try:
+                attempt()
+                sent = True
+                break
+            except smtplib.SMTPAuthenticationError as exc:
+                # Auth failure — retrying on port 465 won't help
+                logger.error(
+                    "❌ Gmail auth failed for %s — check EMAIL_PASS is a Gmail App Password: %s",
+                    email_user, exc
+                )
+                return False
+            except OSError as exc:
+                last_exc = exc
+                logger.debug("SMTP attempt failed (%s): %s", attempt.__name__, exc)
+                continue
+            except smtplib.SMTPException as exc:
+                last_exc = exc
+                logger.debug("SMTP attempt failed (%s): %s", attempt.__name__, exc)
+                continue
+
+        if sent:
+            logger.info("✅ Email sent to %s (subject: %s)", to, subject)
+            return True
+
+        logger.error("❌ All SMTP attempts failed for %s. Last error: %s", to, last_exc)
+        return False
 
     except smtplib.SMTPAuthenticationError as exc:
         logger.error(
@@ -418,7 +460,7 @@ def confirm_email_token(token: str) -> tuple[bool, str]:
                 referral_code,
                 used_by_email=email,
                 used_by_id=user_data["learner_id"],
-                discount_pct=10,
+                discount_pct=10,  # 10% discount to referee; referrer gets 5% bonus on payment
                 payment_amount=0,
             )
             if applied:

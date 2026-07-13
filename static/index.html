@@ -3352,18 +3352,37 @@
       overlay.style.display = 'flex';
       const lid = getLearnerId();
       if (lid === 'default') return;
+      const appUrl = 'https://mypytutor.onrender.com';
       fetch(`/referral/${lid}`)
         .then(r => r.ok ? r.json() : null)
         .then(d => {
           if (!d) return;
-          document.getElementById('referral-code-display').textContent    = d.code || '—';
-          document.getElementById('referral-uses-display').textContent    = d.uses || 0;
-          document.getElementById('referral-max-display').textContent     = d.max_uses || 50;
+          const code = d.code || '—';
+          document.getElementById('referral-code-display').textContent  = code;
+          document.getElementById('referral-uses-display').textContent  = d.uses || 0;
+          document.getElementById('referral-max-display').textContent   = d.max_uses || 50;
           const bal = d.bonus_balance || 0;
-          document.getElementById('referral-bonus-display').textContent   = '₦' + bal.toFixed(2);
-          const appUrl = 'https://mypytutor.onrender.com';
+          document.getElementById('referral-bonus-display').textContent = '₦' + bal.toFixed(2);
           document.getElementById('referral-share-text').textContent =
-            `Join MyPy Tutor, your best AI AND PYTHON TUTOR. Use code ${d.code} for 10% off your first subscription! ${appUrl}`;
+            `Join MyPy Tutor, your best AI AND PYTHON TUTOR. Use code ${code} for 10% off your first subscription! ${appUrl}`;
+
+          // Render referral history
+          const hist = d.recent_uses || [];
+          const histEl = document.getElementById('referral-history-list');
+          if (histEl) {
+            if (hist.length === 0) {
+              histEl.innerHTML = '<div style="color:#4b5563;font-size:.8rem">No referrals yet. Share your code to start earning!</div>';
+            } else {
+              histEl.innerHTML = hist.map(h =>
+                `<div style="display:flex;justify-content:space-between;align-items:center;
+                             padding:7px 0;border-bottom:1px solid #1f2937;font-size:.78rem">
+                   <span style="color:#94a3b8">${h.used_by_email || 'user'}</span>
+                   <span style="color:#34d399;font-weight:600">+₦${(h.referrer_bonus||0).toFixed(2)}</span>
+                   <span style="color:#4b5563">${h.ts || ''}</span>
+                 </div>`
+              ).join('');
+            }
+          }
         })
         .catch(() => {});
     }
@@ -3376,14 +3395,12 @@
 
     function copyReferralCode() {
       const code = document.getElementById('referral-code-display').textContent.trim();
-      if (!code || code === 'Loading…') return;
+      if (!code || code === 'Loading…' || code === '—') return;
       const msg = `Join MyPy Tutor, your best AI AND PYTHON TUTOR. Use code ${code} for 10% off your first subscription! https://mypytutor.onrender.com`;
       if (navigator.clipboard) {
         navigator.clipboard.writeText(msg).then(() => {
-          document.getElementById('referral-copy-msg').style.display = 'block';
-          setTimeout(() => {
-            document.getElementById('referral-copy-msg').style.display = 'none';
-          }, 3000);
+          const el = document.getElementById('referral-copy-msg');
+          if (el) { el.style.display = 'block'; setTimeout(() => el.style.display = 'none', 3000); }
         });
       }
     }
@@ -3524,82 +3541,92 @@
 
   <!-- ── Referral Modal ── -->
   <div id="referral-modal-overlay" onclick="if(event.target===this)closeReferralModal()"
-       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.8);
+       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);
               backdrop-filter:blur(10px);z-index:1000;
               align-items:center;justify-content:center;padding:20px;">
-    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:24px;
-                padding:32px 28px;width:100%;max-width:400px;
-                display:flex;flex-direction:column;gap:18px;position:relative;
-                box-shadow:var(--shadow-lg);animation:modalIn 0.22s ease">
+    <div style="background:#111827;border:1px solid #1f2937;border-radius:24px;
+                padding:28px 24px;width:100%;max-width:440px;
+                display:flex;flex-direction:column;gap:16px;position:relative;
+                box-shadow:0 25px 60px rgba(0,0,0,0.6);animation:modalIn 0.22s ease;
+                max-height:90vh;overflow-y:auto">
       <button onclick="closeReferralModal()"
-              style="position:absolute;top:14px;right:16px;background:var(--bg-elevated);
-                     border:1px solid var(--border);color:var(--text-muted);
+              style="position:absolute;top:14px;right:16px;background:#1f2937;
+                     border:1px solid #374151;color:#6b7280;
                      border-radius:8px;width:30px;height:30px;cursor:pointer;
-                     display:flex;align-items:center;justify-content:center">✕</button>
+                     display:flex;align-items:center;justify-content:center;font-size:.9rem">✕</button>
 
       <div style="text-align:center">
         <div style="font-size:2rem;margin-bottom:6px">🔗</div>
-        <h2 style="font-size:1.1rem;font-weight:800;color:var(--text-primary);letter-spacing:-0.02em">Your Referral Code</h2>
-        <p style="font-size:0.84rem;color:var(--text-secondary);margin-top:6px;line-height:1.55">
-          Share this code with friends. They get <strong>10% off</strong> their first subscription,
-          and your account is tracked as the referrer.
+        <h2 style="font-size:1.1rem;font-weight:800;color:#f1f5f9;letter-spacing:-0.02em">Your Referral Dashboard</h2>
+        <p style="font-size:0.82rem;color:#94a3b8;margin-top:6px;line-height:1.55">
+          Share your unique code. Your referee gets <strong style="color:#34d399">15% off</strong> — you earn <strong style="color:#60a5fa">5% bonus</strong>.
         </p>
       </div>
 
-      <div style="background:var(--bg-elevated);border:2px dashed var(--border-focus);
-                  border-radius:14px;padding:20px;text-align:center">
+      <!-- Stats row -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+        <div style="background:#1f2937;border:1px solid #374151;border-radius:10px;padding:12px;text-align:center">
+          <div id="referral-uses-display" style="font-size:1.5rem;font-weight:800;color:#60a5fa">0</div>
+          <div style="font-size:0.65rem;color:#6b7280;margin-top:2px;text-transform:uppercase;letter-spacing:.06em">Referrals</div>
+        </div>
+        <div style="background:#1f2937;border:1px solid #374151;border-radius:10px;padding:12px;text-align:center">
+          <div id="referral-max-display" style="font-size:1.5rem;font-weight:800;color:#a78bfa">50</div>
+          <div style="font-size:0.65rem;color:#6b7280;margin-top:2px;text-transform:uppercase;letter-spacing:.06em">Max Uses</div>
+        </div>
+        <div style="background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.2);border-radius:10px;padding:12px;text-align:center">
+          <div id="referral-bonus-display" style="font-size:1.1rem;font-weight:800;color:#34d399">₦0</div>
+          <div style="font-size:0.65rem;color:#6b7280;margin-top:2px;text-transform:uppercase;letter-spacing:.06em">Balance</div>
+        </div>
+      </div>
+
+      <!-- Code display -->
+      <div style="background:#1f2937;border:2px dashed #3b82f6;
+                  border-radius:14px;padding:18px;text-align:center">
+        <div style="font-size:0.7rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">Your Unique Referral Code</div>
         <div id="referral-code-display"
-             style="font-family:monospace;font-size:1.6rem;font-weight:800;
-                    color:#60a5fa;letter-spacing:0.15em">
+             style="font-family:monospace;font-size:1.8rem;font-weight:800;
+                    color:#60a5fa;letter-spacing:0.2em">
           Loading…
         </div>
-        <div style="font-size:0.75rem;color:var(--text-muted);margin-top:6px">
-          <span id="referral-uses-display">0</span> / <span id="referral-max-display">50</span> uses
-        </div>
       </div>
 
-      <!-- Bonus balance card -->
-      <div style="background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.25);
-                  border-radius:12px;padding:14px;text-align:center">
-        <div style="font-size:0.72rem;color:#6ee7b7;font-weight:700;text-transform:uppercase;
-                    letter-spacing:0.08em;margin-bottom:4px">Your Referral Bonus Balance</div>
-        <div id="referral-bonus-display"
-             style="font-size:1.6rem;font-weight:800;color:#34d399">
-          ₦0.00
-        </div>
-        <div style="font-size:0.72rem;color:var(--text-muted);margin-top:4px">
-          10% of each referred user's first payment
-        </div>
-      </div>
-
-      <div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);
-                  border-radius:10px;padding:12px;font-size:0.8rem;color:var(--text-secondary);
-                  line-height:1.6">
+      <!-- How it works -->
+      <div style="background:rgba(59,130,246,0.07);border:1px solid rgba(59,130,246,0.18);
+                  border-radius:10px;padding:12px;font-size:0.79rem;color:#94a3b8;line-height:1.7">
         <strong style="color:#93c5fd">How it works:</strong><br/>
-        • Share your code friends enter it at signup<br/>
-        • They get <strong>10% discount</strong> on their first subscription<br/>
-        • You earn <strong>10% bonus</strong> of their payment amount<br/>
-        • Bonus is credited automatically when they pay
+        • Friend enters your code at signup<br/>
+        • They get <strong style="color:#34d399">15% discount</strong> on their first payment<br/>
+        • You earn <strong style="color:#60a5fa">5% bonus</strong> of their payment, credited automatically<br/>
+        • Bonus is paid out upon request to admin
       </div>
 
+      <!-- Copy button -->
       <button onclick="copyReferralCode()"
               style="width:100%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);
                      color:#fff;border:none;border-radius:12px;padding:13px;
                      font-size:0.93rem;font-weight:700;cursor:pointer;
-                     font-family:var(--font);box-shadow:0 4px 14px rgba(59,130,246,0.35);
-                     transition:var(--transition)">
-        📋 Copy Code
+                     box-shadow:0 4px 14px rgba(59,130,246,0.35);transition:opacity .15s"
+              onmouseover="this.style.opacity='.88'" onmouseout="this.style.opacity='1'">
+        📋 Copy Referral Message
       </button>
 
-      <div id="referral-copy-msg" style="text-align:center;font-size:0.82rem;
-                                          color:#6ee7b7;display:none">
+      <div id="referral-copy-msg" style="text-align:center;font-size:0.82rem;color:#34d399;display:none">
         ✅ Copied to clipboard!
       </div>
 
-      <p style="font-size:0.76rem;color:var(--text-muted);text-align:center;line-height:1.5">
-        Share via:<br/>
-        <span id="referral-share-text" style="color:var(--text-secondary)"></span>
-      </p>
+      <!-- Share text preview -->
+      <div style="background:#0f172a;border:1px solid #1f2937;border-radius:8px;padding:10px;
+                  font-size:0.76rem;color:#94a3b8;line-height:1.6;font-style:italic">
+        <span id="referral-share-text"></span>
+      </div>
+
+      <!-- Recent referral history -->
+      <div>
+        <div style="font-size:0.72rem;color:#6b7280;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Recent Referrals</div>
+        <div id="referral-history-list" style="font-size:0.8rem;color:#94a3b8">
+          <div style="color:#4b5563">No referrals yet. Share your code to start earning!</div>
+        </div>
+      </div>
     </div>
   </div>
 
