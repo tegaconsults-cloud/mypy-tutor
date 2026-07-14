@@ -1021,13 +1021,36 @@
         <div id="chat-container">
           <div class="welcome">
             <div class="welcome-logo"><img src="/icons/logo-mpt.png?v=2" alt="MyPy Tutor" style="width:100%;height:100%;object-fit:cover;border-radius:18px"/></div>
-            <h2>Hi, I'm Sir. Tega</h2>
+            <h2>Hi, I'm Sir. Tega 🐍</h2>
             <p>
-              Your best <strong>AI/ML &amp; Python Tutor</strong>, powered by Teamsamikoko Global Academy.<br/>
-              Ask me to <strong>explain a concept</strong>, <strong>debug your code</strong>,
-              <strong>generate a snippet</strong>, or <strong>give you an exercise</strong>.<br/>
-              Use <strong>Courses</strong> for structured learning and <strong>Quiz</strong> to test yourself.
+              Africa's most advanced <strong>AI Python &amp; ML Tutor</strong>,
+              powered by Teamsamikoko Global Academy.<br/><br/>
+              <span style="display:inline-flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-bottom:8px">
+                <span style="background:#1a365d;color:#90cdf4;border-radius:8px;padding:4px 10px;font-size:.78rem;font-weight:600">🤖 AI Tutor</span>
+                <span style="background:#276749;color:#68d391;border-radius:8px;padding:4px 10px;font-size:.78rem;font-weight:600">📚 16 Courses</span>
+                <span style="background:#322659;color:#b794f4;border-radius:8px;padding:4px 10px;font-size:.78rem;font-weight:600">🏆 Certificates</span>
+                <span style="background:#744210;color:#f6ad55;border-radius:8px;padding:4px 10px;font-size:.78rem;font-weight:600">⚡ 20 Free Prompts/Day</span>
+              </span><br/>
+              <strong>Sign in or create a free account</strong> to start learning Python with Sir. Tega.
+              No credit card needed for the free plan.
             </p>
+            <div style="display:flex;gap:10px;justify-content:center;margin-top:8px;flex-wrap:wrap">
+              <button onclick="openAuthModal('signup')"
+                style="background:#3b82f6;color:#fff;border:none;border-radius:10px;
+                       padding:12px 24px;font-size:.9rem;font-weight:700;cursor:pointer;
+                       min-height:44px;transition:opacity .15s"
+                onmouseover="this.style.opacity='.88'" onmouseout="this.style.opacity='1'">
+                🚀 Start Free — No Card Needed
+              </button>
+              <button onclick="openAuthModal('signin')"
+                style="background:transparent;color:#94a3b8;border:1px solid #374151;
+                       border-radius:10px;padding:12px 24px;font-size:.9rem;font-weight:600;
+                       cursor:pointer;min-height:44px;transition:all .15s"
+                onmouseover="this.style.borderColor='#3b82f6';this.style.color='#60a5fa'"
+                onmouseout="this.style.borderColor='#374151';this.style.color='#94a3b8'">
+                Sign In
+              </button>
+            </div>
           </div>
         </div>
         <div id="input-area">
@@ -1306,8 +1329,8 @@
         <!-- ═══════════════════════════════════════════════════════════════ -->
         <div id="ptab-bundles-content" style="display:none">
           <div class="pricing-header">
-            <h2>🎯 Tier Bundles — Save More, Unlock More</h2>
-            <p>One payment unlocks an entire collection of courses at a lower per-course price.</p>
+            <h2>🎯 Course Bundles — Best Value</h2>
+            <p>One payment unlocks an entire collection. All prices are one-time — no recurring fees.</p>
           </div>
           <div class="pricing-grid" style="margin-top:10px;">
 
@@ -1315,18 +1338,19 @@
             <div class="tier-card tier-1">
               <span class="tier-badge">Beginner Bundle</span>
               <div>
-                <div class="tier-name">4 Python Foundation Courses</div>
+                <div class="tier-name">All 4 Python Foundation Courses</div>
                 <div class="tier-price"><span class="currency">₦</span>8,000<span class="period"> one-time</span></div>
                 <div class="tier-desc" style="margin-top:6px">Fundamentals · Strings · Collections · Control Flow</div>
               </div>
               <ul class="tier-features">
-                <li><span class="feat-icon">📚</span> 43 structured lessons</li>
-                <li><span class="feat-icon">🏆</span> Per-lesson quizzes &amp; exercises</li>
+                <li><span class="feat-icon">📚</span> 43 structured lessons + exercises</li>
+                <li><span class="feat-icon">🏆</span> Per-lesson quizzes &amp; XP</li>
                 <li><span class="feat-icon">🎓</span> Basic Certificate eligibility</li>
-                <li><span class="feat-icon">💾</span> Progress saved to cloud forever</li>
-                <li><span class="feat-icon">💰</span> Save ₦3,000 vs buying individually</li>
+                <li><span class="feat-icon">💾</span> Progress saved forever to cloud</li>
+                <li><span class="feat-icon">💰</span> Save ₦3,000 vs individual prices</li>
               </ul>
-              <a href="https://paystack.shop/pay/vt_re4d3h52" target="_blank" rel="noopener"
+              <a href="https://paystack.shop/pay/vt_re4d3h52?plan=beginner+bundle&tier=tier1&amount=8000"
+                target="_blank" rel="noopener"
                 style="display:block;text-align:center;text-decoration:none;background:#2b6cb0;color:#fff;padding:12px;border-radius:10px;font-size:0.9rem;font-weight:700;min-height:44px;line-height:1.8">
                 💳 Buy Beginner Bundle — ₦8,000
               </a>
@@ -1337,18 +1361,19 @@
               <div class="popular-pill">Most Popular</div>
               <span class="tier-badge">Intermediate Bundle</span>
               <div>
-                <div class="tier-name">7 Python Courses (Beginner + Intermediate)</div>
+                <div class="tier-name">7 Courses (Beginner + Intermediate)</div>
                 <div class="tier-price"><span class="currency">₦</span>15,000<span class="period"> one-time</span></div>
-                <div class="tier-desc" style="margin-top:6px">All 4 beginner + Functions, OOP, Standard Library</div>
+                <div class="tier-desc" style="margin-top:6px">All 4 beginner + Functions, OOP &amp; Standard Library</div>
               </div>
               <ul class="tier-features">
                 <li><span class="feat-icon">📚</span> 86 structured lessons</li>
                 <li><span class="feat-icon">🏗️</span> OOP, decorators, generators</li>
                 <li><span class="feat-icon">🎓</span> Advanced Certificate eligibility</li>
-                <li><span class="feat-icon">🤖</span> Priority AI responses</li>
-                <li><span class="feat-icon">💰</span> Save ₦9,000 vs buying individually</li>
+                <li><span class="feat-icon">🤖</span> Full AI tutor access</li>
+                <li><span class="feat-icon">💰</span> Save ₦9,000 vs individual prices</li>
               </ul>
-              <a href="https://paystack.shop/pay/vt_re4d3h52" target="_blank" rel="noopener"
+              <a href="https://paystack.shop/pay/vt_re4d3h52?plan=intermediate+bundle&tier=tier2&amount=15000"
+                target="_blank" rel="noopener"
                 style="display:block;text-align:center;text-decoration:none;background:#6b46c1;color:#fff;padding:12px;border-radius:10px;font-size:0.9rem;font-weight:700;min-height:44px;line-height:1.8">
                 💳 Buy Intermediate Bundle — ₦15,000
               </a>
@@ -1360,7 +1385,7 @@
               <div>
                 <div class="tier-name">ALL 16 Courses — Complete Library</div>
                 <div class="tier-price"><span class="currency">₦</span>35,000<span class="period"> one-time</span></div>
-                <div class="tier-desc" style="margin-top:6px">Every course including ML, AI &amp; Prompt Engineering, DSA, Data Science</div>
+                <div class="tier-desc" style="margin-top:6px">Every course: ML, AI, DSA, Data Science, Web APIs and more</div>
               </div>
               <ul class="tier-features">
                 <li><span class="feat-icon">🧠</span> Machine Learning (30 lessons)</li>
@@ -1368,9 +1393,10 @@
                 <li><span class="feat-icon">📊</span> NumPy, Pandas, Data Science</li>
                 <li><span class="feat-icon">🌐</span> Web APIs, FastAPI, Flask</li>
                 <li><span class="feat-icon">🎓</span> Executive Masters Certificate</li>
-                <li><span class="feat-icon">💰</span> Save ₦55,000 vs buying individually</li>
+                <li><span class="feat-icon">💰</span> Save ₦55,000 vs individual prices</li>
               </ul>
-              <a href="https://paystack.shop/pay/vt_re4d3h52" target="_blank" rel="noopener"
+              <a href="https://paystack.shop/pay/vt_re4d3h52?plan=elite+bundle&tier=tier3&amount=35000"
+                target="_blank" rel="noopener"
                 style="display:block;text-align:center;text-decoration:none;background:#c05621;color:#fff;padding:12px;border-radius:10px;font-size:0.9rem;font-weight:700;min-height:44px;line-height:1.8">
                 💳 Buy Elite Bundle — ₦35,000
               </a>
@@ -1406,7 +1432,8 @@
                 <li><span class="feat-icon">📜</span> Full conversation history</li>
                 <li><span class="feat-icon">🔄</span> Resets midnight daily</li>
               </ul>
-              <a href="https://paystack.shop/pay/vt_re4d3h52" target="_blank" rel="noopener"
+              <a href="https://paystack.shop/pay/vt_re4d3h52?plan=prompt+starter&amount=2000"
+                target="_blank" rel="noopener"
                 style="display:block;text-align:center;text-decoration:none;background:#2b6cb0;color:#fff;padding:12px;border-radius:10px;font-size:0.9rem;font-weight:700;min-height:44px;line-height:1.8">
                 💳 Subscribe — ₦2,000/mo
               </a>
@@ -1427,7 +1454,8 @@
                 <li><span class="feat-icon">🔍</span> Debugging &amp; code generation</li>
                 <li><span class="feat-icon">📊</span> Learning gap detection</li>
               </ul>
-              <a href="https://paystack.shop/pay/vt_re4d3h52" target="_blank" rel="noopener"
+              <a href="https://paystack.shop/pay/vt_re4d3h52?plan=prompt+pro&amount=5000"
+                target="_blank" rel="noopener"
                 style="display:block;text-align:center;text-decoration:none;background:#6b46c1;color:#fff;padding:12px;border-radius:10px;font-size:0.9rem;font-weight:700;min-height:44px;line-height:1.8">
                 💳 Subscribe — ₦5,000/mo
               </a>
@@ -1447,7 +1475,8 @@
                 <li><span class="feat-icon">🎙️</span> Full access to all AI features</li>
                 <li><span class="feat-icon">🏆</span> Top learner badge</li>
               </ul>
-              <a href="https://paystack.shop/pay/vt_re4d3h52" target="_blank" rel="noopener"
+              <a href="https://paystack.shop/pay/vt_re4d3h52?plan=prompt+unlimited&amount=10000"
+                target="_blank" rel="noopener"
                 style="display:block;text-align:center;text-decoration:none;background:#c05621;color:#fff;padding:12px;border-radius:10px;font-size:0.9rem;font-weight:700;min-height:44px;line-height:1.8">
                 💳 Subscribe — ₦10,000/mo
               </a>
@@ -2224,7 +2253,7 @@
           .then(d => { if (d.conversation_id) localStorage.setItem('mpt_conv_id', d.conversation_id); })
           .catch(() => {});
       }
-      chatContainer.innerHTML = `<div class="welcome"><h2>Hi, I'm Sir. Tega 🐍</h2><p>Your best AI/ML &amp; Python Tutor. Ask me anything about Python!</p></div>`;
+      chatContainer.innerHTML = `<div class="welcome"><h2>Hi, I'm Sir. Tega 🐍</h2><p>Your best AI/ML &amp; Python Tutor. Ask me anything about Python, or use <strong>Courses</strong> for structured learning!</p></div>`;
     });
 
     // ── Send message ──────────────────────────────────────────────────────────
@@ -2889,6 +2918,15 @@
 
       // Close auth modal if open
       closeAuthModal();
+
+      // ── Show onboarding for first-time users ─────────────────────────────
+      // Only fires once — flag stored in localStorage so it never repeats
+      if (!localStorage.getItem('mpt_onboarded')) {
+        setTimeout(() => {
+          _obShowStep(1);
+          showOnboarding();
+        }, 600);
+      }
     }
 
     function signOut() {
@@ -2956,6 +2994,60 @@
       const learnerId = getLearnerId();
       const url = `/certificate/${level}?name=${encodeURIComponent(name)}&learner_id=${encodeURIComponent(learnerId)}`;
       window.open(url, '_blank', 'width=1000,height=720,noopener,noreferrer');
+    }
+
+    // ── Onboarding ────────────────────────────────────────────────────────────
+    let _obLevel = 'beginner';
+    let _obGoal  = 'general';
+
+    function showOnboarding() {
+      const overlay = document.getElementById('onboarding-overlay');
+      if (overlay) overlay.style.display = 'flex';
+    }
+    function _obShowStep(n) {
+      [1,2,3].forEach(i => {
+        document.getElementById('ob-step-'+i).style.display = i===n ? 'block' : 'none';
+        const dot = document.getElementById('ob-dot-'+i);
+        dot.style.background = i<=n ? '#3b82f6' : '#374151';
+      });
+    }
+    function obSelectLevel(level) {
+      _obLevel = level;
+      // Visual feedback
+      ['beginner','intermediate','advanced'].forEach(l => {
+        const btn = document.getElementById('ob-lvl-'+l);
+        if (btn) btn.style.border = l===level ? '2px solid #3b82f6' : '2px solid #374151';
+      });
+      // Set level in app
+      const ls = document.getElementById('level-select');
+      if (ls) { ls.value = level; localStorage.setItem('mypy_tutor_level', level); }
+      setTimeout(() => _obShowStep(2), 300);
+    }
+    function obSelectGoal(goal) {
+      _obGoal = goal;
+      // Map goal to a first message Sir. Tega will send
+      const firstMsg = {
+        career: "I want to build a Python career. What should I learn first?",
+        data:   "I want to learn data science and machine learning. Where do I start?",
+        build:  "I want to build apps and automate tasks with Python. Where do I begin?",
+        general:"I want to learn Python from scratch. Can you give me a learning roadmap?"
+      }[goal] || "Hello Sir. Tega! I'm ready to start learning Python.";
+      localStorage.setItem('mpt_ob_goal_msg', firstMsg);
+      setTimeout(() => _obShowStep(3), 300);
+    }
+    function finishOnboarding() {
+      localStorage.setItem('mpt_onboarded', '1');
+      const overlay = document.getElementById('onboarding-overlay');
+      if (overlay) overlay.style.display = 'none';
+      // Send the goal message as first chat message if chat is empty
+      const goalMsg = localStorage.getItem('mpt_ob_goal_msg');
+      if (goalMsg && history.length === 0) {
+        setTimeout(() => {
+          messageInput.value = goalMsg;
+          sendMessage();
+        }, 400);
+      }
+      localStorage.removeItem('mpt_ob_goal_msg');
     }
 
     // ── Upgrade Modal ─────────────────────────────────────────────────────────
@@ -3296,6 +3388,114 @@
     }
 
   </script>
+
+  <!-- ── Onboarding Modal (shown once on first login) ── -->
+  <div id="onboarding-overlay"
+       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.88);
+              backdrop-filter:blur(12px);z-index:2000;align-items:center;
+              justify-content:center;padding:20px;">
+    <div style="background:#111827;border:1px solid #1f2937;border-radius:24px;
+                padding:32px 28px;width:100%;max-width:460px;
+                display:flex;flex-direction:column;gap:20px;position:relative;
+                box-shadow:0 30px 80px rgba(0,0,0,0.7)">
+
+      <!-- Progress dots -->
+      <div style="display:flex;justify-content:center;gap:8px">
+        <div id="ob-dot-1" style="width:10px;height:10px;border-radius:50%;background:#3b82f6;transition:.2s"></div>
+        <div id="ob-dot-2" style="width:10px;height:10px;border-radius:50%;background:#374151;transition:.2s"></div>
+        <div id="ob-dot-3" style="width:10px;height:10px;border-radius:50%;background:#374151;transition:.2s"></div>
+      </div>
+
+      <!-- Step 1 — Level -->
+      <div id="ob-step-1">
+        <div style="text-align:center;margin-bottom:16px">
+          <div style="font-size:2.5rem;margin-bottom:8px">🐍</div>
+          <h2 style="font-size:1.2rem;font-weight:800;color:#f1f5f9;margin-bottom:6px">Welcome to MyPy Tutor!</h2>
+          <p style="font-size:0.84rem;color:#94a3b8">Let's personalise your learning. What's your Python level?</p>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <button onclick="obSelectLevel('beginner')" id="ob-lvl-beginner"
+            style="padding:14px;border-radius:12px;border:2px solid #374151;background:#1f2937;
+                   color:#f1f5f9;font-size:0.93rem;font-weight:600;cursor:pointer;text-align:left;
+                   transition:all .15s">
+            🟢 <strong>Beginner</strong> — I'm new to Python
+          </button>
+          <button onclick="obSelectLevel('intermediate')" id="ob-lvl-intermediate"
+            style="padding:14px;border-radius:12px;border:2px solid #374151;background:#1f2937;
+                   color:#f1f5f9;font-size:0.93rem;font-weight:600;cursor:pointer;text-align:left;
+                   transition:all .15s">
+            🟡 <strong>Intermediate</strong> — I know the basics
+          </button>
+          <button onclick="obSelectLevel('advanced')" id="ob-lvl-advanced"
+            style="padding:14px;border-radius:12px;border:2px solid #374151;background:#1f2937;
+                   color:#f1f5f9;font-size:0.93rem;font-weight:600;cursor:pointer;text-align:left;
+                   transition:all .15s">
+            🔴 <strong>Advanced</strong> — I write Python regularly
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 2 — Goal -->
+      <div id="ob-step-2" style="display:none">
+        <div style="text-align:center;margin-bottom:16px">
+          <div style="font-size:2.5rem;margin-bottom:8px">🎯</div>
+          <h2 style="font-size:1.2rem;font-weight:800;color:#f1f5f9;margin-bottom:6px">What's your goal?</h2>
+          <p style="font-size:0.84rem;color:#94a3b8">Sir. Tega will tailor his teaching to your ambitions.</p>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <button onclick="obSelectGoal('career')"
+            style="padding:14px;border-radius:12px;border:2px solid #374151;background:#1f2937;
+                   color:#f1f5f9;font-size:0.93rem;font-weight:600;cursor:pointer;text-align:left;transition:all .15s">
+            💼 Get a tech job or freelance career
+          </button>
+          <button onclick="obSelectGoal('data')"
+            style="padding:14px;border-radius:12px;border:2px solid #374151;background:#1f2937;
+                   color:#f1f5f9;font-size:0.93rem;font-weight:600;cursor:pointer;text-align:left;transition:all .15s">
+            📊 Learn data science or machine learning
+          </button>
+          <button onclick="obSelectGoal('build')"
+            style="padding:14px;border-radius:12px;border:2px solid #374151;background:#1f2937;
+                   color:#f1f5f9;font-size:0.93rem;font-weight:600;cursor:pointer;text-align:left;transition:all .15s">
+            🚀 Build apps and automate tasks
+          </button>
+          <button onclick="obSelectGoal('general')"
+            style="padding:14px;border-radius:12px;border:2px solid #374151;background:#1f2937;
+                   color:#f1f5f9;font-size:0.93rem;font-weight:600;cursor:pointer;text-align:left;transition:all .15s">
+            📚 General Python knowledge
+          </button>
+        </div>
+      </div>
+
+      <!-- Step 3 — Start -->
+      <div id="ob-step-3" style="display:none">
+        <div style="text-align:center">
+          <div style="font-size:3rem;margin-bottom:12px">🎉</div>
+          <h2 style="font-size:1.2rem;font-weight:800;color:#f1f5f9;margin-bottom:10px">You're all set!</h2>
+          <p style="font-size:0.86rem;color:#94a3b8;line-height:1.6;margin-bottom:16px">
+            Sir. Tega is ready. You have <strong style="color:#34d399">20 free AI prompts today</strong>
+            to ask anything about Python.<br/><br/>
+            Your recommended first step is waiting in <strong style="color:#60a5fa">Courses</strong>.
+          </p>
+          <div style="background:#1f2937;border-radius:12px;padding:16px;margin-bottom:16px;text-align:left">
+            <div style="font-size:0.72rem;color:#6b7280;text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Quick start</div>
+            <div style="font-size:0.84rem;color:#e5e7eb;line-height:1.8">
+              💬 Type any Python question in the chat<br/>
+              📚 Browse courses in the Courses tab<br/>
+              🏆 Test yourself with the Quiz tab<br/>
+              💎 See all plans in the Plans tab
+            </div>
+          </div>
+          <button onclick="finishOnboarding()"
+            style="width:100%;background:linear-gradient(135deg,#3b82f6,#8b5cf6);
+                   color:#fff;border:none;border-radius:12px;padding:14px;
+                   font-size:0.95rem;font-weight:700;cursor:pointer;
+                   box-shadow:0 4px 20px rgba(59,130,246,0.4)">
+            🚀 Start Learning Now
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- ── Upgrade Modal ── -->
   <div id="upgrade-modal-overlay" onclick="if(event.target===this)closeUpgradeModal()"

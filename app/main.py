@@ -673,30 +673,52 @@ async def get_certificate(
         raise HTTPException(status_code=400, detail="Invalid certificate level.")
 
     profile = get_profile(learner_id)
+
+    # Certificate eligibility: check EITHER tier bundle purchase OR relevant courses completed
+    # This allows users who bought individual courses to earn certificates too.
     CERT_TIER_REQUIRED = {
         "basic":     {"tier1", "tier2", "tier3"},
         "advanced":  {"tier2", "tier3"},
         "executive": {"tier3"},
     }
-    allowed_tiers = CERT_TIER_REQUIRED.get(level, set())
-    if profile.tier not in allowed_tiers:
+    # Courses that count toward each certificate level
+    CERT_COURSES_REQUIRED = {
+        "basic":     {"python-fundamentals", "python-strings", "python-collections", "python-control-flow"},
+        "advanced":  {"python-functions-advanced", "python-oop", "python-modules-stdlib"},
+        "executive": {"python-dsa", "numpy-mastery", "pandas-mastery", "data-science-python",
+                      "machine-learning", "ai-prompt-engineering"},
+    }
+
+    allowed_tiers      = CERT_TIER_REQUIRED.get(level, set())
+    required_courses   = CERT_COURSES_REQUIRED.get(level, set())
+    completed          = set(profile.completed_projects)
+    # Also check individual course purchases
+    from app.db import has_course_purchase
+    purchased_courses = {c for c in required_courses if has_course_purchase(learner_id, c)}
+    courses_completed  = required_courses.issubset(completed | purchased_courses)
+
+    tier_ok     = profile.tier in allowed_tiers
+    courses_ok  = courses_completed
+
+    if not tier_ok and not courses_ok:
         tier_names = {
-            "basic":     "Pro Learner (Tier 1)",
-            "advanced":  "Career Builder (Tier 2)",
-            "executive": "Elite (Tier 3)",
+            "basic":     "Beginner Bundle (₦8,000) or complete all 4 beginner courses",
+            "advanced":  "Intermediate Bundle (₦15,000) or complete all 7 courses",
+            "executive": "Elite Bundle (₦35,000) or complete all advanced courses",
         }
         return HTMLResponse(
-            content=f"""<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Upgrade Required</title>
+            content=f"""<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Certificate Locked</title>
             <style>body{{font-family:sans-serif;background:#0f1117;color:#e2e8f0;display:flex;
             align-items:center;justify-content:center;height:100vh;text-align:center;padding:20px}}
-            .box{{background:#1a202c;border:1px solid #2d3748;border-radius:14px;padding:40px;max-width:420px}}
+            .box{{background:#1a202c;border:1px solid #2d3748;border-radius:14px;padding:40px;max-width:480px}}
             h2{{color:#f6ad55;margin-bottom:12px}}p{{color:#a0aec0;line-height:1.6;margin-bottom:20px}}
             a{{background:#3182ce;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;
-            font-weight:700}}</style></head>
-            <body><div class="box"><h2>🔒 Upgrade Required</h2>
-            <p>The <strong>{level.title()}</strong> Certificate requires
-            <strong>{tier_names.get(level,'Premium')}</strong>.</p>
-            <p>Upgrade to unlock certificates, unlimited prompts, and all courses.</p>
+            font-weight:700;display:inline-block;margin-top:8px}}</style></head>
+            <body><div class="box"><h2>🔒 Certificate Locked</h2>
+            <p>To earn the <strong>{level.title()} Certificate</strong>, either:</p>
+            <p>✅ Purchase the <strong>{tier_names.get(level,'appropriate plan')}</strong></p>
+            <p>— or —</p>
+            <p>📚 Complete all required courses in this track</p>
             <a href="https://paystack.shop/pay/vt_re4d3h52" target="_blank">💳 Upgrade Now</a>
             </div></body></html>""",
             status_code=402,
@@ -1036,7 +1058,7 @@ def _parse_quiz(raw: str) -> tuple[str, list[str]]:
 
 # Map Paystack plan name (lowercase) → internal tier
 _PAYSTACK_PLAN_TIER: dict[str, str] = {
-    # Tier bundles (new naming)
+    # Tier bundles (new naming — matches URL params)
     "beginner bundle":      "tier1",
     "intermediate bundle":  "tier2",
     "elite bundle":         "tier3",
