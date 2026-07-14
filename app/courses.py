@@ -477,10 +477,6 @@ PROJECT_PATHS: dict[str, list[str]] = {
         "pandas-mastery",
         "data-science-python",
         "python-databases",
-        "web-apis",
-        "prompt-engineering",
-        "ai-prompt-engineering",
-        "machine-learning",
     ],
 }
 
@@ -505,10 +501,10 @@ COURSE_CATALOG: dict[str, dict] = {
     "pandas-mastery":            {"price_ngn": 5500,  "tier_unlocks": ["tier3"],                 "category": "Data Science",         "badge": "🐼"},
     "data-science-python":       {"price_ngn": 6000,  "tier_unlocks": ["tier3"],                 "category": "Data Science",         "badge": "📊"},
     "python-databases":          {"price_ngn": 5000,  "tier_unlocks": ["tier3"],                 "category": "Advanced Python",      "badge": "🗄️"},
-    "web-apis":                  {"price_ngn": 5000,  "tier_unlocks": [],                         "category": "Advanced Python",      "badge": "🌐"},
-    "prompt-engineering":        {"price_ngn": 5000,  "tier_unlocks": [],                         "category": "AI & Prompting",       "badge": "🤖"},
-    "ai-prompt-engineering":     {"price_ngn": 15000, "tier_unlocks": [],                         "category": "AI & Prompting",       "badge": "🧠💬"},
-    "machine-learning":          {"price_ngn": 12000, "tier_unlocks": [],                         "category": "Machine Learning",     "badge": "🧠"},
+    "web-apis":                  {"price_ngn": 5000,  "tier_unlocks": ["tier3"],                 "category": "Advanced Python",      "badge": "🌐"},
+    "prompt-engineering":        {"price_ngn": 5000,  "tier_unlocks": ["tier3"],                 "category": "AI & Prompting",       "badge": "🤖"},
+    "ai-prompt-engineering":     {"price_ngn": 15000, "tier_unlocks": ["tier3"],                 "category": "AI & Prompting",       "badge": "🧠💬"},
+    "machine-learning":          {"price_ngn": 12000, "tier_unlocks": ["tier3"],                 "category": "Machine Learning",     "badge": "🧠"},
 }
 
 # ---------------------------------------------------------------------------
@@ -547,26 +543,27 @@ PROMPT_PLANS: dict[str, dict] = {
 TIER_PLANS: dict[str, dict] = {
     "tier1": {
         "name":         "Beginner Bundle",
-        "price_ngn":    35000,
-        "description":  "Unlock any ONE Beginner course of your choice (Python Fundamentals, Strings, Collections, or Control Flow).",
+        "price_ngn":    8000,
+        "description":  "Unlock ALL 4 Beginner courses: Fundamentals, Strings, Collections, Control Flow.",
         "eligible_courses": ["python-fundamentals","python-strings","python-collections","python-control-flow"],
-        "unlocks_count": 1,
+        "unlocks_count": 4,
         "paystack_url": "https://paystack.shop/pay/vt_re4d3h52",
     },
     "tier2": {
         "name":         "Intermediate Bundle",
-        "price_ngn":    55000,
-        "description":  "Unlock any ONE Intermediate course of your choice (Functions, OOP, or Standard Library).",
-        "eligible_courses": ["python-functions-advanced","python-oop","python-modules-stdlib"],
-        "unlocks_count": 1,
+        "price_ngn":    15000,
+        "description":  "Unlock ALL 7 Beginner + Intermediate courses.",
+        "eligible_courses": ["python-fundamentals","python-strings","python-collections","python-control-flow",
+                             "python-functions-advanced","python-oop","python-modules-stdlib"],
+        "unlocks_count": 7,
         "paystack_url": "https://paystack.shop/pay/vt_re4d3h52",
     },
     "tier3": {
         "name":         "Elite Bundle",
-        "price_ngn":    100000,
-        "description":  "Unlock any ONE Advanced course of your choice (DSA, NumPy, Pandas, Data Science, or Databases).",
-        "eligible_courses": ["python-dsa","numpy-mastery","pandas-mastery","data-science-python","python-databases"],
-        "unlocks_count": 1,
+        "price_ngn":    35000,
+        "description":  "Unlock ALL 16 courses including ML, AI, DSA, Data Science, Web APIs and more.",
+        "eligible_courses": list(COURSE_CATALOG.keys()),
+        "unlocks_count": 16,
         "paystack_url": "https://paystack.shop/pay/vt_re4d3h52",
     },
 }

@@ -9,7 +9,7 @@
  *    Caching cross-origin URLs would violate CSP connect-src and cause console errors.
  */
 
-const CACHE_VERSION = 'mypy-tutor-v8';
+const CACHE_VERSION = 'mypy-tutor-v9';
 const OFFLINE_URL   = '/';
 
 // Only pre-cache same-origin assets we fully control
