@@ -9,7 +9,7 @@
  *    Caching cross-origin URLs would violate CSP connect-src and cause console errors.
  */
 
-const CACHE_VERSION = 'mypy-tutor-v7';
+const CACHE_VERSION = 'mypy-tutor-v8';
 const OFFLINE_URL   = '/';
 
 // Only pre-cache same-origin assets we fully control
@@ -28,7 +28,7 @@ const API_PREFIXES = [
   '/health', '/exercise', '/feedback', '/auth', '/certificate',
   '/courses', '/referral', '/coupons', '/invoices', '/conversations',
   '/assignments', '/lessons', '/admin', '/webhooks', '/supabase',
-  '/history',
+  '/history', '/learner',
 ];
 
 // Domains the SW must NEVER intercept — pass straight through to the browser

@@ -186,17 +186,22 @@ async def chat(request: ChatRequest, req: Request,
     system_prompt = build_system_prompt(intent, topic=topic, level=request.level, is_gap_topic=is_gap)
 
     # ── Resolve conversation_id ──────────────────────────────────────────
-    conv_id = request.conversation_id or sb_get_or_create_conversation(request.learner_id)
-    if not conv_id:
-        conv_id = f"local_{request.learner_id}"
+    # Use client-provided conv_id if present; otherwise fall back to a
+    # local synthetic ID. Do NOT call sb_get_or_create_conversation here —
+    # it makes a synchronous network call to Supabase which blocks the
+    # event loop and adds 200-400ms latency to every message.
+    conv_id = request.conversation_id or f"local_{request.learner_id}"
 
     # ── Build message list ───────────────────────────────────────────────
-    # If client sends no history AND Supabase is up, load last 10 turns
-    # so Sir. Tega continues exactly where the learner left off.
+    # If client sends no history AND Supabase is up AND we have a real conv_id
+    # (not the synthetic local_ one), load last 6 turns so Sir. Tega has context.
     history_messages = [{"role": m.role, "content": m.content} for m in request.history]
-    if not history_messages and sb_enabled():
-        sb_history = sb_load_messages(conv_id, limit=10)
-        history_messages = [{"role": m["role"], "content": m["content"]} for m in sb_history]
+    if not history_messages and sb_enabled() and request.conversation_id and not request.conversation_id.startswith("local_"):
+        try:
+            sb_history = sb_load_messages(request.conversation_id, limit=6)
+            history_messages = [{"role": m["role"], "content": m["content"]} for m in sb_history]
+        except Exception:
+            pass  # non-fatal — continue without history
     history_messages.append({"role": "user", "content": request.message})
 
     try:
@@ -2431,26 +2436,29 @@ async def get_conversation(learner_id: str, conversation_id: str,
 
 
 @app.post("/conversations/{learner_id}/new")
-async def new_conversation(learner_id: str) -> dict:
-    """Start a fresh conversation (clears context window for Sir. Tega)."""
+async def new_conversation(learner_id: str, background_tasks: BackgroundTasks) -> dict:
+    """Start a fresh conversation. Returns immediately with a local ID;
+    Supabase insert runs in background so it never blocks the response."""
     validate_learner_id(learner_id)
-    if sb_enabled():
-        import secrets as _sec
-        conv_id = _sec.token_hex(16)
-        from app.supabase_client import get_supabase
-        sb = get_supabase()
-        if sb:
-            try:
-                sb.table("conversations").insert({
-                    "id": conv_id, "learner_id": learner_id,
-                    "title": "New Conversation"
-                }).execute()
-            except Exception as exc:
-                logger.warning("New conversation insert failed: %s", exc)
-                conv_id = f"local_{_sec.token_hex(8)}"
-        return {"conversation_id": conv_id, "learner_id": learner_id}
     import secrets as _sec
-    return {"conversation_id": f"local_{_sec.token_hex(8)}", "learner_id": learner_id}
+    conv_id = f"local_{_sec.token_hex(8)}"
+    # Fire-and-forget Supabase insert — does NOT block the response
+    if sb_enabled():
+        real_id = _sec.token_hex(16)
+        def _insert_conv():
+            try:
+                from app.supabase_client import get_supabase
+                sb = get_supabase()
+                if sb:
+                    sb.table("conversations").insert({
+                        "id": real_id, "learner_id": learner_id,
+                        "title": "New Conversation"
+                    }).execute()
+            except Exception as exc:
+                logger.debug("Background conversation insert failed: %s", exc)
+        background_tasks.add_task(_insert_conv)
+        conv_id = real_id
+    return {"conversation_id": conv_id, "learner_id": learner_id}
 
 
 # ---------------------------------------------------------------------------
