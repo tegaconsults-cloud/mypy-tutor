@@ -1,0 +1,17 @@
+User-agent: *
+Allow: /
+
+# Landing pages
+Allow: /learn-python/
+Allow: /python-course/
+Allow: /python-for-beginners/
+Allow: /ai-python-tutor/
+Allow: /python-certification/
+Allow: /python-interview-questions/
+Allow: /python-quizzes/
+
+# Block admin panel from indexing
+Disallow: /admin.html
+Disallow: /admin
+
+Sitemap: https://mypytutor.onrender.com/sitemap.xml

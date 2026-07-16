@@ -1,0 +1,71 @@
+{
+  "name": "MyPy Tutor",
+  "short_name": "MyPy Tutor",
+  "description": "Your best AI/ML & Python Tutor — learn Python, take quizzes, earn certificates. Powered by Teamsamikoko Global Academy.",
+  "start_url": "/",
+  "id": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "orientation": "any",
+  "background_color": "#0f1117",
+  "theme_color": "#3182ce",
+  "lang": "en",
+  "scope": "/",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/icons/logo-mpt.png",
+      "sizes": "300x300",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": ["education", "productivity"],
+  "shortcuts": [
+    {
+      "name": "Chat with Sir. Tega",
+      "short_name": "Chat",
+      "description": "Ask a Python question",
+      "url": "/?panel=chat",
+      "icons": [{ "src": "/icons/logo-mpt.png", "sizes": "300x300" }]
+    },
+    {
+      "name": "Take a Quiz",
+      "short_name": "Quiz",
+      "description": "Test your Python knowledge",
+      "url": "/?panel=quiz",
+      "icons": [{ "src": "/icons/logo-mpt.png", "sizes": "300x300" }]
+    },
+    {
+      "name": "My Progress",
+      "short_name": "Progress",
+      "description": "View your learning progress",
+      "url": "/?panel=progress",
+      "icons": [{ "src": "/icons/logo-mpt.png", "sizes": "300x300" }]
+    }
+  ]
+}

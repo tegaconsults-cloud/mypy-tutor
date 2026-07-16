@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Python Interview Questions – Practice & Prepare | MyPy Tutor</title>
+  <meta name="description" content="Practice real Python interview questions with Sir. Tega, your AI tutor. Get explanations, code examples, and tailored feedback to help you ace your next technical interview."/>
+  <meta name="keywords" content="python interview questions, python coding interview, python technical interview, python interview prep, python interview practice, python interview answers"/>
+  <meta name="robots" content="index, follow"/>
+  <link rel="canonical" href="https://mypytutor.onrender.com/python-interview-questions/"/>
+  <meta property="og:title"       content="Python Interview Questions – Practice & Prepare | MyPy Tutor"/>
+  <meta property="og:description" content="Practice Python interview questions with an AI tutor. Get instant explanations and code examples to ace your technical interview."/>
+  <meta property="og:url"         content="https://mypytutor.onrender.com/python-interview-questions/"/>
+  <meta property="og:image"       content="https://mypytutor.onrender.com/icons/logo-mpt.png"/>
+  <meta property="og:type"        content="website"/>
+  <meta name="twitter:card"       content="summary_large_image"/>
+  <meta name="twitter:title"      content="Python Interview Questions | MyPy Tutor"/>
+  <meta name="twitter:description" content="Practice Python interview questions with AI feedback. Free to start."/>
+  <meta name="twitter:image"      content="https://mypytutor.onrender.com/icons/logo-mpt.png"/>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico"/>
+  <script type="application/ld+json">
+  {
+    "@context":"https://schema.org",
+    "@type":"FAQPage",
+    "mainEntity":[
+      {"@type":"Question","name":"What is the difference between a list and a tuple in Python?","acceptedAnswer":{"@type":"Answer","text":"Lists are mutable (can be changed), while tuples are immutable (cannot be changed after creation). Tuples are faster and use less memory."}},
+      {"@type":"Question","name":"What are Python decorators?","acceptedAnswer":{"@type":"Answer","text":"Decorators are functions that modify or extend the behaviour of other functions without changing their source code. They use the @syntax."}},
+      {"@type":"Question","name":"What is the difference between deep copy and shallow copy?","acceptedAnswer":{"@type":"Answer","text":"A shallow copy creates a new object but references the same nested objects. A deep copy creates a fully independent copy including nested objects."}},
+      {"@type":"Question","name":"What is a Python generator?","acceptedAnswer":{"@type":"Answer","text":"A generator is a function that uses yield instead of return to produce values lazily, one at a time, conserving memory."}},
+      {"@type":"Question","name":"Explain GIL in Python","acceptedAnswer":{"@type":"Answer","text":"The Global Interpreter Lock (GIL) allows only one thread to execute Python bytecode at a time, preventing true multi-threading for CPU-bound tasks."}}
+    ]
+  }
+  </script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh}
+    .hero{max-width:800px;margin:0 auto;padding:60px 24px 32px;text-align:center}
+    .badge{display:inline-block;background:rgba(239,68,68,0.1);color:#fca5a5;border:1px solid rgba(239,68,68,0.25);border-radius:999px;padding:4px 14px;font-size:.8rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;margin-bottom:20px}
+    h1{font-size:clamp(1.8rem,5vw,2.8rem);font-weight:800;line-height:1.2;color:#f1f5f9;margin-bottom:14px}
+    h1 span{background:linear-gradient(135deg,#fca5a5,#f97316);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+    .sub{font-size:1rem;color:#94a3b8;line-height:1.7;max-width:600px;margin:0 auto 28px}
+    .cta-row{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:40px}
+    .cta-primary{background:linear-gradient(135deg,#dc2626,#ef4444);color:#fff;text-decoration:none;padding:13px 30px;border-radius:12px;font-weight:700;font-size:.95rem}
+    .cta-primary:hover{opacity:.88}
+    .faqs{max-width:720px;margin:0 auto;padding:0 24px 40px;display:flex;flex-direction:column;gap:12px}
+    .faq{background:#111827;border:1px solid #1f2937;border-radius:14px;padding:20px}
+    .faq h3{font-size:.9rem;font-weight:700;color:#f1f5f9;margin-bottom:8px}
+    .faq p{font-size:.8rem;color:#94a3b8;line-height:1.65}
+    .faq code{background:rgba(255,255,255,0.07);color:#fdba74;padding:1px 6px;border-radius:4px;font-family:Consolas,monospace;font-size:.82em}
+    .ai-prompt{max-width:720px;margin:0 auto;padding:0 24px 16px}
+    .prompt-box{background:rgba(59,130,246,0.06);border:1px solid rgba(59,130,246,0.2);border-radius:14px;padding:20px;text-align:center}
+    .prompt-box p{font-size:.88rem;color:#94a3b8;line-height:1.6;margin-bottom:14px}
+    .prompt-box a{background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#fff;text-decoration:none;padding:11px 26px;border-radius:10px;font-weight:700;font-size:.88rem}
+    .back{text-align:center;padding:20px 0 40px}
+    .back a{color:#60a5fa;text-decoration:none;font-size:.88rem}
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <div class="badge">💼 Interview Prep</div>
+    <h1>Python <span>Interview Questions</span></h1>
+    <p class="sub">Practice the questions that actually come up in Python technical interviews. Ask Sir. Tega to explain any concept in detail, write example code, or quiz you on the spot.</p>
+    <div class="cta-row">
+      <a href="/" class="cta-primary">🎯 Practice with Sir. Tega</a>
+    </div>
+  </div>
+  <div class="faqs">
+    <div class="faq"><h3>What is the difference between a list and a tuple?</h3><p>Lists are <strong>mutable</strong> — you can change, add, or remove elements. Tuples are <strong>immutable</strong> — once created they cannot be modified. Tuples are faster and use less memory, making them ideal for fixed data.</p></div>
+    <div class="faq"><h3>What are decorators in Python?</h3><p>Decorators are functions that <strong>wrap another function</strong> to extend its behaviour without modifying its source code. They use the <code>@decorator_name</code> syntax. Common examples: <code>@staticmethod</code>, <code>@classmethod</code>, <code>@property</code>.</p></div>
+    <div class="faq"><h3>Explain the difference between deep copy and shallow copy.</h3><p>A <strong>shallow copy</strong> creates a new object but copies references to nested objects. A <strong>deep copy</strong> (via <code>copy.deepcopy()</code>) creates a completely independent clone, including all nested objects.</p></div>
+    <div class="faq"><h3>What is a generator and how does it differ from a list?</h3><p>A generator uses <code>yield</code> to produce values <strong>lazily</strong>, one at a time, without storing them all in memory. This makes generators ideal for large datasets. A list stores all values upfront in memory.</p></div>
+    <div class="faq"><h3>What is the GIL and why does it matter?</h3><p>The <strong>Global Interpreter Lock</strong> allows only one thread to execute Python bytecode at a time. This limits true multi-threading for CPU-bound tasks but doesn't affect I/O-bound tasks. Use <code>multiprocessing</code> for CPU parallelism.</p></div>
+    <div class="faq"><h3>What is the difference between <code>__str__</code> and <code>__repr__</code>?</h3><p><code>__str__</code> is called by <code>print()</code> and <code>str()</code> — intended for human-readable output. <code>__repr__</code> is meant for developers and should ideally return a string that can reproduce the object.</p></div>
+  </div>
+  <div class="ai-prompt">
+    <div class="prompt-box">
+      <p>Want to practice more? Ask Sir. Tega any Python interview question — he'll explain the concept, show code examples, and quiz you on the spot.</p>
+      <a href="/">💬 Ask Sir. Tega Now →</a>
+    </div>
+  </div>
+  <div class="back"><a href="/">← Back to MyPy Tutor</a></div>
+</body>
+</html>
