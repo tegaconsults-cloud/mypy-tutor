@@ -185,7 +185,17 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
     <h2> MyPy Tutor Admin</h2>
     <p>Sign in with your admin credentials</p>
     <div><label>Email</label><input id="lemail" type="email" placeholder="Admin email" autocomplete="email"/></div>
-    <div><label>Password</label><input id="lpass" type="password" placeholder="Password" autocomplete="current-password"/></div>
+    <div><label>Password</label>
+      <div style="position:relative;display:flex;align-items:center">
+        <input id="lpass" type="password" placeholder="Password" autocomplete="current-password" style="padding-right:44px"/>
+        <button type="button" onclick="toggleAdminPw()"
+          id="lpass-eye"
+          style="position:absolute;right:10px;background:transparent;border:none;
+                 color:var(--muted);cursor:pointer;font-size:1rem;padding:4px;line-height:1;
+                 transition:color .15s"
+          aria-label="Show password">👁</button>
+      </div>
+    </div>
     <button class="btn" id="lbtn" onclick="doLogin()">Sign In</button>
     <div id="lerr" class="alert-r" style="display:none">Invalid credentials.</div>
   </div>
@@ -883,6 +893,16 @@ async function loadFiles(){
 
 // ── Init ───────────────────────────────────────────────────────────────────
 document.getElementById('lpass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+
+function toggleAdminPw() {
+  const inp = document.getElementById('lpass');
+  const btn = document.getElementById('lpass-eye');
+  const show = inp.type === 'password';
+  inp.type = show ? 'text' : 'password';
+  btn.textContent = show ? '🙈' : '👁';
+  btn.style.color = show ? '#60a5fa' : '';
+}
+
 if(token) showApp(); else {
   document.getElementById('admin-email-lbl').textContent=ADMIN_EMAIL;
 }

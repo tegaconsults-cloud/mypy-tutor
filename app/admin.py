@@ -26,7 +26,7 @@ def _get_admin_email() -> str:
     return os.getenv("ADMIN_EMAIL", "tega.com.ng@gmail.com")
 
 def _get_admin_password() -> str:
-    return os.getenv("ADMIN_PASSWORD", "")
+    return os.getenv("ADMIN_PASSWORD", "Teamsamikoko@2024")
 
 def _get_admin_serializer() -> "URLSafeTimedSerializer":
     secret = os.getenv("SESSION_SECRET", "change-me-in-production-32-chars-min")
