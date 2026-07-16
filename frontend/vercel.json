@@ -1,0 +1,47 @@
+{
+  "cleanUrls": true,
+  "trailingSlash": true,
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "https://mypytutor.onrender.com/:path*" }
+  ],
+  "redirects": [
+    { "source": "/learn-python",              "destination": "/learn-python/",              "permanent": true },
+    { "source": "/python-course",             "destination": "/python-course/",             "permanent": true },
+    { "source": "/python-for-beginners",      "destination": "/python-for-beginners/",      "permanent": true },
+    { "source": "/ai-python-tutor",           "destination": "/ai-python-tutor/",           "permanent": true },
+    { "source": "/python-certification",      "destination": "/python-certification/",      "permanent": true },
+    { "source": "/python-interview-questions","destination": "/python-interview-questions/","permanent": true },
+    { "source": "/python-quizzes",            "destination": "/python-quizzes/",            "permanent": true }
+  ],
+  "headers": [
+    {
+      "source": "/sw.js",
+      "headers": [
+        { "key": "Cache-Control",        "value": "no-cache, no-store, must-revalidate" },
+        { "key": "Service-Worker-Allowed","value": "/" }
+      ]
+    },
+    {
+      "source": "/sitemap.xml",
+      "headers": [
+        { "key": "Content-Type",  "value": "application/xml" },
+        { "key": "Cache-Control", "value": "public, max-age=86400" }
+      ]
+    },
+    {
+      "source": "/robots.txt",
+      "headers": [
+        { "key": "Content-Type",  "value": "text/plain" },
+        { "key": "Cache-Control", "value": "public, max-age=86400" }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options",        "value": "DENY" },
+        { "key": "Referrer-Policy",        "value": "strict-origin-when-cross-origin" }
+      ]
+    }
+  ]
+}

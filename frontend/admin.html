@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
@@ -485,12 +485,13 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
 <div id="toast"></div>
 
 <script>
+const API_BASE = 'https://mypytutor.onrender.com';
 const TK = 'mpt_admin_token';
 let token = localStorage.getItem(TK) || '';
 const ADMIN_EMAIL = localStorage.getItem('mpt_admin_email') || '';
 
 function api(path, opts={}) {
-  return fetch(path, {...opts, headers:{'Content-Type':'application/json','X-Admin-Token':token,...(opts.headers||{})}});
+  return fetch(API_BASE + path, {...opts, headers:{'Content-Type':'application/json','X-Admin-Token':token,...(opts.headers||{})}});
 }
 function toast(msg, ok=true) {
   const t=document.getElementById('toast');
@@ -505,7 +506,7 @@ async function doLogin() {
   const btn=document.getElementById('lbtn');
   btn.disabled=true; btn.textContent='Signing in…';
   document.getElementById('lerr').style.display='none';
-  const r=await fetch('/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},
+  const r=await fetch(API_BASE+'/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({email,password:pass})});
   const d=await r.json();
   if(!r.ok){document.getElementById('lerr').style.display='block';btn.disabled=false;btn.textContent='Sign In';return;}
@@ -667,7 +668,7 @@ async function loadCerts(){
   const r=await api('/admin/certificates'); const d=await r.json();
   document.getElementById('certs-body').innerHTML=(d.certificates||[]).map(c=>{
     const lc={executive:'gr',advanced:'gy',basic:'gg'}[c.level]||'gg';
-    const url=`/certificate/${c.level}?name=${encodeURIComponent(c.learner_name)}&learner_id=${c.learner_id}`;
+    const url=`${API_BASE}/certificate/${c.level}?name=${encodeURIComponent(c.learner_name)}&learner_id=${c.learner_id}`;
     return `<tr><td>${c.cert_id}</td><td>${c.learner_name}</td><td style="font-size:.72rem">${c.learner_id}</td>
       <td><span class="badge ${lc}">${c.level}</span></td>
       <td>${c.issued_at.split('T')[0]}</td>
