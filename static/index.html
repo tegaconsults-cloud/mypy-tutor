@@ -2147,83 +2147,123 @@
     // ── Courses panel ─────────────────────────────────────────────────────────
     async function refreshCourses() {
       try {
-        const lid     = getLearnerId();
-        const profile = await fetch(`/progress/${lid}`).then(r => r.json());
-        const level   = profile.level || getLevel();
+        const lid = getLearnerId();
 
-        // Fetch courses and learner access in parallel
-        const [courseData, accessData] = await Promise.all([
-          fetch(`/courses?level=${level}`).then(r => r.json()),
+        // Fetch catalog (all courses with badges/categories/prices) + learner state in parallel
+        const [catalogData, profileData, accessData] = await Promise.all([
+          fetch('/courses/catalog').then(r => r.json()),
+          fetch(`/progress/${lid}`).then(r => r.json()),
           lid !== 'default' ? fetch(`/learner/courses/${lid}`).then(r => r.ok ? r.json() : null) : Promise.resolve(null),
         ]);
 
+        const profile      = profileData || {};
         const completedSet = new Set(profile.completed_projects || []);
         const accessMap    = {};
         if (accessData && accessData.courses) {
           accessData.courses.forEach(c => { accessMap[c.name] = c; });
         }
 
+        // Active course bar
         const bar = document.getElementById('active-course-bar');
         if (profile.current_course) {
           bar.classList.add('visible');
           document.getElementById('active-course-title').textContent =
             profile.current_course.replace(/-/g,' ').replace(/\b\w/g,l=>l.toUpperCase());
-          const totalSteps = courseData.courses.find(c=>c.name===profile.current_course)?.total_steps || '?';
+          const activeCourse = (catalogData.courses||[]).find(c=>c.name===profile.current_course);
+          const totalSteps = activeCourse?.total_steps || '?';
           document.getElementById('active-course-step').textContent =
             `Step ${profile.current_course_step} of ${totalSteps}`;
         } else {
           bar.classList.remove('visible');
         }
 
+        // Group all catalog courses by category
+        const byCat = {};
+        (catalogData.courses || []).forEach(c => {
+          if (!byCat[c.category]) byCat[c.category] = [];
+          byCat[c.category].push(c);
+        });
+        const catOrder = ['Python Basics','Intermediate Python','Advanced Python','Data Science','Machine Learning','AI & Prompting'];
+
         const cl = document.getElementById('course-list');
         cl.innerHTML = '';
-        courseData.courses.forEach(c => {
-          const isActive     = profile.current_course === c.name;
-          const isDone       = completedSet.has(c.name);
-          const access       = accessMap[c.name];
-          const isUnlocked   = access && access.unlocked;
-          const stepProgress = isActive ? profile.current_course_step : (isDone ? c.total_steps : 0);
-          const pct          = c.total_steps > 0 ? Math.round((stepProgress / c.total_steps) * 100) : 0;
 
-          const statusLabel  = isDone
-            ? '<span style="background:#276749;color:#68d391;border-radius:999px;padding:2px 9px;font-size:.7rem;font-weight:700">✅ Completed</span>'
-            : isActive
-              ? '<span style="background:#1a365d;color:#90cdf4;border-radius:999px;padding:2px 9px;font-size:.7rem;font-weight:700">▶ In Progress</span>'
+        catOrder.forEach(cat => {
+          const items = byCat[cat] || [];
+          if (!items.length) return;
+
+          // Category heading
+          const heading = document.createElement('div');
+          heading.style.cssText = 'font-size:.65rem;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#4a5568;margin-top:10px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #2d3748';
+          heading.textContent = cat;
+          cl.appendChild(heading);
+
+          items.forEach(c => {
+            const isActive   = profile.current_course === c.name;
+            const isDone     = completedSet.has(c.name);
+            const access     = accessMap[c.name];
+            const isUnlocked = access && access.unlocked;
+            const stepProgress = isActive ? (profile.current_course_step || 0) : (isDone ? c.total_steps : 0);
+            const pct          = c.total_steps > 0 ? Math.round((stepProgress / c.total_steps) * 100) : 0;
+            const viaLabel     = isUnlocked ? (access.via === 'tier' ? '✅ Bundle' : '✅ Purchased') : '';
+
+            const statusLabel = isDone
+              ? '<span style="background:#276749;color:#68d391;border-radius:999px;padding:2px 9px;font-size:.7rem;font-weight:700">✅ Completed</span>'
+              : isActive
+                ? '<span style="background:#1a365d;color:#90cdf4;border-radius:999px;padding:2px 9px;font-size:.7rem;font-weight:700">▶ In Progress</span>'
+                : '';
+
+            const progressBar = (isActive || isDone)
+              ? `<div style="height:4px;background:#2d3748;border-radius:99px;margin-top:6px;overflow:hidden">
+                   <div style="height:100%;width:${pct}%;background:${isDone?'#68d391':'#3182ce'};border-radius:99px;transition:width .4s"></div>
+                 </div>
+                 <div style="font-size:.68rem;color:#4a5568;margin-top:2px">Step ${stepProgress}/${c.total_steps} · ${pct}%</div>`
               : '';
 
-          const progressBar  = (isActive || isDone)
-            ? `<div style="height:4px;background:#2d3748;border-radius:99px;margin-top:6px;overflow:hidden">
-                 <div style="height:100%;width:${pct}%;background:${isDone?'#68d391':'#3182ce'};border-radius:99px;transition:width .4s"></div>
-               </div>
-               <div style="font-size:.68rem;color:#4a5568;margin-top:2px">Step ${stepProgress}/${c.total_steps} · ${pct}%</div>`
-            : '';
+            const card = document.createElement('div');
+            card.className = 'course-card';
+            card.innerHTML = `
+              <div class="course-info">
+                <h4 style="display:flex;align-items:center;gap:7px">
+                  <span style="font-size:1.2rem">${c.badge}</span>
+                  ${c.display_name}
+                  ${statusLabel}
+                </h4>
+                <p>${c.description}</p>
+                <p style="margin-top:3px;font-size:.73rem;color:#4a5568">${c.total_steps} steps</p>
+                ${progressBar}
+              </div>
+              <div class="course-meta">
+                <span class="level-pill level-${c.level}">${c.level}</span>
+                ${isUnlocked
+                  ? `<span style="font-size:.7rem;font-weight:700;color:#68d391">${viaLabel}</span>`
+                  : lid !== 'default'
+                    ? `<span style="font-size:.75rem;font-weight:700;color:#e2e8f0">₦${c.price_ngn.toLocaleString()}</span>`
+                    : ''
+                }
+                ${isUnlocked
+                  ? `<button class="enrol-btn" data-course="${c.name}">
+                       ${isDone ? '🔄 Redo' : isActive ? '▶ Continue' : '▶ Start'}
+                     </button>`
+                  : `<a href="${c.paystack_url}" target="_blank" rel="noopener"
+                       style="display:block;text-align:center;background:#2b6cb0;color:#fff;
+                              text-decoration:none;font-weight:700;font-size:.8rem;
+                              padding:8px 14px;border-radius:8px;white-space:nowrap">
+                       💳 Buy
+                     </a>`
+                }
+              </div>`;
 
-          const lockBadge    = !isUnlocked && lid !== 'default'
-            ? '<span style="font-size:.7rem;color:#718096">🔒 Locked</span>'
-            : '';
-
-          const card = document.createElement('div');
-          card.className = 'course-card';
-          card.innerHTML = `
-            <div class="course-info">
-              <h4 style="display:flex;align-items:center;gap:7px">
-                ${c.name.replace(/-/g,' ').replace(/\b\w/g,l=>l.toUpperCase())}
-                ${statusLabel}
-              </h4>
-              <p>${c.description}</p>
-              <p style="margin-top:3px;font-size:.73rem;color:#4a5568">${c.total_steps} steps</p>
-              ${progressBar}
-            </div>
-            <div class="course-meta">
-              <span class="level-pill level-${c.level}">${c.level}</span>
-              ${lockBadge}
-              <button class="enrol-btn" data-course="${c.name}" style="${!isUnlocked&&lid!=='default'?'opacity:.55':''}">
-                ${isDone ? '🔄 Redo' : isActive ? '▶ Continue' : '▶ Start'}
-              </button>
-            </div>`;
-          card.querySelector('.enrol-btn').addEventListener('click', () => startCourse(c.name));
-          cl.appendChild(card);
+            if (isUnlocked) {
+              card.querySelector('.enrol-btn').addEventListener('click', () => startCourse(c.name));
+            }
+            cl.appendChild(card);
+          });
         });
+
+        if (!cl.children.length) {
+          cl.innerHTML = '<p style="color:#718096;font-size:.84rem">No courses available.</p>';
+        }
       } catch (_) {}
     }
 

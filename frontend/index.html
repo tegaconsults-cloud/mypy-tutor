@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -12,7 +12,7 @@
   <meta name="robots" content="index, follow" />
   <link rel="canonical" href="https://mypytutor.onrender.com/" />
 
-  <!-- Open Graph -->
+  <!-- Open Graph (Facebook / WhatsApp / LinkedIn) -->
   <meta property="og:type"        content="website" />
   <meta property="og:url"         content="https://mypytutor.onrender.com/" />
   <meta property="og:title"       content="MyPy Tutor – Learn Python with Your AI Tutor | Interactive Coding Courses" />
@@ -27,7 +27,7 @@
   <meta name="twitter:description" content="Learn Python faster with MyPy Tutor — AI-powered lessons, quizzes, certificates, and real-time coding help." />
   <meta name="twitter:image"       content="https://mypytutor.onrender.com/icons/logo-mpt.png" />
 
-  <!-- Structured Data — WebSite -->
+  <!-- Structured Data — WebSite + SearchAction -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -79,7 +79,7 @@
   }
   </script>
 
-  <!-- Structured Data — SoftwareApplication -->
+  <!-- Structured Data — SoftwareApplication (PWA) -->
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -96,7 +96,6 @@
   <!-- PWA -->
   <link rel="manifest" href="/manifest.json" />
   <meta name="theme-color" content="#3182ce" />
-  <meta name="description" content="Learn Python faster with MyPy Tutor, an AI-powered coding tutor featuring interactive lessons, quizzes, real-time assistance, certificates, and personalized learning." />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -1618,17 +1617,11 @@
 
   <script>
     // ── Config ────────────────────────────────────────────────────────────────
-    // API_BASE: points to the FastAPI backend on Render.
-    // On Vercel the /api/* rewrite proxies to the backend, but we can also
-    // call the backend directly via its Render URL to skip Vercel's 10 s
-    // serverless timeout on free plans. Change to '' to use the rewrite proxy.
     const API_BASE    = 'https://mypytutor.onrender.com';
+    function apiUrl(path) { return API_BASE + path; }
     const LEARNER_ID  = 'default';
     const STORAGE_KEY = 'mypy_tutor_history_v2';
     const LEVEL_KEY   = 'mypy_tutor_level';
-
-    // Helper: prefix every backend fetch with API_BASE
-    function apiUrl(path) { return API_BASE + path; }
 
     // ── State ─────────────────────────────────────────────────────────────────
     let history = [];
@@ -1743,7 +1736,7 @@
     // ── Topics ────────────────────────────────────────────────────────────────
     async function loadTopics() {
       try {
-        const res  = await fetch(apiUrl('/topics');
+        const res  = await fetch(apiUrl('/topics'));
         const data = await res.json();
         const sidebarSel = document.getElementById('topic-select-mobile');
         const quizSel    = document.getElementById('quiz-topic-select');
@@ -1816,7 +1809,7 @@
       if (!force && _progressCache && (now - _progressCacheTs) < _PROGRESS_TTL) {
         return _progressCache;
       }
-      const res = await fetch(apiUrl($(fetch(apiUrl(/progress/${getLearnerId()}).Groups[1].Value)));
+      const res = await fetch(apiUrl(`/progress/${getLearnerId()}`);
       if (!res.ok) return _progressCache || null;
       _progressCache  = await res.json();
       _progressCacheTs = now;
@@ -1886,14 +1879,14 @@
       }
 
       try {
-        const res  = await fetch(apiUrl($(fetch(apiUrl(/auth/profile/${lid}).Groups[1].Value)));
+        const res  = await fetch(apiUrl(`/auth/profile/${lid}`);
         if (!res.ok) return;
         const data = await res.json();
         _profileCache = data;
         _populateProfileUI(data);
 
         // Load invoices
-        const invRes = await fetch(apiUrl($(fetch(apiUrl(/invoices/${lid}).Groups[1].Value)));
+        const invRes = await fetch(apiUrl(`/invoices/${lid}`);
         if (invRes.ok) {
           const invData = await invRes.json();
           const invEl   = document.getElementById('prof-invoices-list');
@@ -1977,7 +1970,7 @@
       }
 
       try {
-        const res  = await fetch(apiUrl($(fetch(apiUrl(/auth/profile/${lid}).Groups[1].Value)), {
+        const res  = await fetch(apiUrl(`/auth/profile/${lid}`, {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify(body),
@@ -2035,7 +2028,7 @@
         // Save to profile as photo_url (base64 stored in user_profiles)
         const lid = getLearnerId();
         if (lid === 'default') return;
-        fetch(apiUrl($(fetch(apiUrl(/auth/profile/${lid}).Groups[1].Value)), {
+        fetch(apiUrl(`/auth/profile/${lid}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -2069,7 +2062,7 @@
       const btn = document.getElementById('prof-pw-btn');
       if (btn) { btn.disabled=true; btn.textContent='Sending…'; }
       try {
-        await fetch(apiUrl('/auth/forgot-password', {
+        await fetch(apiUrl('/auth/forgot-password'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email }),
@@ -2156,83 +2149,123 @@
     // ── Courses panel ─────────────────────────────────────────────────────────
     async function refreshCourses() {
       try {
-        const lid     = getLearnerId();
-        const profile = await fetch(apiUrl($(fetch(apiUrl(/progress/${lid}).Groups[1].Value))).then(r => r.json());
-        const level   = profile.level || getLevel();
+        const lid = getLearnerId();
 
-        // Fetch courses and learner access in parallel
-        const [courseData, accessData] = await Promise.all([
-          fetch(apiUrl($(fetch(apiUrl(/courses?level=${level}).Groups[1].Value))).then(r => r.json()),
-          lid !== 'default' ? fetch(apiUrl($(fetch(apiUrl(/learner/courses/${lid}).Groups[1].Value))).then(r => r.ok ? r.json() : null) : Promise.resolve(null),
+        // Fetch catalog (all courses with badges/categories/prices) + learner state in parallel
+        const [catalogData, profileData, accessData] = await Promise.all([
+          fetch(apiUrl('/courses/catalog')).then(r => r.json()),
+          fetch(apiUrl(`/progress/${lid}`).then(r => r.json()),
+          lid !== 'default' ? fetch(apiUrl(`/learner/courses/${lid}`).then(r => r.ok ? r.json() : null) : Promise.resolve(null),
         ]);
 
+        const profile      = profileData || {};
         const completedSet = new Set(profile.completed_projects || []);
         const accessMap    = {};
         if (accessData && accessData.courses) {
           accessData.courses.forEach(c => { accessMap[c.name] = c; });
         }
 
+        // Active course bar
         const bar = document.getElementById('active-course-bar');
         if (profile.current_course) {
           bar.classList.add('visible');
           document.getElementById('active-course-title').textContent =
             profile.current_course.replace(/-/g,' ').replace(/\b\w/g,l=>l.toUpperCase());
-          const totalSteps = courseData.courses.find(c=>c.name===profile.current_course)?.total_steps || '?';
+          const activeCourse = (catalogData.courses||[]).find(c=>c.name===profile.current_course);
+          const totalSteps = activeCourse?.total_steps || '?';
           document.getElementById('active-course-step').textContent =
             `Step ${profile.current_course_step} of ${totalSteps}`;
         } else {
           bar.classList.remove('visible');
         }
 
+        // Group all catalog courses by category
+        const byCat = {};
+        (catalogData.courses || []).forEach(c => {
+          if (!byCat[c.category]) byCat[c.category] = [];
+          byCat[c.category].push(c);
+        });
+        const catOrder = ['Python Basics','Intermediate Python','Advanced Python','Data Science','Machine Learning','AI & Prompting'];
+
         const cl = document.getElementById('course-list');
         cl.innerHTML = '';
-        courseData.courses.forEach(c => {
-          const isActive     = profile.current_course === c.name;
-          const isDone       = completedSet.has(c.name);
-          const access       = accessMap[c.name];
-          const isUnlocked   = access && access.unlocked;
-          const stepProgress = isActive ? profile.current_course_step : (isDone ? c.total_steps : 0);
-          const pct          = c.total_steps > 0 ? Math.round((stepProgress / c.total_steps) * 100) : 0;
 
-          const statusLabel  = isDone
-            ? '<span style="background:#276749;color:#68d391;border-radius:999px;padding:2px 9px;font-size:.7rem;font-weight:700">✅ Completed</span>'
-            : isActive
-              ? '<span style="background:#1a365d;color:#90cdf4;border-radius:999px;padding:2px 9px;font-size:.7rem;font-weight:700">▶ In Progress</span>'
+        catOrder.forEach(cat => {
+          const items = byCat[cat] || [];
+          if (!items.length) return;
+
+          // Category heading
+          const heading = document.createElement('div');
+          heading.style.cssText = 'font-size:.65rem;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:#4a5568;margin-top:10px;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid #2d3748';
+          heading.textContent = cat;
+          cl.appendChild(heading);
+
+          items.forEach(c => {
+            const isActive   = profile.current_course === c.name;
+            const isDone     = completedSet.has(c.name);
+            const access     = accessMap[c.name];
+            const isUnlocked = access && access.unlocked;
+            const stepProgress = isActive ? (profile.current_course_step || 0) : (isDone ? c.total_steps : 0);
+            const pct          = c.total_steps > 0 ? Math.round((stepProgress / c.total_steps) * 100) : 0;
+            const viaLabel     = isUnlocked ? (access.via === 'tier' ? '✅ Bundle' : '✅ Purchased') : '';
+
+            const statusLabel = isDone
+              ? '<span style="background:#276749;color:#68d391;border-radius:999px;padding:2px 9px;font-size:.7rem;font-weight:700">✅ Completed</span>'
+              : isActive
+                ? '<span style="background:#1a365d;color:#90cdf4;border-radius:999px;padding:2px 9px;font-size:.7rem;font-weight:700">▶ In Progress</span>'
+                : '';
+
+            const progressBar = (isActive || isDone)
+              ? `<div style="height:4px;background:#2d3748;border-radius:99px;margin-top:6px;overflow:hidden">
+                   <div style="height:100%;width:${pct}%;background:${isDone?'#68d391':'#3182ce'};border-radius:99px;transition:width .4s"></div>
+                 </div>
+                 <div style="font-size:.68rem;color:#4a5568;margin-top:2px">Step ${stepProgress}/${c.total_steps} · ${pct}%</div>`
               : '';
 
-          const progressBar  = (isActive || isDone)
-            ? `<div style="height:4px;background:#2d3748;border-radius:99px;margin-top:6px;overflow:hidden">
-                 <div style="height:100%;width:${pct}%;background:${isDone?'#68d391':'#3182ce'};border-radius:99px;transition:width .4s"></div>
-               </div>
-               <div style="font-size:.68rem;color:#4a5568;margin-top:2px">Step ${stepProgress}/${c.total_steps} · ${pct}%</div>`
-            : '';
+            const card = document.createElement('div');
+            card.className = 'course-card';
+            card.innerHTML = `
+              <div class="course-info">
+                <h4 style="display:flex;align-items:center;gap:7px">
+                  <span style="font-size:1.2rem">${c.badge}</span>
+                  ${c.display_name}
+                  ${statusLabel}
+                </h4>
+                <p>${c.description}</p>
+                <p style="margin-top:3px;font-size:.73rem;color:#4a5568">${c.total_steps} steps</p>
+                ${progressBar}
+              </div>
+              <div class="course-meta">
+                <span class="level-pill level-${c.level}">${c.level}</span>
+                ${isUnlocked
+                  ? `<span style="font-size:.7rem;font-weight:700;color:#68d391">${viaLabel}</span>`
+                  : lid !== 'default'
+                    ? `<span style="font-size:.75rem;font-weight:700;color:#e2e8f0">₦${c.price_ngn.toLocaleString()}</span>`
+                    : ''
+                }
+                ${isUnlocked
+                  ? `<button class="enrol-btn" data-course="${c.name}">
+                       ${isDone ? '🔄 Redo' : isActive ? '▶ Continue' : '▶ Start'}
+                     </button>`
+                  : `<a href="${c.paystack_url}" target="_blank" rel="noopener"
+                       style="display:block;text-align:center;background:#2b6cb0;color:#fff;
+                              text-decoration:none;font-weight:700;font-size:.8rem;
+                              padding:8px 14px;border-radius:8px;white-space:nowrap">
+                       💳 Buy
+                     </a>`
+                }
+              </div>`;
 
-          const lockBadge    = !isUnlocked && lid !== 'default'
-            ? '<span style="font-size:.7rem;color:#718096">🔒 Locked</span>'
-            : '';
-
-          const card = document.createElement('div');
-          card.className = 'course-card';
-          card.innerHTML = `
-            <div class="course-info">
-              <h4 style="display:flex;align-items:center;gap:7px">
-                ${c.name.replace(/-/g,' ').replace(/\b\w/g,l=>l.toUpperCase())}
-                ${statusLabel}
-              </h4>
-              <p>${c.description}</p>
-              <p style="margin-top:3px;font-size:.73rem;color:#4a5568">${c.total_steps} steps</p>
-              ${progressBar}
-            </div>
-            <div class="course-meta">
-              <span class="level-pill level-${c.level}">${c.level}</span>
-              ${lockBadge}
-              <button class="enrol-btn" data-course="${c.name}" style="${!isUnlocked&&lid!=='default'?'opacity:.55':''}">
-                ${isDone ? '🔄 Redo' : isActive ? '▶ Continue' : '▶ Start'}
-              </button>
-            </div>`;
-          card.querySelector('.enrol-btn').addEventListener('click', () => startCourse(c.name));
-          cl.appendChild(card);
+            if (isUnlocked) {
+              card.querySelector('.enrol-btn').addEventListener('click', () => startCourse(c.name));
+            }
+            cl.appendChild(card);
+          });
         });
+
+        if (!cl.children.length) {
+          cl.innerHTML = '<p style="color:#718096;font-size:.84rem">No courses available.</p>';
+        }
       } catch (_) {}
     }
 
@@ -2240,7 +2273,7 @@
       switchPanel('chat');
       const loadEl = showLoading();
       try {
-        const res = await fetch(apiUrl($(fetch(apiUrl(/course/start?learner_id=${getLearnerId()}&course_name=${encodeURIComponent(name)}).Groups[1].Value)), { method: 'POST' });
+        const res = await fetch(apiUrl(`/course/start?learner_id=${getLearnerId()}&course_name=${encodeURIComponent(name)}`, { method: 'POST' });
         loadEl.remove();
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
@@ -2268,7 +2301,7 @@
       switchPanel('chat');
       const loadEl = showLoading();
       try {
-        const res = await fetch(apiUrl($(fetch(apiUrl(/course/next?learner_id=${getLearnerId()}).Groups[1].Value)), { method: 'POST' });
+        const res = await fetch(apiUrl(`/course/next?learner_id=${getLearnerId()}`, { method: 'POST' });
         loadEl.remove();
         if (!res.ok) { appendMessage('error', 'Could not advance course.'); return; }
         const data = await res.json();
@@ -2304,7 +2337,7 @@
       document.getElementById('start-quiz-btn').textContent = 'Loading…';
       document.getElementById('start-quiz-btn').disabled = true;
       try {
-        const res  = await fetch(apiUrl('/quiz/generate', {
+        const res  = await fetch(apiUrl('/quiz/generate'), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ learner_id: getLearnerId(), topic, level: getLevel() }),
         });
@@ -2330,7 +2363,7 @@
     async function submitQuizAnswer(answer) {
       document.querySelectorAll('.quiz-option').forEach(b => b.disabled = true);
       try {
-        const res  = await fetch(apiUrl('/quiz/answer', {
+        const res  = await fetch(apiUrl('/quiz/answer'), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ learner_id: getLearnerId(), topic: currentQuiz.topic, level: getLevel(), question: currentQuiz.question, answer }),
         });
@@ -2449,7 +2482,7 @@
       // Ask server to create a new conversation thread
       const lid = getLearnerId();
       if (lid !== 'default') {
-        fetch(apiUrl($(fetch(apiUrl(/conversations/${lid}/new).Groups[1].Value)), { method: 'POST' })
+        fetch(apiUrl(`/conversations/${lid}/new`, { method: 'POST' })
           .then(r => r.json())
           .then(d => { if (d.conversation_id) localStorage.setItem('mpt_conv_id', d.conversation_id); })
           .catch(() => {});
@@ -2477,7 +2510,7 @@
       const loadingEl = showLoading();
 
       try {
-        const res = await fetch(apiUrl('/chat', {
+        const res = await fetch(apiUrl('/chat'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -2559,7 +2592,7 @@
 
     async function loadAuthConfig() {
       try {
-        const res = await fetch(apiUrl('/auth/config');
+        const res = await fetch(apiUrl('/auth/config'));
         if (!res.ok) return;
         const cfg = await res.json();
         GOOGLE_CLIENT_ID = cfg.google_client_id || '';
@@ -2636,7 +2669,7 @@
       try {
         const body = { name, email, password };
         if (accessCode) body.access_code = accessCode;
-        const res = await fetch(apiUrl('/auth/signup', {
+        const res = await fetch(apiUrl('/auth/signup'), {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify(body),
@@ -2671,7 +2704,7 @@
           // Auto sign-in with the credentials they just entered
           setTimeout(async () => {
             try {
-              const siRes = await fetch(apiUrl('/auth/signin', {
+              const siRes = await fetch(apiUrl('/auth/signin'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ email, password }),
@@ -2737,7 +2770,7 @@
       document.getElementById('auth-modal-error').style.display = 'none';
 
       try {
-        const res = await fetch(apiUrl('/auth/signin', {
+        const res = await fetch(apiUrl('/auth/signin'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password }),
@@ -2778,7 +2811,7 @@
       errEl.style.display = 'block';
       errEl.style.color = '#90cdf4';
       try {
-        const res = await fetch(apiUrl('/auth/resend-confirmation', {
+        const res = await fetch(apiUrl('/auth/resend-confirmation'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email }),
@@ -2788,7 +2821,7 @@
           // Server auto-confirmed (SMTP not set up) — sign them in immediately
           _setAuthSuccess('✅ Account confirmed! Signing you in…');
           errEl.style.display = 'none';
-          const siRes = await fetch(apiUrl('/auth/signin', {
+          const siRes = await fetch(apiUrl('/auth/signin'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password: document.getElementById('signin-password').value }),
@@ -2826,7 +2859,7 @@
       btn.disabled = true; btn.textContent = 'Sending…';
       document.getElementById('auth-modal-error').style.display = 'none';
       try {
-        const res  = await fetch(apiUrl('/auth/forgot-password', {
+        const res  = await fetch(apiUrl('/auth/forgot-password'), {
           method: 'POST',
           headers: {'Content-Type':'application/json'},
           body: JSON.stringify({ email }),
@@ -2856,7 +2889,7 @@
       if (!token) { _setAuthError('Invalid reset link.'); return; }
       btn.disabled = true; btn.textContent = 'Updating…';
       try {
-        const res  = await fetch(apiUrl('/auth/reset-password', {
+        const res  = await fetch(apiUrl('/auth/reset-password'), {
           method: 'POST',
           headers: {'Content-Type':'application/json'},
           body: JSON.stringify({ token, new_password: pw1 }),
@@ -2935,7 +2968,7 @@
 
       try {
         // Step 1: verify current password is correct
-        const verRes = await fetch(apiUrl('/auth/signin', {
+        const verRes = await fetch(apiUrl('/auth/signin'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email, password: current }),
@@ -2945,7 +2978,7 @@
           return;
         }
         // Step 2: trigger forgot-password to email a secure reset link
-        await fetch(apiUrl('/auth/forgot-password', {
+        await fetch(apiUrl('/auth/forgot-password'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ email }),
@@ -3028,7 +3061,7 @@
       const btn = document.getElementById('google-signin-btn');
       const errEl = document.getElementById('auth-modal-error');
       try {
-        const res = await fetch(apiUrl('/auth/google', {
+        const res = await fetch(apiUrl('/auth/google'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ credential: response.credential }),
@@ -3110,7 +3143,7 @@
       // Fetch latest real conversation ID from Supabase so Sir. Tega has
       // context from previous sessions — not a local_ synthetic ID.
       if (data.learner_id !== 'default') {
-        fetch(apiUrl($(fetch(apiUrl(/conversations/${data.learner_id}).Groups[1].Value)))
+        fetch(apiUrl(`/conversations/${data.learner_id}`)
           .then(r => r.ok ? r.json() : null)
           .then(d => {
             if (d && d.conversations && d.conversations.length > 0) {
@@ -3119,7 +3152,7 @@
               if (latestConv.id && !latestConv.id.startsWith('local_')) {
                 localStorage.setItem('mpt_conv_id', latestConv.id);
                 // Pre-load last 6 messages into local history for immediate context
-                fetch(apiUrl($(fetch(apiUrl(/conversations/${data.learner_id}/${latestConv.id}?limit=6).Groups[1].Value)))
+                fetch(apiUrl(`/conversations/${data.learner_id}/${latestConv.id}?limit=6`)
                   .then(r => r.ok ? r.json() : null)
                   .then(conv => {
                     if (!conv || !conv.messages || !conv.messages.length) return;
@@ -3179,7 +3212,7 @@
         return;
       }
       try {
-        const res = await fetch(apiUrl('/auth/me', {
+        const res = await fetch(apiUrl('/auth/me'), {
           headers: { 'Authorization': 'Bearer ' + token }
         });
         if (!res.ok) {
@@ -3213,7 +3246,7 @@
       const nameInput = document.getElementById('cert-name-input');
       const name = (nameInput ? nameInput.value.trim() : '') || 'Learner';
       const learnerId = getLearnerId();
-      const url = apiUrl(`/certificate/${level}?name=${encodeURIComponent(name)}&learner_id=${encodeURIComponent(learnerId)}`);
+      const url = apiUrl(`/certificate/${level}?name=${encodeURIComponent(name)}&learner_id=${encodeURIComponent(learnerId)}`;
       window.open(url, '_blank', 'width=1000,height=720,noopener,noreferrer');
     }
 
@@ -3288,7 +3321,7 @@
     // ── Prompt counter ────────────────────────────────────────────────────────
     async function refreshPromptCount() {
       try {
-        const res = await fetch(apiUrl($(fetch(apiUrl(/prompts/count?learner_id=${getLearnerId()}).Groups[1].Value)));
+        const res = await fetch(apiUrl(`/prompts/count?learner_id=${getLearnerId()}`);
         if (!res.ok) return;
         const data = await res.json();
         const bar = document.getElementById('prompt-counter-bar');
@@ -3335,7 +3368,7 @@
       const btn = document.getElementById('fb-submit-btn');
       btn.disabled = true; btn.textContent = 'Sending…';
       try {
-        const res = await fetch(apiUrl('/feedback/survey', {
+        const res = await fetch(apiUrl('/feedback/survey'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -3432,7 +3465,7 @@
       const grid = document.getElementById('course-catalog-grid');
       if (!grid) return;
       try {
-        const res  = await fetch(apiUrl('/courses/catalog');
+        const res  = await fetch(apiUrl('/courses/catalog'));
         if (!res.ok) return;
         const data = await res.json();
         _catalogLoaded = true;
@@ -3441,7 +3474,7 @@
         let accessMap = {};
         if (lid !== 'default') {
           try {
-            const ar = await fetch(apiUrl('/learner/courses/' + lid);
+            const ar = await fetch(apiUrl('/learner/courses/') + lid);
             if (ar.ok) { const ad = await ar.json(); ad.courses.forEach(c => accessMap[c.name] = c); }
           } catch(_) {}
         }
@@ -3500,7 +3533,7 @@
       const lid = getLearnerId();
       if (lid === 'default') return;
       const appUrl = window.location.origin;
-      fetch(apiUrl($(fetch(apiUrl(/referral/${lid}).Groups[1].Value)))
+      fetch(apiUrl(`/referral/${lid}`)
         .then(r => r.ok ? r.json() : null)
         .then(d => {
           if (!d) return;
