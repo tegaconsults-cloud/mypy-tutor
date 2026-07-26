@@ -685,7 +685,7 @@ def request_password_reset(email: str) -> tuple[bool, str]:
         except Exception as exc:
             logger.debug("Supabase reset token save failed (non-fatal): %s", exc)
 
-        reset_url  = f"{_cfg('APP_URL', 'https://mypytutor.onrender.com')}/?auth=reset&token={token}"
+        reset_url  = f"{_cfg('FRONTEND_URL', _cfg('APP_URL', 'https://mypytutor.com.ng'))}/?auth=reset&token={token}"
         first_name = user.get("name", "Learner").split()[0]
 
         html_body = f"""<!DOCTYPE html>

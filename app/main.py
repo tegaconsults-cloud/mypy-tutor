@@ -2756,11 +2756,12 @@ async def auth_github_callback(code: str = None, error: str = None,
     import json as _json
 
     app_url       = _os.getenv("APP_URL", "https://mypytutor.onrender.com")
+    frontend_url  = _os.getenv("FRONTEND_URL", app_url)
     client_id     = _os.getenv("GITHUB_CLIENT_ID", "")
     client_secret = _os.getenv("GITHUB_CLIENT_SECRET", "")
 
     if error or not code:
-        return RedirectResponse(url=f"/?auth=error&msg=GitHub+sign-in+was+cancelled")
+        return RedirectResponse(url=f"{frontend_url}/?auth=error&msg=GitHub+sign-in+was+cancelled")
 
     try:
         import httpx as _httpx
@@ -2774,7 +2775,7 @@ async def auth_github_callback(code: str = None, error: str = None,
             token_data = token_res.json()
             access_token = token_data.get("access_token", "")
             if not access_token:
-                return RedirectResponse(url="/?auth=error&msg=GitHub+token+exchange+failed")
+                return RedirectResponse(url=f"{frontend_url}/?auth=error&msg=GitHub+token+exchange+failed")
 
             # Fetch user info
             user_res = await hc.get(
@@ -2819,11 +2820,11 @@ async def auth_github_callback(code: str = None, error: str = None,
             "token": token, "learner_id": learner_id,
             "name": name, "email": email, "picture": picture,
         }))
-        return RedirectResponse(url=f"/?auth=google_success&user={user_data}")
+        return RedirectResponse(url=f"{frontend_url}/?auth=google_success&user={user_data}")
 
     except Exception as exc:
         logger.error("GitHub OAuth callback error: %s", exc)
-        return RedirectResponse(url="/?auth=error&msg=GitHub+sign-in+failed")
+        return RedirectResponse(url=f"{frontend_url}/?auth=error&msg=GitHub+sign-in+failed")
 
 
 # ---------------------------------------------------------------------------
