@@ -2951,7 +2951,21 @@ async def get_payment_metadata(learner_id: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Static files — mounted LAST so API routes take priority
+# Static assets — icons, manifest, certificates (NOT the full frontend app)
+# The HTML frontend is served by Vercel (github.com/tegaconsults-cloud/mypytutor)
+# Render serves only the API + certificate HTML generation + static assets
 # ---------------------------------------------------------------------------
 
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+# Serve icons, manifest, premium.css, sw.js etc. under /static/
+app.mount("/static", StaticFiles(directory="static"), name="static_assets")
+
+
+@app.get("/", include_in_schema=False)
+async def root() -> dict:
+    """API root — confirms the backend is alive. Frontend is on Vercel."""
+    return {
+        "service": "MyPy Tutor API",
+        "status":  "ok",
+        "version": "2.0.0",
+        "docs":    "API-only endpoint. Frontend: https://mypytutor.com.ng",
+    }
