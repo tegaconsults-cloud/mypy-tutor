@@ -132,9 +132,11 @@ app = FastAPI(
 # Middleware
 # ---------------------------------------------------------------------------
 
-_RENDER_URL = _os.getenv("RENDER_EXTERNAL_URL", "")
+_RENDER_URL   = _os.getenv("RENDER_EXTERNAL_URL", "")
+_FRONTEND_URL = _os.getenv("FRONTEND_URL", "")   # Vercel frontend URL once deployed
 _allowed_origins = list(filter(None, [
     _RENDER_URL,
+    _FRONTEND_URL,
     "http://localhost:8000",
     "http://127.0.0.1:8000",
 ])) or ["*"]
@@ -142,7 +144,7 @@ _allowed_origins = list(filter(None, [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
-    allow_origin_regex=r"https://.*\.onrender\.com",
+    allow_origin_regex=r"https://.*\.(onrender\.com|vercel\.app)",
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
     allow_credentials=False,

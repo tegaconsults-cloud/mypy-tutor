@@ -29,6 +29,8 @@ services:
         sync: false          # e.g. MyPy Tutor <your-gmail@gmail.com>
       - key: APP_URL
         value: https://mypytutor.onrender.com
+      - key: FRONTEND_URL
+        sync: false          # Vercel frontend URL e.g. https://mypytutor.vercel.app
       - key: PAYSTACK_SECRET_KEY
         sync: false          # Paystack secret key — set in Render dashboard
       - key: SUPABASE_URL
