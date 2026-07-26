@@ -10,14 +10,14 @@
   <meta name="keywords" content="learn python, python course, python for beginners, AI python tutor, python certification, python quizzes, python interview questions, interactive python lessons, online python tutor, python AI tutor Africa" />
   <meta name="author" content="Teamsamikoko Global Academy" />
   <meta name="robots" content="index, follow" />
-  <link rel="canonical" href="https://mypytutor.onrender.com/" />
+  <link rel="canonical" href="https://mypytutor.com.ng/" />
 
   <!-- Open Graph (Facebook / WhatsApp / LinkedIn) -->
   <meta property="og:type"        content="website" />
-  <meta property="og:url"         content="https://mypytutor.onrender.com/" />
+  <meta property="og:url"         content="https://mypytutor.com.ng/" />
   <meta property="og:title"       content="MyPy Tutor – Learn Python with Your AI Tutor | Interactive Coding Courses" />
   <meta property="og:description" content="Learn Python faster with MyPy Tutor, an AI-powered coding tutor featuring interactive lessons, quizzes, real-time assistance, certificates, and personalized learning." />
-  <meta property="og:image"       content="https://mypytutor.onrender.com/icons/logo-mpt.png" />
+  <meta property="og:image"       content="https://mypytutor.com.ng/icons/logo-mpt.png" />
   <meta property="og:site_name"   content="MyPy Tutor" />
   <meta property="og:locale"      content="en_US" />
 
@@ -25,7 +25,7 @@
   <meta name="twitter:card"        content="summary_large_image" />
   <meta name="twitter:title"       content="MyPy Tutor – Learn Python with Your AI Tutor" />
   <meta name="twitter:description" content="Learn Python faster with MyPy Tutor — AI-powered lessons, quizzes, certificates, and real-time coding help." />
-  <meta name="twitter:image"       content="https://mypytutor.onrender.com/icons/logo-mpt.png" />
+  <meta name="twitter:image"       content="https://mypytutor.com.ng/icons/logo-mpt.png" />
 
   <!-- Structured Data — WebSite + SearchAction -->
   <script type="application/ld+json">
@@ -33,11 +33,11 @@
     "@context": "https://schema.org",
     "@type": "WebSite",
     "name": "MyPy Tutor",
-    "url": "https://mypytutor.onrender.com",
+    "url": "https://mypytutor.com.ng",
     "description": "AI-powered Python tutor with interactive lessons, quizzes, and certification.",
     "potentialAction": {
       "@type": "SearchAction",
-      "target": "https://mypytutor.onrender.com/?q={search_term_string}",
+      "target": "https://mypytutor.com.ng/?q={search_term_string}",
       "query-input": "required name=search_term_string"
     }
   }
@@ -49,7 +49,7 @@
     "@context": "https://schema.org",
     "@type": "EducationalOrganization",
     "name": "Teamsamikoko Global Academy",
-    "url": "https://mypytutor.onrender.com",
+    "url": "https://mypytutor.com.ng",
     "description": "Accredited educational institution offering AI-powered Python and machine learning certification programmes.",
     "identifier": "3508656",
     "areaServed": "Africa",
@@ -3530,7 +3530,7 @@
       overlay.style.display = 'flex';
       const lid = getLearnerId();
       if (lid === 'default') return;
-      const appUrl = 'https://mypytutor.onrender.com';
+      const appUrl = 'https://mypytutor.com.ng';
       fetch(`/referral/${lid}`)
         .then(r => r.ok ? r.json() : null)
         .then(d => {
@@ -3574,7 +3574,7 @@
     function copyReferralCode() {
       const code = document.getElementById('referral-code-display').textContent.trim();
       if (!code || code === 'Loading…' || code === '—') return;
-      const msg = `Join MyPy Tutor, your best AI AND PYTHON TUTOR. Use code ${code} for 10% off your first subscription! https://mypytutor.onrender.com`;
+      const msg = `Join MyPy Tutor, your best AI AND PYTHON TUTOR. Use code ${code} for 10% off your first subscription! https://mypytutor.com.ng`;
       if (navigator.clipboard) {
         navigator.clipboard.writeText(msg).then(() => {
           const el = document.getElementById('referral-copy-msg');
