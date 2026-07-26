@@ -5,19 +5,19 @@
     { "source": "/api/:path*", "destination": "https://mypytutor.onrender.com/:path*" }
   ],
   "redirects": [
-    { "source": "/learn-python",              "destination": "/learn-python/",              "permanent": true },
-    { "source": "/python-course",             "destination": "/python-course/",             "permanent": true },
-    { "source": "/python-for-beginners",      "destination": "/python-for-beginners/",      "permanent": true },
-    { "source": "/ai-python-tutor",           "destination": "/ai-python-tutor/",           "permanent": true },
-    { "source": "/python-certification",      "destination": "/python-certification/",      "permanent": true },
-    { "source": "/python-interview-questions","destination": "/python-interview-questions/","permanent": true },
-    { "source": "/python-quizzes",            "destination": "/python-quizzes/",            "permanent": true }
+    { "source": "/learn-python",               "destination": "/learn-python/",               "permanent": true },
+    { "source": "/python-course",              "destination": "/python-course/",              "permanent": true },
+    { "source": "/python-for-beginners",       "destination": "/python-for-beginners/",       "permanent": true },
+    { "source": "/ai-python-tutor",            "destination": "/ai-python-tutor/",            "permanent": true },
+    { "source": "/python-certification",       "destination": "/python-certification/",       "permanent": true },
+    { "source": "/python-interview-questions", "destination": "/python-interview-questions/", "permanent": true },
+    { "source": "/python-quizzes",             "destination": "/python-quizzes/",             "permanent": true }
   ],
   "headers": [
     {
       "source": "/sw.js",
       "headers": [
-        { "key": "Cache-Control",        "value": "no-cache, no-store, must-revalidate" },
+        { "key": "Cache-Control",         "value": "no-cache, no-store, must-revalidate" },
         { "key": "Service-Worker-Allowed","value": "/" }
       ]
     },
@@ -40,7 +40,8 @@
       "headers": [
         { "key": "X-Content-Type-Options", "value": "nosniff" },
         { "key": "X-Frame-Options",        "value": "DENY" },
-        { "key": "Referrer-Policy",        "value": "strict-origin-when-cross-origin" }
+        { "key": "Referrer-Policy",        "value": "strict-origin-when-cross-origin" },
+        { "key": "Access-Control-Allow-Origin", "value": "https://mypytutor.onrender.com" }
       ]
     }
   ]
