@@ -310,7 +310,8 @@ async def auth_google_login() -> JSONResponse:
     redirect_uri = f"{app_url}/auth/google/callback"
 
     if not client_id:
-        return RedirectResponse(url="/?auth=error&msg=Google+Sign-In+not+configured")
+        frontend_url = _os.getenv("FRONTEND_URL", app_url)
+        return RedirectResponse(url=f"{frontend_url}/?auth=error&msg=Google+Sign-In+not+configured")
 
     params = urllib.parse.urlencode({
         "client_id":     client_id,
@@ -329,13 +330,14 @@ async def auth_google_callback(code: str = None, error: str = None) -> JSONRespo
     import urllib.parse, json
 
     app_url       = _os.getenv("APP_URL", "https://mypytutor.onrender.com")
+    frontend_url  = _os.getenv("FRONTEND_URL", app_url)
     client_id     = _os.getenv("GOOGLE_CLIENT_ID", "")
     client_secret = _os.getenv("GOOGLE_CLIENT_SECRET", "")
-    redirect_uri  = f"{app_url}/auth/google/callback"
+    redirect_uri  = f"{app_url}/auth/google/callback"  # must match Google Console + Render URL
 
     if error or not code:
         msg = urllib.parse.quote(error or "Google sign-in was cancelled")
-        return RedirectResponse(url=f"/?auth=error&msg={msg}")
+        return RedirectResponse(url=f"{frontend_url}/?auth=error&msg={msg}")
 
     try:
         import httpx as _httpx
@@ -349,7 +351,7 @@ async def auth_google_callback(code: str = None, error: str = None) -> JSONRespo
             })
             if token_res.status_code != 200:
                 logger.error("Token exchange failed: %s", token_res.text)
-                return RedirectResponse(url="/?auth=error&msg=Token+exchange+failed")
+                return RedirectResponse(url=f"{frontend_url}/?auth=error&msg=Token+exchange+failed")
 
             tokens   = token_res.json()
             id_token = tokens.get("id_token", "")
@@ -375,11 +377,11 @@ async def auth_google_callback(code: str = None, error: str = None) -> JSONRespo
             "email":      user.email,
             "picture":    user.picture,
         }))
-        return RedirectResponse(url=f"/?auth=google_success&user={user_data}")
+        return RedirectResponse(url=f"{frontend_url}/?auth=google_success&user={user_data}")
 
     except Exception as exc:
         logger.error("Google OAuth callback error: %s", exc)
-        return RedirectResponse(url="/?auth=error&msg=Google+sign-in+failed")
+        return RedirectResponse(url=f"{frontend_url}/?auth=error&msg=Google+sign-in+failed")
 
 
 @app.post("/auth/google", response_model=AuthResponse)
@@ -524,7 +526,7 @@ async def auth_confirm(token: str) -> JSONResponse:
     success, message = confirm_email_token(token)
     status = "confirmed" if success else "error"
     msg_encoded = message.replace(" ", "+")
-    return RedirectResponse(url=f"/?auth={status}&msg={msg_encoded}", status_code=302)
+    return RedirectResponse(url=f"{_os.getenv('FRONTEND_URL', _os.getenv('APP_URL', 'https://mypytutor.onrender.com'))}/?auth={status}&msg={msg_encoded}", status_code=302)
 
 
 @app.post("/auth/resend-confirmation")
@@ -2736,7 +2738,7 @@ async def auth_github_login() -> JSONResponse:
     client_id = _os.getenv("GITHUB_CLIENT_ID", "")
     app_url   = _os.getenv("APP_URL", "https://mypytutor.onrender.com")
     if not client_id:
-        return RedirectResponse(url="/?auth=error&msg=GitHub+Sign-In+not+configured")
+        return RedirectResponse(url=f"{_os.getenv('FRONTEND_URL', _os.getenv('APP_URL', 'https://mypytutor.onrender.com'))}/?auth=error&msg=GitHub+Sign-In+not+configured")
     params = urllib.parse.urlencode({
         "client_id":    client_id,
         "redirect_uri": f"{app_url}/auth/github/callback",

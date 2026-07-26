@@ -3589,8 +3589,10 @@
       loadHistory();
       refreshSidebar();
       restoreSession();
-      loadAuthConfig();       // fetch Google Client ID + initialize GSI
+      loadAuthConfig();
       messageInput.focus();
+      // Silent warm-up ping — wakes Render backend before user types
+      fetch('/health').catch(() => {});
     });
 
     // Handle PWA shortcut links (?panel=chat, ?panel=quiz, etc.)

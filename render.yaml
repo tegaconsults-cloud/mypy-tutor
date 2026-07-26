@@ -28,9 +28,9 @@ services:
       - key: EMAIL_FROM
         sync: false          # e.g. MyPy Tutor <your-gmail@gmail.com>
       - key: APP_URL
-        value: https://mypytutor.com.ng
+        value: https://mypytutor.onrender.com  # OAuth callback base — MUST be Render URL
       - key: FRONTEND_URL
-        value: https://mypytutor.com.ng  # Custom domain — also used for OAuth redirects
+        value: https://mypytutor.com.ng  # Vercel frontend — post-auth user redirects
       - key: PAYSTACK_SECRET_KEY
         sync: false          # Paystack secret key — set in Render dashboard
       - key: SUPABASE_URL
