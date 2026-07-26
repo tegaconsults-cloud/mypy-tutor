@@ -1970,7 +1970,7 @@
       }
 
       try {
-        const res  = await fetch(apiUrl(`/auth/profile/${lid}`, {
+        const res  = await fetch(apiUrl(`/auth/profile/${lid}`), {
           method:  'POST',
           headers: { 'Content-Type': 'application/json' },
           body:    JSON.stringify(body),
@@ -2028,7 +2028,7 @@
         // Save to profile as photo_url (base64 stored in user_profiles)
         const lid = getLearnerId();
         if (lid === 'default') return;
-        fetch(apiUrl(`/auth/profile/${lid}`, {
+        fetch(apiUrl(`/auth/profile/${lid}`), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -2273,7 +2273,7 @@
       switchPanel('chat');
       const loadEl = showLoading();
       try {
-        const res = await fetch(apiUrl(`/course/start?learner_id=${getLearnerId()}&course_name=${encodeURIComponent(name)}`, { method: 'POST' });
+        const res = await fetch(apiUrl(`/course/start?learner_id=${getLearnerId()}&course_name=${encodeURIComponent(name)}`), { method: 'POST' });
         loadEl.remove();
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
@@ -2301,7 +2301,7 @@
       switchPanel('chat');
       const loadEl = showLoading();
       try {
-        const res = await fetch(apiUrl(`/course/next?learner_id=${getLearnerId()}`, { method: 'POST' });
+        const res = await fetch(apiUrl(`/course/next?learner_id=${getLearnerId()}`), { method: 'POST' });
         loadEl.remove();
         if (!res.ok) { appendMessage('error', 'Could not advance course.'); return; }
         const data = await res.json();
@@ -2482,7 +2482,7 @@
       // Ask server to create a new conversation thread
       const lid = getLearnerId();
       if (lid !== 'default') {
-        fetch(apiUrl(`/conversations/${lid}/new`, { method: 'POST' })
+        fetch(apiUrl(`/conversations/${lid}/new`), { method: 'POST' })
           .then(r => r.json())
           .then(d => { if (d.conversation_id) localStorage.setItem('mpt_conv_id', d.conversation_id); })
           .catch(() => {});
