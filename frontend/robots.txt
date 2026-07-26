@@ -14,4 +14,4 @@ Allow: /python-quizzes/
 Disallow: /admin.html
 Disallow: /admin
 
-Sitemap: https://mypytutor.onrender.com/sitemap.xml
+Sitemap: https://mypytutor.com.ng/sitemap.xml

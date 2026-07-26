@@ -108,7 +108,7 @@ def _wat_date_key() -> str:
 
 def check_free_prompt_limit(learner_id: str, ip: str) -> tuple[bool, int]:
     """
-    Check if a free-tier user has exceeded their 10 prompts/day limit.
+    Check if a free-tier user has exceeded their 20 prompts/day limit.
     Quota resets at 5am WAT (UTC+1).
     Returns (allowed: bool, used_count: int).
     Key is learner_id if not 'default', otherwise ip.
