@@ -4,7 +4,10 @@ import { Link } from 'react-router-dom'
 export default function LearnPythonPage() {
   return (
     <div style={{ fontFamily: 'Inter, sans-serif', background: '#0f1117', color: '#e2e8f0', minHeight: '100vh', padding: '60px 24px 40px', maxWidth: 800, margin: '0 auto' }}>
-      <div style={{ display: 'inline-block', background: 'rgba(59,130,246,.15)', color: '#93c5fd', border: '1px solid rgba(59,130,246,.3)', borderRadius: 999, padding: '4px 14px', fontSize: '.8rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 20 }}>🐍 AI-Powered Python Learning</div>
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(59,130,246,.15)', color: '#93c5fd', border: '1px solid rgba(59,130,246,.3)', borderRadius: 999, padding: '4px 14px 4px 6px', fontSize: '.8rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 20 }}>
+        <img src="/icons/mypytutor_logo.png" alt="" style={{ width: 20, height: 20, borderRadius: '50%', objectFit: 'cover' }} />
+        AI-Powered Python Learning
+      </div>
       <h1 style={{ fontSize: 'clamp(1.8rem,5vw,3rem)', fontWeight: 800, lineHeight: 1.2, marginBottom: 16 }}>Learn <span style={{ background: 'linear-gradient(135deg,#60a5fa,#a78bfa)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Python</span> with Your AI Tutor</h1>
       <p style={{ fontSize: '1.05rem', color: '#94a3b8', lineHeight: 1.7, maxWidth: 600, marginBottom: 32 }}>MyPy Tutor teaches Python through real conversations, interactive exercises, and instant feedback — 24/7.</p>
       <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 48 }}>
