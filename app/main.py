@@ -2990,3 +2990,31 @@ async def root() -> dict:
         "version": "2.0.0",
         "docs":    "API-only endpoint. Frontend: https://mypytutor.com.ng",
     }
+
+
+@app.get("/admin.html", response_class=HTMLResponse, include_in_schema=False)
+async def serve_admin_html() -> HTMLResponse:
+    """Serve the admin dashboard HTML directly from /admin.html"""
+    import os as _os2
+    path = _os2.path.join("static", "admin.html")
+    if not _os2.path.exists(path):
+        raise HTTPException(status_code=404, detail="Admin panel not found.")
+    with open(path, "r", encoding="utf-8") as f:
+        content = f.read()
+    return HTMLResponse(content=content)
+
+
+@app.get("/admin", include_in_schema=False)
+async def redirect_admin():
+    """Redirect /admin → /admin.html"""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/admin.html", status_code=302)
+
+
+# Serve icons under /icons/ directly (shortcut used in admin.html)
+try:
+    import os as _os3
+    if _os3.path.isdir("static/icons"):
+        app.mount("/icons", StaticFiles(directory="static/icons"), name="icons")
+except Exception:
+    pass
