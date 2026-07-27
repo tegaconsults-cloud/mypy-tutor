@@ -228,7 +228,17 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                 headers={"Retry-After": str(RATE_LIMIT_WINDOW)},
             )
 
-        # 2. LLM-endpoint rate limit
+        # 2. Auth endpoint brute-force protection (login attempts)
+        if request.url.path in AUTH_ENDPOINTS:
+            if not _check_rate(_auth_store, ip, AUTH_RATE_LIMIT_REQUESTS, AUTH_RATE_LIMIT_WINDOW):
+                logger.warning("Auth brute-force blocked: %s %s", ip, request.url.path)
+                return JSONResponse(
+                    status_code=429,
+                    content={"error": "Too many login attempts. Please wait 5 minutes."},
+                    headers={"Retry-After": str(AUTH_RATE_LIMIT_WINDOW)},
+                )
+
+        # 3. LLM-endpoint rate limit
         if request.url.path in LLM_ENDPOINTS:
             if not _check_rate(_llm_store, ip, LLM_RATE_LIMIT_REQUESTS, LLM_RATE_LIMIT_WINDOW):
                 logger.warning("LLM rate limit hit: %s %s", ip, request.url.path)
@@ -240,7 +250,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
 
         response = await call_next(request)
 
-        # 3. Security headers on every response
+        # 4. Security headers on every response
         response.headers["X-Content-Type-Options"]    = "nosniff"
         response.headers["X-Frame-Options"]           = "DENY"
         response.headers["X-XSS-Protection"]          = "1; mode=block"
