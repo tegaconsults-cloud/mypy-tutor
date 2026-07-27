@@ -26,7 +26,16 @@ def _get_client_id() -> str:
     return os.getenv("GOOGLE_CLIENT_ID", "")
 
 def _get_session_secret() -> str:
-    return os.getenv("SESSION_SECRET", "change-me-in-production-32-chars-min")
+    secret = os.getenv("SESSION_SECRET", "")
+    if not secret:
+        # In production this must be set — log a warning but don't crash
+        import logging as _log
+        _log.getLogger(__name__).warning(
+            "SESSION_SECRET env var not set — using insecure fallback. "
+            "Set SESSION_SECRET in Render dashboard immediately!"
+        )
+        return "mypytutor-INSECURE-fallback-set-SESSION_SECRET-now"
+    return secret
 
 SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 
@@ -184,17 +193,33 @@ def get_or_create_user(google_payload: dict) -> UserAccount:
         user.picture = picture
         user.email   = email
 
+    # Persist email + name to the learner profile so we can reconstruct after restart
+    try:
+        from app.progress import get_profile as _gp, save_profile as _sp
+        profile = _gp(learner_id)
+        changed = False
+        if not profile.email and email:
+            profile.email = email; changed = True
+        if not profile.display_name and name:
+            profile.display_name = name; changed = True
+        if changed:
+            _sp(profile)
+    except Exception:
+        pass
+
     return _users[learner_id]
 
 
 def get_user_by_id(learner_id: str) -> Optional[UserAccount]:
-    """Look up a user by learner_id — checks Google/GitHub in-memory store first,
-    then falls back to email-auth store for email-registered users."""
+    """Look up a user by learner_id.
+    Checks in-memory cache first, then reconstructs from SQLite/email-auth
+    so users survive Render restarts without being logged out.
+    """
+    # 1. Fast path — in-memory cache (Google/GitHub/email users already loaded)
     if learner_id in _users:
         return _users[learner_id]
 
-    # Email users: learner_id starts with "em_" (hashed email)
-    # They are stored in email_auth._confirmed, not _users
+    # 2. Email users (learner_id format: em_<hash>)
     try:
         from app.email_auth import get_email_user_by_id as _get_eu
         eu = _get_eu(learner_id)
@@ -206,7 +231,40 @@ def get_user_by_id(learner_id: str) -> Optional[UserAccount]:
                 picture="",
                 google_sub="",
             )
-            _users[learner_id] = user  # cache it so subsequent lookups are fast
+            _users[learner_id] = user  # cache for subsequent requests
+            return user
+    except Exception:
+        pass
+
+    # 3. Google/GitHub users — reconstruct from the LearnerProfile stored in SQLite/Supabase.
+    #    The session token proves identity (signed with SESSION_SECRET).
+    #    We just need name/email/picture to reconstitute the UserAccount object.
+    try:
+        from app.progress import get_profile as _gp
+        profile = _gp(learner_id)
+        if profile and (profile.email or profile.display_name):
+            # Determine picture: Google users have it in Supabase profiles table
+            picture = ""
+            try:
+                from app.db import get_db as _gdb
+                with _gdb() as _conn:
+                    row = _conn.execute(
+                        "SELECT photo_url FROM user_profiles WHERE learner_id=?",
+                        (learner_id,)
+                    ).fetchone()
+                    if row:
+                        picture = row["photo_url"] or ""
+            except Exception:
+                pass
+
+            user = UserAccount(
+                learner_id=learner_id,
+                email=profile.email or "",
+                name=profile.display_name or profile.email.split("@")[0] if profile.email else learner_id,
+                picture=picture,
+                google_sub=learner_id[2:] if learner_id.startswith("g_") else "",
+            )
+            _users[learner_id] = user  # cache it
             return user
     except Exception:
         pass

@@ -289,6 +289,30 @@ def advance_course(learner_id: str) -> None:
     save_profile(profile)
 
 
+def apply_tier_upgrade(learner_id: str, tier: str) -> None:
+    """
+    Apply a tier upgrade to both the in-memory cache and SQLite immediately.
+    Called from admin set-tier and payment confirmation routes.
+    Ensures that any subsequent background Supabase sync writes the CORRECT tier,
+    not the stale 'free' tier from an older in-memory profile.
+    """
+    profile = get_profile(learner_id)  # load current state (SQLite / Supabase)
+    profile.tier = tier
+    # Save synchronously to memory + SQLite
+    _store[learner_id] = profile
+    tp_dict = {k: v.model_dump() for k, v in profile.topic_progress.items()}
+    save_profile_db(learner_id, {
+        "tier": tier, "level": profile.level, "xp": profile.xp,
+        "badges": profile.badges, "topics_seen": profile.topics_seen,
+        "topic_progress": tp_dict, "current_course": profile.current_course,
+        "current_course_step": profile.current_course_step,
+        "completed_projects": profile.completed_projects,
+        "daily_prompts_used": profile.daily_prompts_used,
+        "last_prompt_date": profile.last_prompt_date,
+        "email": profile.email, "display_name": profile.display_name,
+    })
+
+
 def complete_project(learner_id: str, project_name: str) -> tuple[int, str | None]:
     profile = get_profile(learner_id)
     if project_name not in profile.completed_projects:
