@@ -168,6 +168,11 @@ class SecurityMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         ip = _get_ip(request)
 
+        # Skip rate limiting for CORS preflight requests
+        if request.method == "OPTIONS":
+            response = await call_next(request)
+            return response
+
         # 1. General rate limit
         if not _check_rate(_general_store, ip, RATE_LIMIT_REQUESTS, RATE_LIMIT_WINDOW):
             logger.warning("General rate limit hit: %s", ip)

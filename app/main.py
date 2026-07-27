@@ -143,16 +143,18 @@ _allowed_origins = list(filter(None, [
     "http://127.0.0.1:8000",
 ])) or ["*"]
 
+app.add_middleware(SecurityMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
     allow_origin_regex=r"https://(.*\.)?(onrender\.com|vercel\.app|mypytutor\.com\.ng)",
-    allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept"],
+    expose_headers=["Content-Type"],
     allow_credentials=False,
+    max_age=86400,
 )
-
-app.add_middleware(SecurityMiddleware)
 
 # ---------------------------------------------------------------------------
 # /chat
