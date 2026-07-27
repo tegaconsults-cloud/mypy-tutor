@@ -1735,6 +1735,14 @@ async def admin_announce(request: Request) -> dict:
     return {"ok": True, "sent_to": sent, "message": f"Announcement sent to {sent} users"}
 
 
+@app.get("/admin/announce/history")
+async def admin_announce_history(request: Request) -> dict:
+    """Return all sent announcements in reverse-chronological order."""
+    _require_admin(request)
+    from app.admin import _announcements
+    return {"announcements": list(reversed(_announcements)), "total": len(_announcements)}
+
+
 @app.get("/admin/files")
 async def admin_files_list(request: Request) -> dict:
     _require_admin(request)

@@ -221,6 +221,8 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
       <button class="nb" data-p="team">👨‍💼 Team</button>
       <button class="nb" data-p="tasks">📋 Tasks</button>
       <button class="nb" data-p="files">📁 Files</button>
+      <button class="nb" data-p="coupons">🎟️ Coupons</button>
+      <button class="nb" data-p="invoices">🧾 Invoices</button>
     </div>
     <main>
       <!-- DASHBOARD -->
@@ -480,6 +482,38 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
 
         <div class="sec"><div id="files-list">Loading…</div></div>
       </div>
+
+      <!-- COUPONS -->
+      <div id="p-coupons" class="page">
+        <h2>🎟️ Coupons</h2>
+        <div class="g2">
+          <div class="sec">
+            <h3>Create Coupon</h3>
+            <div class="fr"><label>Code</label><input id="cp-code" placeholder="e.g. LAUNCH50" style="text-transform:uppercase"/></div>
+            <div class="fr"><label>Discount %</label><input id="cp-pct" type="number" min="0" max="100" placeholder="20"/></div>
+            <div class="fr"><label>Flat Discount (₦, optional)</label><input id="cp-flat" type="number" min="0" placeholder="0"/></div>
+            <div class="fr"><label>Plan (or "any")</label><input id="cp-plan" placeholder="any" value="any"/></div>
+            <div class="fr"><label>Max Uses</label><input id="cp-max" type="number" min="1" placeholder="100" value="100"/></div>
+            <div class="fr"><label>Expires In (days, 0=never)</label><input id="cp-days" type="number" min="0" placeholder="0" value="0"/></div>
+            <button class="btn" onclick="createCoupon()">🎟️ Create Coupon</button>
+            <div id="cp-result" style="margin-top:10px;display:none"></div>
+          </div>
+          <div class="sec">
+            <h3>All Coupons</h3>
+            <div id="coupons-list">Loading…</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- INVOICES -->
+      <div id="p-invoices" class="page">
+        <h2>🧾 Invoices</h2>
+        <div class="sec"><div style="overflow-x:auto"><table>
+          <thead><tr><th>Invoice ID</th><th>Learner</th><th>Plan</th><th>Amount (₦)</th><th>Date</th><th></th></tr></thead>
+          <tbody id="invoices-body"><tr><td colspan="6" style="color:#4a5568">Loading…</td></tr></tbody>
+        </table></div></div>
+      </div>
+
     </main>
   </div>
 </div>
@@ -539,7 +573,8 @@ function nav(p){
   ({dashboard:loadDashboard,users:loadUsers,activity:loadActivity,payments:loadPayments,
     certificates:loadCerts,'access-codes':loadAccessCodes,referrals:loadReferrals,
     feedback:loadFeedback,announce:loadAnnounce,
-    team:loadTeam,tasks:loadTasks,files:loadFiles})[p]?.();
+    team:loadTeam,tasks:loadTasks,files:loadFiles,
+    coupons:loadCoupons,invoices:loadInvoices})[p]?.();
 }
 document.querySelectorAll('.nb').forEach(b=>b.addEventListener('click',()=>nav(b.dataset.p)));
 
@@ -707,9 +742,20 @@ async function loadFeedback(){
 
 // ── Announce ───────────────────────────────────────────────────────────────
 async function loadAnnounce(){
-  const r=await api('/admin/dashboard'); const d=await r.json();
-  // Show announcement history from dashboard if available
-  document.getElementById('ann-history').innerHTML='<span style="color:#4a5568;font-size:.82rem">Announcement history available after sending.</span>';
+  const r=await api('/admin/announce/history');
+  if(!r.ok) return;
+  const d=await r.json();
+  document.getElementById('ann-history').innerHTML=(d.announcements||[]).length
+    ? (d.announcements).map(a=>`
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.06);font-size:.82rem;gap:10px">
+          <div style="flex:1;min-width:0">
+            <strong style="color:#e2e8f0">${a.subject}</strong>
+            <div style="color:#718096;font-size:.74rem;margin-top:2px">Target: <span class="badge bg">${a.target}</span> · Sent to <strong style="color:#68d391">${a.sent_to}</strong> users</div>
+          </div>
+          <div style="color:#4a5568;font-size:.72rem;white-space:nowrap">${(a.sent_at||'').split('T')[0]}</div>
+        </div>`)
+      .join('')
+    : '<span style="color:#4a5568;font-size:.82rem">No announcements sent yet.</span>';
 }
 
 async function sendAnnouncement(){
@@ -889,6 +935,71 @@ async function loadFiles(){
     (d.files||[]).map(f=>`<tr><td style="font-family:monospace;font-size:.77rem">${f.path}</td>
       <td style="text-align:right;font-size:.74rem;color:#718096">${f.size.toLocaleString()} B</td></tr>`
     ).join('')+'</tbody></table></div>';
+}
+
+// ── Coupons ────────────────────────────────────────────────────────────────
+async function loadCoupons(){
+  const r=await api('/admin/coupons'); const d=await r.json();
+  document.getElementById('coupons-list').innerHTML=(d.coupons||[]).length
+    ? `<div style="overflow-x:auto"><table>
+        <thead><tr><th>Code</th><th>Disc%</th><th>Flat(₦)</th><th>Plan</th><th>Uses</th><th>Expires</th></tr></thead>
+        <tbody>`+
+        (d.coupons).map(c=>{
+          const exp=c.expires_at&&c.expires_at>0?new Date(c.expires_at*1000).toLocaleDateString():'never';
+          const cls=c.times_used>=c.max_uses?'gr':'gg';
+          return `<tr>
+            <td><code style="font-size:.82rem;color:#a78bfa;letter-spacing:.06em">${c.code}</code></td>
+            <td style="color:#fcd34d">${c.discount_pct}%</td>
+            <td>${c.discount_flat>0?'₦'+c.discount_flat:'—'}</td>
+            <td><span class="badge grey">${c.plan}</span></td>
+            <td><span class="badge ${cls}">${c.times_used||0}/${c.max_uses}</span></td>
+            <td style="font-size:.74rem;color:#718096">${exp}</td>
+          </tr>`;
+        }).join('')+
+      `</tbody></table></div>`
+    : '<span style="color:#4a5568;font-size:.82rem">No coupons created yet.</span>';
+}
+
+async function createCoupon(){
+  const code=(document.getElementById('cp-code').value||'').trim().toUpperCase();
+  const pct=parseInt(document.getElementById('cp-pct').value)||0;
+  const flat=parseFloat(document.getElementById('cp-flat').value)||0;
+  const plan=document.getElementById('cp-plan').value||'any';
+  const maxUses=parseInt(document.getElementById('cp-max').value)||100;
+  const days=parseInt(document.getElementById('cp-days').value)||0;
+  const resEl=document.getElementById('cp-result');
+  if(!code){toast('Enter a coupon code',false);return;}
+  if(pct===0&&flat===0){toast('Enter a discount % or flat amount',false);return;}
+  resEl.style.display='block';
+  resEl.innerHTML='<span style="color:#718096">Creating…</span>';
+  const r=await api('/admin/coupons/create',{method:'POST',
+    body:JSON.stringify({code,discount_pct:pct,discount_flat:flat,plan,max_uses:maxUses,expires_days:days})});
+  const d=await r.json();
+  if(r.ok){
+    resEl.innerHTML=`<div class="alert-g">✅ Coupon <strong style="color:#a78bfa;letter-spacing:.08em">${code}</strong> created · ${pct}% off · max ${maxUses} uses</div>`;
+    document.getElementById('cp-code').value='';
+    loadCoupons();
+  } else {
+    resEl.innerHTML=`<div class="alert-r">❌ ${d.detail||d.error||'Failed'}</div>`;
+  }
+}
+
+// ── Invoices ───────────────────────────────────────────────────────────────
+async function loadInvoices(){
+  const r=await api('/admin/invoices'); const d=await r.json();
+  document.getElementById('invoices-body').innerHTML=(d.invoices||[]).length
+    ? (d.invoices).map(inv=>`<tr>
+        <td><code style="font-size:.78rem;color:#93c5fd">${inv.id||inv.invoice_id||'—'}</code></td>
+        <td style="font-size:.78rem">
+          <div>${inv.learner_name||'—'}</div>
+          <div style="color:#4a5568;font-size:.7rem">${inv.learner_id||'—'}</div>
+        </td>
+        <td><span class="badge grey">${inv.plan||'—'}</span></td>
+        <td style="color:#68d391;font-weight:700">₦${(inv.amount||0).toLocaleString()}</td>
+        <td style="color:#4a5568;font-size:.74rem">${(inv.created_at||inv.issued_at||'—').toString().split('T')[0]}</td>
+        <td><a href="/invoice/${inv.id||inv.invoice_id}" target="_blank" class="bsm">View</a></td>
+      </tr>`).join('')
+    : '<tr><td colspan="6" style="color:#4a5568">No invoices yet.</td></tr>';
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────
