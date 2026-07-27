@@ -216,7 +216,7 @@ export default function ChatPanel({ onAuthClick }: Props) {
       {/* Input area */}
       <div style={{ padding: '8px 12px 10px', borderTop: '1px solid #2d3748', display: 'flex', flexDirection: 'column', gap: 6, background: '#0f1117', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <input type="checkbox" id="code-mode" checked={codeMode} onChange={e => setCodeMode(e.target.checked)} style={{ width: 'auto', accent:'#3182ce' }} />
+          <input type="checkbox" id="code-mode" checked={codeMode} onChange={e => setCodeMode(e.target.checked)} style={{ width: 'auto', accentColor:'#3182ce' }} />
           <label htmlFor="code-mode" style={{ fontSize: '.78rem', color: '#718096', cursor: 'pointer', userSelect: 'none' }}>📝 Paste code</label>
         </div>
         {codeMode && (
