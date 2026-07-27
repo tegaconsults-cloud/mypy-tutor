@@ -188,7 +188,30 @@ def get_or_create_user(google_payload: dict) -> UserAccount:
 
 
 def get_user_by_id(learner_id: str) -> Optional[UserAccount]:
-    return _users.get(learner_id)
+    """Look up a user by learner_id — checks Google/GitHub in-memory store first,
+    then falls back to email-auth store for email-registered users."""
+    if learner_id in _users:
+        return _users[learner_id]
+
+    # Email users: learner_id starts with "em_" (hashed email)
+    # They are stored in email_auth._confirmed, not _users
+    try:
+        from app.email_auth import get_email_user_by_id as _get_eu
+        eu = _get_eu(learner_id)
+        if eu:
+            user = UserAccount(
+                learner_id=learner_id,
+                email=eu.get("email", ""),
+                name=eu.get("name", ""),
+                picture="",
+                google_sub="",
+            )
+            _users[learner_id] = user  # cache it so subsequent lookups are fast
+            return user
+    except Exception:
+        pass
+
+    return None
 
 
 # ---------------------------------------------------------------------------
