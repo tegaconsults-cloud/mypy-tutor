@@ -247,10 +247,21 @@ def init_db() -> None:
             updated_at   REAL DEFAULT (unixepoch())
         );
 
+        -- Individual course purchases (separate from tier bundles)
+        CREATE TABLE IF NOT EXISTS course_purchases (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            learner_id   TEXT NOT NULL,
+            course_name  TEXT NOT NULL,
+            amount_ngn   REAL DEFAULT 0,
+            payment_ref  TEXT DEFAULT '',
+            purchased_at REAL DEFAULT (unixepoch()),
+            UNIQUE(learner_id, course_name)
+        );
+
         -- Daily prompt counts — persisted so counts survive Render restarts
         CREATE TABLE IF NOT EXISTS daily_prompt_counts (
-            key      TEXT NOT NULL,   -- learner_id or IP
-            date_str TEXT NOT NULL,   -- WAT date key e.g. "2025-07-27"
+            key      TEXT NOT NULL,
+            date_str TEXT NOT NULL,
             count    INTEGER DEFAULT 0,
             PRIMARY KEY (key, date_str)
         );
@@ -292,10 +303,6 @@ def init_db() -> None:
             "ALTER TABLE referral_uses ADD COLUMN referrer_bonus REAL DEFAULT 0",
             "ALTER TABLE referral_uses ADD COLUMN referee_discount REAL DEFAULT 0",
             "ALTER TABLE user_profiles ADD COLUMN photo_url TEXT DEFAULT ''",
-            # daily_prompt_counts table (added in v4 — use CREATE TABLE IF NOT EXISTS in init)
-            """CREATE TABLE IF NOT EXISTS daily_prompt_counts (
-                key TEXT NOT NULL, date_str TEXT NOT NULL, count INTEGER DEFAULT 0,
-                PRIMARY KEY (key, date_str))""",
         ]
         for sql in _migrations:
             try:

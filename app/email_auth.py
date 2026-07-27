@@ -41,7 +41,7 @@ def _cfg(key: str, default: str = "") -> str:
 APP_URL = "https://mypytutor.onrender.com"
 
 def _get_session_secret() -> str:
-    return os.getenv("SESSION_SECRET", "change-me-in-production-32-chars-min")
+    return os.getenv("SESSION_SECRET", "mypytutor-INSECURE-fallback-set-SESSION_SECRET-now")
 
 def _get_token_serializer() -> "URLSafeTimedSerializer":
     """Build a fresh serializer at call time so SESSION_SECRET is always current."""
