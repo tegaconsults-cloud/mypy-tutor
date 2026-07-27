@@ -532,9 +532,10 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
 const TK = 'mpt_admin_token';
 let token = localStorage.getItem(TK) || '';
 const ADMIN_EMAIL = localStorage.getItem('mpt_admin_email') || '';
+const API_BASE = 'https://mypytutor.onrender.com';
 
 function api(path, opts={}) {
-  return fetch(path, {...opts, headers:{'Content-Type':'application/json','X-Admin-Token':token,...(opts.headers||{})}});
+  return fetch(API_BASE + path, {...opts, headers:{'Content-Type':'application/json','X-Admin-Token':token,...(opts.headers||{})}});
 }
 function toast(msg, ok=true) {
   const t=document.getElementById('toast');
@@ -549,7 +550,7 @@ async function doLogin() {
   const btn=document.getElementById('lbtn');
   btn.disabled=true; btn.textContent='Signing in…';
   document.getElementById('lerr').style.display='none';
-  const r=await fetch('/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},
+  const r=await fetch(API_BASE + '/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({email,password:pass})});
   const d=await r.json();
   if(!r.ok){document.getElementById('lerr').style.display='block';btn.disabled=false;btn.textContent='Sign In';return;}
