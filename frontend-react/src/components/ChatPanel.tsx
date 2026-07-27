@@ -58,6 +58,18 @@ export default function ChatPanel({ onAuthClick }: Props) {
     return () => window.removeEventListener('clear-chat', handler)
   }, [])
 
+  // Restore chat when auth context loads a previous conversation
+  useEffect(() => {
+    const handler = () => {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY)
+        if (saved) setMessages(JSON.parse(saved))
+      } catch {}
+    }
+    window.addEventListener('restore-chat', handler)
+    return () => window.removeEventListener('restore-chat', handler)
+  }, [])
+
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, loading])
 
   const saveHistory = useCallback((msgs: Message[]) => {
@@ -92,6 +104,7 @@ export default function ChatPanel({ onAuthClick }: Props) {
       const updated = [...newMsgs, reply]
       setMessages(updated)
       saveHistory(updated)
+      window.dispatchEvent(new Event('prompt-used'))
       if (user) refresh(user.learner_id)
     } catch (err: unknown) {
       if (err instanceof Error) {
