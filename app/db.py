@@ -247,15 +247,12 @@ def init_db() -> None:
             updated_at   REAL DEFAULT (unixepoch())
         );
 
-        -- Individual course purchases (separate from tier bundles)
-        CREATE TABLE IF NOT EXISTS course_purchases (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            learner_id  TEXT NOT NULL,
-            course_name TEXT NOT NULL,
-            amount_ngn  REAL DEFAULT 0,
-            payment_ref TEXT DEFAULT '',
-            purchased_at REAL DEFAULT (unixepoch()),
-            UNIQUE(learner_id, course_name)
+        -- Daily prompt counts — persisted so counts survive Render restarts
+        CREATE TABLE IF NOT EXISTS daily_prompt_counts (
+            key      TEXT NOT NULL,   -- learner_id or IP
+            date_str TEXT NOT NULL,   -- WAT date key e.g. "2025-07-27"
+            count    INTEGER DEFAULT 0,
+            PRIMARY KEY (key, date_str)
         );
         """)
 
@@ -281,6 +278,8 @@ def init_db() -> None:
             ON access_codes (sent_to_email);
         CREATE INDEX IF NOT EXISTS idx_course_purchases_learner
             ON course_purchases (learner_id);
+        CREATE INDEX IF NOT EXISTS idx_daily_prompts_key
+            ON daily_prompt_counts (key, date_str);
         """)
 
         # ── Schema migrations — add new columns to existing tables ──────────
@@ -293,6 +292,10 @@ def init_db() -> None:
             "ALTER TABLE referral_uses ADD COLUMN referrer_bonus REAL DEFAULT 0",
             "ALTER TABLE referral_uses ADD COLUMN referee_discount REAL DEFAULT 0",
             "ALTER TABLE user_profiles ADD COLUMN photo_url TEXT DEFAULT ''",
+            # daily_prompt_counts table (added in v4 — use CREATE TABLE IF NOT EXISTS in init)
+            """CREATE TABLE IF NOT EXISTS daily_prompt_counts (
+                key TEXT NOT NULL, date_str TEXT NOT NULL, count INTEGER DEFAULT 0,
+                PRIMARY KEY (key, date_str))""",
         ]
         for sql in _migrations:
             try:
@@ -361,7 +364,10 @@ def save_profile_db(learner_id: str, profile_dict: dict) -> None:
 
 
 def upgrade_tier_db(learner_id: str, tier: str) -> None:
-    """Upgrade a specific learner's tier — called on payment confirmation."""
+    """Upgrade a specific learner's tier — called on payment confirmation.
+    Writes to SQLite AND Supabase immediately (not background) so tier
+    survives Render ephemeral filesystem restarts.
+    """
     with get_db() as conn:
         conn.execute(
             "UPDATE learner_profiles SET tier=?, updated_at=unixepoch() WHERE learner_id=?",
@@ -372,6 +378,13 @@ def upgrade_tier_db(learner_id: str, tier: str) -> None:
         INSERT OR IGNORE INTO learner_profiles (learner_id, tier)
         VALUES (?, ?)
         """, (learner_id, tier))
+
+    # Mirror to Supabase synchronously — tier must survive restart
+    try:
+        from app.supabase_client import sb_update_tier
+        sb_update_tier(learner_id, tier)
+    except Exception:
+        pass
 
 
 def get_all_learners() -> list[dict]:
@@ -685,18 +698,18 @@ def get_referral_code(code: str) -> dict | None:
 
 
 def use_referral_code(code: str, used_by_email: str, used_by_id: str,
-                       discount_pct: int = 15,
+                       discount_pct: int = 5,
                        payment_amount: float = 0) -> bool:
     """
     Record a referral use.
-    Split: 15% discount to referee, 5% bonus to referrer (total 20%).
+    Correct split: 5% discount to referee, 15% bonus to referrer.
     Returns False if code is exhausted or invalid.
     """
     ref = get_referral_code(code)
     if not ref or ref["uses"] >= ref["max_uses"]:
         return False
-    referrer_bonus   = round(payment_amount * 0.05, 2)   # 5% to referrer
-    referee_discount = round(payment_amount * 0.15, 2)   # 15% to referee
+    referrer_bonus   = round(payment_amount * 0.15, 2)   # 15% bonus to referrer
+    referee_discount = round(payment_amount * 0.05, 2)   # 5% discount to referee
     with get_db() as conn:
         conn.execute(
             "UPDATE referrals SET uses=uses+1, bonus_balance=bonus_balance+? WHERE code=?",
@@ -1025,3 +1038,65 @@ def get_all_course_purchases() -> list[dict]:
         d["purchased_at_fmt"] = _dt.datetime.fromtimestamp(d["purchased_at"]).strftime("%Y-%m-%d %H:%M")
         result.append(d)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Daily prompt count persistence
+# Replaces the in-memory-only _daily_prompt_store in security.py so counts
+# survive Render restarts. Called directly from security.py.
+# ---------------------------------------------------------------------------
+
+def get_daily_prompt_count_db(key: str, date_str: str) -> int:
+    """Return the stored prompt count for (key, date_str), or 0 if none."""
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT count FROM daily_prompt_counts WHERE key=? AND date_str=?",
+                (key, date_str)
+            ).fetchone()
+        return int(row["count"]) if row else 0
+    except Exception:
+        return 0
+
+
+def increment_daily_prompt_count_db(key: str, date_str: str) -> int:
+    """Atomically increment the prompt count for (key, date_str). Returns new count."""
+    try:
+        with get_db() as conn:
+            conn.execute("""
+                INSERT INTO daily_prompt_counts (key, date_str, count)
+                VALUES (?, ?, 1)
+                ON CONFLICT(key, date_str) DO UPDATE SET count = count + 1
+            """, (key, date_str))
+            row = conn.execute(
+                "SELECT count FROM daily_prompt_counts WHERE key=? AND date_str=?",
+                (key, date_str)
+            ).fetchone()
+        return int(row["count"]) if row else 1
+    except Exception:
+        return 1
+
+
+def load_todays_prompt_counts(date_str: str) -> dict:
+    """Load all prompt counts for today into a dict {key: count}.
+    Called on startup to repopulate the in-memory cache."""
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT key, count FROM daily_prompt_counts WHERE date_str=?",
+                (date_str,)
+            ).fetchall()
+        return {r["key"]: r["count"] for r in rows}
+    except Exception:
+        return {}
+
+
+def purge_old_prompt_counts(keep_date: str) -> None:
+    """Delete prompt count rows older than keep_date to prevent table growth."""
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "DELETE FROM daily_prompt_counts WHERE date_str < ?", (keep_date,)
+            )
+    except Exception:
+        pass

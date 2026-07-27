@@ -100,13 +100,23 @@ def sb_get_profile(learner_id: str) -> dict | None:
 
 
 def sb_update_tier(learner_id: str, tier: str) -> None:
+    """Update tier in BOTH Supabase tables so it survives restarts."""
     sb = get_supabase()
     if not sb:
         return
     try:
+        # profiles table (used for auth profile display)
         sb.table("profiles").update({"subscription": tier}).eq("id", learner_id).execute()
     except Exception as exc:
-        logger.warning("sb_update_tier failed: %s", exc)
+        logger.warning("sb_update_tier profiles failed: %s", exc)
+    try:
+        # learner_progress table (used by sb_load_progress on restart recovery)
+        sb.table("learner_progress").upsert({
+            "learner_id": learner_id,
+            "tier":       tier,
+        }, on_conflict="learner_id").execute()
+    except Exception as exc:
+        logger.warning("sb_update_tier learner_progress failed: %s", exc)
 
 
 # ---------------------------------------------------------------------------

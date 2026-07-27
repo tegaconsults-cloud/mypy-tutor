@@ -464,10 +464,12 @@ async def auth_signup(request: EmailSignUpWithCode) -> dict:
             # Auto-confirmed path — apply access code directly now
             try:
                 from app.db import validate_access_code as _vac, redeem_access_code as _rac, upgrade_tier_db
+                from app.progress import apply_tier_upgrade
                 vcode = _vac(access_code)
                 if vcode:
                     _rac(access_code, email_lower, learner_id)
-                    upgrade_tier_db(learner_id, code_rec["tier"])
+                    upgrade_tier_db(learner_id, code_rec["tier"])       # SQLite + Supabase
+                    apply_tier_upgrade(learner_id, code_rec["tier"])    # in-memory cache
                     logger.info("Access code %s applied directly (auto-confirm) for %s", access_code, email_lower)
             except Exception as exc:
                 logger.warning("Direct access code apply failed: %s", exc)
@@ -1200,11 +1202,9 @@ async def paystack_webhook(request: Request) -> dict:
                              f"plan={prompt_plan} limit={daily_limit} | ₦{amount_ngn:.0f}")
 
             if tier:
-                upgrade_tier_db(learner_id, tier)
-                from app.progress import get_profile as _gp, save_profile as _sp
-                p = _gp(learner_id)
-                p.tier = tier
-                _sp(p)
+                upgrade_tier_db(learner_id, tier)        # SQLite + Supabase
+                from app.progress import apply_tier_upgrade
+                apply_tier_upgrade(learner_id, tier)     # in-memory cache sync
 
                 tier_labels = {
                     "tier1": "Beginner Bundle (₦8,000)",
@@ -1500,7 +1500,7 @@ async def admin_user_detail(learner_id: str, request: Request) -> dict:
         },
     }
 
-# ITEM 1 — set-tier now writes to both memory AND SQLite via upgrade_tier_db
+# set-tier — uses apply_tier_upgrade for atomic memory+SQLite+Supabase consistency
 @app.post("/admin/users/{learner_id}/set-tier")
 async def admin_set_tier(learner_id: str, request: Request) -> dict:
     _require_admin(request)
@@ -1510,12 +1510,9 @@ async def admin_set_tier(learner_id: str, request: Request) -> dict:
     if tier not in ("free", "tier1", "tier2", "tier3"):
         raise HTTPException(status_code=400, detail="Invalid tier.")
 
-    from app.progress import _store as ls, save_profile as _sp
-    # Ensure profile is in memory
-    p      = get_profile(learner_id)   # loads from SQLite if not in cache
-    p.tier = tier
-    _sp(p)                             # saves to memory + SQLite
-    upgrade_tier_db(learner_id, tier)  # belt-and-suspenders: direct SQL UPDATE
+    from app.progress import apply_tier_upgrade
+    apply_tier_upgrade(learner_id, tier)   # updates _store + SQLite atomically
+    upgrade_tier_db(learner_id, tier)      # also writes Supabase via upgrade_tier_db
     log_activity(learner_id, "admin:set-tier", f"tier set to {tier}")
     return {"ok": True, "learner_id": learner_id, "tier": tier}
 
@@ -1524,13 +1521,16 @@ async def admin_set_tier(learner_id: str, request: Request) -> dict:
 async def admin_terminate_user(learner_id: str, request: Request) -> dict:
     _require_admin(request)
     validate_learner_id(learner_id)
-    from app.progress import save_profile as _sp
+    from app.progress import apply_tier_upgrade
+    # Reset tier + clear course progress atomically
     p = get_profile(learner_id)
-    p.tier               = "free"
-    p.current_course     = None
-    p.current_course_step= 0
+    p.tier                = "free"
+    p.current_course      = None
+    p.current_course_step = 0
+    from app.progress import save_profile as _sp
     _sp(p)
-    upgrade_tier_db(learner_id, "free")
+    upgrade_tier_db(learner_id, "free")   # also writes Supabase
+    apply_tier_upgrade(learner_id, "free")
     log_activity(learner_id, "admin:terminate", "subscription terminated by admin")
     return {"ok": True, "message": f"Subscription terminated for {learner_id}"}
 
@@ -2081,50 +2081,58 @@ async def get_my_referral(learner_id: str) -> dict:
     validate_learner_id(learner_id)
     existing = get_learner_referral_code(learner_id)
     if existing:
-        uses = get_referral_uses(existing["code"])
+        uses     = get_referral_uses(existing["code"])
+        # Separate paid (payment_amount > 0 so bonus was earned) vs unpaid (signup only)
+        paid_uses   = [u for u in uses if u.get("referrer_bonus", 0) > 0]
+        unpaid_uses = [u for u in uses if u.get("referrer_bonus", 0) == 0]
         return {
             "code":          existing["code"],
             "uses":          existing["uses"],
             "max_uses":      existing["max_uses"],
             "bonus_balance": round(existing.get("bonus_balance", 0), 2),
-            "recent_uses":   uses[:10],
+            "paid_referrals":   len(paid_uses),
+            "unpaid_referrals": len(unpaid_uses),
+            "total_referrals":  len(uses),
+            "recent_uses":   uses[:20],
         }
     import secrets as _sec
     code    = _sec.token_hex(4).upper()
     profile = get_profile(learner_id)
     email   = profile.email or learner_id
     create_referral_code(code, learner_id, email)
-    # Mirror to Supabase so it survives Render restarts
     import threading as _rt
     _rt.Thread(
         target=_mirror_referral_code_to_supabase,
         args=(code, learner_id, email),
         daemon=False,
     ).start()
-    return {"code": code, "uses": 0, "max_uses": 50,
-            "bonus_balance": 0.0, "recent_uses": []}
+    return {
+        "code": code, "uses": 0, "max_uses": 50, "bonus_balance": 0.0,
+        "paid_referrals": 0, "unpaid_referrals": 0, "total_referrals": 0,
+        "recent_uses": [],
+    }
 
 
 @app.post("/referral/use")
 async def use_referral(body: ReferralUse) -> dict:
     """
     Record that a new user signed up with a referral code.
-    Referee gets 10% discount; referrer gets 5% bonus credited (total 15%).
-    payment_amount can be passed in the body for accurate calculation.
+    Correct split: referee gets 5% discount, referrer earns 15% bonus.
+    payment_amount can be passed for accurate bonus calculation.
     """
     ref = get_referral_code(body.code)
     if not ref or ref["uses"] >= ref["max_uses"]:
         raise HTTPException(status_code=404, detail="Referral code is invalid or exhausted.")
     payment_amount = getattr(body, 'payment_amount', 0) or 0
     ok = use_referral_code(body.code, body.email, body.learner_id,
-                           discount_pct=10, payment_amount=payment_amount)
+                           discount_pct=5, payment_amount=payment_amount)
     if not ok:
         raise HTTPException(status_code=400, detail="Could not apply referral code.")
     log_activity(body.learner_id, "referral:used", f"code={body.code}")
     return {
         "ok": True,
-        "discount_pct": 10,
-        "message": "Referral applied! You get 10% off your first subscription.",
+        "discount_pct": 5,
+        "message": "Referral applied! You get 5% off your first payment.",
     }
 
 

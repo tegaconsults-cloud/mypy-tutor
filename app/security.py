@@ -34,6 +34,11 @@ LLM_RATE_LIMIT_WINDOW   = 60      # per 60 seconds
 LLM_ENDPOINTS = {"/chat", "/quiz/generate", "/quiz/answer",
                  "/course/start", "/course/next", "/exercise/generate"}
 
+# Auth endpoints — strict brute-force protection
+AUTH_ENDPOINTS         = {"/auth/signin", "/auth/signup", "/admin/login"}
+AUTH_RATE_LIMIT_REQUESTS = 10    # max 10 attempts
+AUTH_RATE_LIMIT_WINDOW   = 300   # per 5 minutes per IP
+
 # Input size limits
 MAX_MESSAGE_LEN   = 4_000         # characters in a single user message
 MAX_CODE_LEN      = 8_000         # characters of pasted code (embedded in message)
@@ -56,6 +61,7 @@ FREE_DAILY_LIMIT = 10
 # { ip: deque of timestamps } — capped at 10k unique IPs to prevent memory growth
 _general_store: dict[str, deque] = defaultdict(deque)
 _llm_store:     dict[str, deque] = defaultdict(deque)
+_auth_store:    dict[str, deque] = defaultdict(deque)   # brute-force protection
 _RATE_STORE_MAX = 10_000   # evict oldest IPs when over this size
 
 
@@ -82,47 +88,72 @@ def _check_rate(store: dict, ip: str, limit: int, window: int) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Free-tier daily prompt counter (per learner_id OR ip, whichever is provided)
+# Free-tier daily prompt counter
+# Write-through cache: memory is always checked first for speed; every
+# mutation is also written to SQLite so counts survive Render restarts.
 # ---------------------------------------------------------------------------
 
 import datetime as _dt
 
-# { key -> (date_str, count) }
+# { key -> (date_str, count) }  — in-memory cache loaded from SQLite at startup
 _daily_prompt_store: dict[str, tuple[str, int]] = {}
+_prompt_store_loaded: bool = False
+
+
+def _ensure_prompt_store_loaded() -> None:
+    """Load today's counts from SQLite once per process startup."""
+    global _daily_prompt_store, _prompt_store_loaded
+    if _prompt_store_loaded:
+        return
+    try:
+        today = _wat_date_key()
+        from app.db import load_todays_prompt_counts, purge_old_prompt_counts
+        counts = load_todays_prompt_counts(today)
+        for k, c in counts.items():
+            _daily_prompt_store[k] = (today, c)
+        # Clean up rows older than yesterday so the table stays small
+        import datetime as _dt2
+        yesterday = (_dt2.date.today() - _dt2.timedelta(days=1)).isoformat()
+        purge_old_prompt_counts(yesterday)
+    except Exception:
+        pass
+    _prompt_store_loaded = True
 
 
 def _wat_date_key() -> str:
     """
-    Return today's date string in WAT (UTC+1), but reset at 5am WAT.
+    Return today's date string in WAT (UTC+1), reset at 5am WAT.
     Prompts used between 00:00–04:59 WAT count toward the previous day's quota.
-    This gives African learners a natural morning reset at 5am rather than midnight.
     """
-    import datetime as _dt2
-    # WAT = UTC+1
-    wat_now = _dt2.datetime.utcnow() + _dt2.timedelta(hours=1)
-    # If before 5am WAT, it's still "yesterday's" quota window
+    wat_now = _dt.datetime.utcnow() + _dt.timedelta(hours=1)
     if wat_now.hour < 5:
-        wat_now = wat_now - _dt2.timedelta(days=1)
+        wat_now = wat_now - _dt.timedelta(days=1)
     return wat_now.strftime("%Y-%m-%d")
 
 
 def check_free_prompt_limit(learner_id: str, ip: str) -> tuple[bool, int]:
     """
-    Check if a free-tier user has exceeded their 10 prompts/day limit.
-    Quota resets at 5am WAT (UTC+1).
+    Check if a free-tier user has exceeded their daily limit.
     Returns (allowed: bool, used_count: int).
-    Key is learner_id if not 'default', otherwise ip.
     """
-    key = learner_id if learner_id and learner_id != "default" else ip
+    _ensure_prompt_store_loaded()
+    key   = learner_id if learner_id and learner_id != "default" else ip
     today = _wat_date_key()
+
     existing = _daily_prompt_store.get(key)
     if existing is None or existing[0] != today:
-        if len(_daily_prompt_store) > 5000:
-            stale = [k for k, (d, _) in _daily_prompt_store.items() if d != today]
-            for k in stale:
-                del _daily_prompt_store[k]
-        _daily_prompt_store[key] = (today, 0)
-        return True, 0
+        # New day or new user — check SQLite first (covers restart recovery)
+        try:
+            from app.db import get_daily_prompt_count_db
+            db_count = get_daily_prompt_count_db(key, today)
+        except Exception:
+            db_count = 0
+        if db_count >= FREE_DAILY_LIMIT:
+            _daily_prompt_store[key] = (today, db_count)
+            return False, db_count
+        _daily_prompt_store[key] = (today, db_count)
+        return True, db_count
+
     _, count = existing
     if count >= FREE_DAILY_LIMIT:
         return False, count
@@ -130,27 +161,42 @@ def check_free_prompt_limit(learner_id: str, ip: str) -> tuple[bool, int]:
 
 
 def increment_free_prompt_count(learner_id: str, ip: str) -> int:
-    """Increment the daily prompt counter. Returns new count."""
-    key = learner_id if learner_id and learner_id != "default" else ip
+    """Increment daily prompt counter in both memory and SQLite. Returns new count."""
+    _ensure_prompt_store_loaded()
+    key   = learner_id if learner_id and learner_id != "default" else ip
     today = _wat_date_key()
-    existing = _daily_prompt_store.get(key)
-    if existing is None or existing[0] != today:
-        _daily_prompt_store[key] = (today, 1)
-        return 1
-    date_str, count = existing
-    new_count = count + 1
-    _daily_prompt_store[key] = (date_str, new_count)
+
+    # Atomically increment in SQLite (source of truth)
+    try:
+        from app.db import increment_daily_prompt_count_db
+        new_count = increment_daily_prompt_count_db(key, today)
+    except Exception:
+        # Fallback: increment only in memory if DB fails
+        existing  = _daily_prompt_store.get(key)
+        new_count = ((existing[1] + 1) if existing and existing[0] == today else 1)
+
+    _daily_prompt_store[key] = (today, new_count)
     return new_count
 
 
 def get_free_prompt_count(learner_id: str, ip: str) -> int:
-    """Get current daily prompt count for a learner/IP."""
-    key = learner_id if learner_id and learner_id != "default" else ip
+    """Get current daily prompt count. Checks memory first, then SQLite."""
+    _ensure_prompt_store_loaded()
+    key   = learner_id if learner_id and learner_id != "default" else ip
     today = _wat_date_key()
+
     existing = _daily_prompt_store.get(key)
-    if existing is None or existing[0] != today:
+    if existing and existing[0] == today:
+        return existing[1]
+
+    # Cache miss — load from SQLite
+    try:
+        from app.db import get_daily_prompt_count_db
+        count = get_daily_prompt_count_db(key, today)
+        _daily_prompt_store[key] = (today, count)
+        return count
+    except Exception:
         return 0
-    return existing[1]
 
 
 # ---------------------------------------------------------------------------

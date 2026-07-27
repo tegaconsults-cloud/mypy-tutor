@@ -23,13 +23,14 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 def _get_admin_email() -> str:
-    return os.getenv("ADMIN_EMAIL", "tega.com.ng@gmail.com")
+    return os.getenv("ADMIN_EMAIL", "")
 
 def _get_admin_password() -> str:
-    return os.getenv("ADMIN_PASSWORD", "Teamsamikoko@2024")
+    # Never fall back to a hardcoded password — if env var not set, login will always fail
+    return os.getenv("ADMIN_PASSWORD", "")
 
 def _get_admin_serializer() -> "URLSafeTimedSerializer":
-    secret = os.getenv("SESSION_SECRET", "change-me-in-production-32-chars-min")
+    secret = os.getenv("SESSION_SECRET", "mypytutor-INSECURE-fallback-set-SESSION_SECRET-now")
     return URLSafeTimedSerializer(secret)
 
 ADMIN_TOKEN_MAX_AGE = 60 * 60 * 8   # 8 hours
@@ -45,16 +46,14 @@ def verify_admin_login(email: str, password: str) -> bool:
     ADMIN_PASSWORD in Render env can be EITHER:
       - The raw password itself (e.g. "MySecret123")
       - The SHA-256 hash of the password
-    This avoids breaking existing deployments while being more secure than
-    the previous plaintext-equality check.
+    Returns False if either env var is not configured.
     """
-    admin_email    = _get_admin_email()
-    stored_pw      = _get_admin_password()
+    admin_email = _get_admin_email()
+    stored_pw   = _get_admin_password()
+    if not admin_email or not stored_pw:
+        return False   # env vars not configured — refuse all logins
     email_ok = email.lower().strip() == admin_email.lower()
-    pw_ok = False
-    if stored_pw:
-        # Accept both: stored hash of pw, OR stored pw being the raw password
-        pw_ok = (stored_pw == _hash(password)) or (stored_pw == password)
+    pw_ok    = (stored_pw == _hash(password)) or (stored_pw == password)
     return email_ok and pw_ok
 
 
