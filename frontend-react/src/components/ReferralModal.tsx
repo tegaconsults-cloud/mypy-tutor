@@ -5,7 +5,7 @@ import {
   CreditCard, TrendingUp, Share2, ChevronDown, ChevronUp,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { API_BASE } from '../api'
+import { API_BASE, getReferralWithdrawals, requestReferralWithdrawal } from '../api'
 
 interface ReferralUse {
   used_by_email: string
@@ -34,6 +34,13 @@ export default function ReferralModal({ onClose }: Props) {
   const [codeCopied, setCodeCopied] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [loading, setLoading]   = useState(true)
+  const [amount, setAmount] = useState('')
+  const [bankName, setBankName] = useState('')
+  const [accountName, setAccountName] = useState('')
+  const [accountNum, setAccountNum] = useState('')
+  const [withdrawMsg, setWithdrawMsg] = useState('')
+  const [withdrawals, setWithdrawals] = useState<any[]>([])
+  const [submitting, setSubmitting] = useState(false)
 
   const lid    = user?.learner_id || 'default'
   const appUrl = 'https://mypytutor.com.ng'
@@ -41,9 +48,14 @@ export default function ReferralModal({ onClose }: Props) {
   useEffect(() => {
     if (!user) return
     setLoading(true)
-    fetch(`${API_BASE}/referral/${lid}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) setData(d) })
+    Promise.all([
+      fetch(`${API_BASE}/referral/${lid}`).then(r => r.ok ? r.json() : null),
+      getReferralWithdrawals(lid),
+    ])
+      .then(([refData, withdrawalData]) => {
+        if (refData) setData(refData)
+        if (withdrawalData?.withdrawals) setWithdrawals(withdrawalData.withdrawals)
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [user])
@@ -77,6 +89,46 @@ export default function ReferralModal({ onClose }: Props) {
   const unpaidUses = data?.unpaid_referrals ?? 0
   const totalUses  = data?.total_referrals  ?? 0
   const balance    = data?.bonus_balance    ?? 0
+
+  const submitWithdrawal = async () => {
+    if (!user) return
+    const amt = Number(amount)
+    if (!amt || amt <= 0) {
+      setWithdrawMsg('Enter a valid payout amount.')
+      return
+    }
+    if (amt > balance) {
+      setWithdrawMsg('Amount exceeds your available balance.')
+      return
+    }
+    if (!bankName.trim() || !accountName.trim() || !accountNum.trim()) {
+      setWithdrawMsg('Add your bank, account name, and account number.')
+      return
+    }
+    setSubmitting(true)
+    setWithdrawMsg('')
+    try {
+      const res = await requestReferralWithdrawal({
+        learner_id: lid,
+        email: user.email,
+        amount: amt,
+        bank_name: bankName,
+        account_name: accountName,
+        account_num: accountNum,
+      })
+      setWithdrawMsg(res.message || 'Withdrawal request submitted.')
+      setAmount('')
+      setBankName('')
+      setAccountName('')
+      setAccountNum('')
+      const updated = await getReferralWithdrawals(lid)
+      if (updated?.withdrawals) setWithdrawals(updated.withdrawals)
+    } catch (error) {
+      setWithdrawMsg(error instanceof Error ? error.message : 'Withdrawal request failed.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   return (
     <AnimatePresence>
@@ -227,6 +279,47 @@ export default function ReferralModal({ onClose }: Props) {
                     </div>
                   ))}
                 </div>
+
+                {/* Withdrawal form */}
+                <div className="rounded-2xl p-4 border border-slate-700/60" style={{ background: '#0f172a' }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-200">Request Payout</p>
+                      <p className="text-[11px] text-slate-500">We’ll review your request and credit your account.</p>
+                    </div>
+                    <span className="text-xs font-semibold text-emerald-400">Balance: ₦{balance.toLocaleString()}</span>
+                  </div>
+                  <div className="grid gap-2.5">
+                    <input value={amount} onChange={e => setAmount(e.target.value)} inputMode="decimal" placeholder="Amount (NGN)" className="h-11" />
+                    <input value={bankName} onChange={e => setBankName(e.target.value)} placeholder="Bank name" className="h-11" />
+                    <input value={accountName} onChange={e => setAccountName(e.target.value)} placeholder="Account name" className="h-11" />
+                    <input value={accountNum} onChange={e => setAccountNum(e.target.value)} placeholder="Account number" className="h-11" />
+                  </div>
+                  {withdrawMsg && <div className={`mt-3 text-xs ${withdrawMsg.includes('submitted') || withdrawMsg.includes('successfully') ? 'text-emerald-400' : 'text-amber-400'}`}>{withdrawMsg}</div>}
+                  <button onClick={submitWithdrawal} disabled={submitting} className="btn btn-secondary w-full mt-3 py-3 text-sm">
+                    {submitting ? 'Submitting…' : 'Submit Withdrawal Request'}
+                  </button>
+                </div>
+
+                {withdrawals.length > 0 && (
+                  <div className="rounded-2xl border border-slate-700/60 overflow-hidden" style={{ background: '#0f172a' }}>
+                    <div className="px-4 py-3 text-sm font-semibold text-slate-200 border-b border-slate-800">Recent Requests</div>
+                    <div className="divide-y divide-slate-800">
+                      {withdrawals.map((w, i) => (
+                        <div key={w.id ?? i} className="flex items-center justify-between px-4 py-3 text-sm">
+                          <div>
+                            <div className="text-slate-300">₦{Number(w.amount).toLocaleString()}</div>
+                            <div className="text-[11px] text-slate-500">{w.bank_name} · {w.account_name}</div>
+                          </div>
+                          <div className="text-right">
+                            <div className={`text-xs font-semibold ${w.status === 'paid' ? 'text-emerald-400' : 'text-amber-400'}`}>{w.status || 'pending'}</div>
+                            <div className="text-[10px] text-slate-500">{w.created_at_fmt || ''}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Action buttons */}
                 <div className="flex flex-col gap-2.5">

@@ -93,6 +93,8 @@ from app.db import (
     update_user_profile_db, get_user_profile_db,
     # referral balance
     get_referral_bonus_balance,
+    # referral withdrawals
+    create_withdrawal_request, get_withdrawals_for_learner,
     # course purchases
     record_course_purchase, has_course_purchase, get_learner_courses,
 )
@@ -417,6 +419,8 @@ async def auth_me(user=Depends(require_user)) -> AuthResponse:
                     user.picture = picture  # update in-memory cache
         except Exception:
             pass
+    profile = get_user_profile_db(user.learner_id)
+    picture = profile.get("photo_url", "") or picture
     return AuthResponse(
         token=token, learner_id=user.learner_id,
         name=user.name, email=user.email, picture=picture,
@@ -533,9 +537,11 @@ async def auth_signin(request: EmailSignInRequest) -> AuthResponse:
         args=(user_data["learner_id"], user_data["email"], user_data["name"]),
         daemon=False,
     ).start()
+    profile = get_user_profile_db(user_data["learner_id"])
+    picture = profile.get("photo_url", "") or ""
     return AuthResponse(
         token=token, learner_id=user_data["learner_id"],
-        name=user_data["name"], email=user_data["email"], picture="",
+        name=user_data["name"], email=user_data["email"], picture=picture,
     )
 
 
@@ -1285,8 +1291,8 @@ async def request_validation_handler(request: Request, exc: RequestValidationErr
 async def bad_request_handler(request: Request, exc: Exception) -> JSONResponse:
     detail = getattr(exc, "detail", None)
     if isinstance(detail, str):
-        return JSONResponse(status_code=400, content={"error": detail})
-    return JSONResponse(status_code=400, content={"error": "Bad request"})
+        return JSONResponse(status_code=400, content={"detail": detail, "error": detail})
+    return JSONResponse(status_code=400, content={"detail": "Bad request", "error": "Bad request"})
 
 
 @app.exception_handler(404)
@@ -1349,6 +1355,15 @@ class _TeamInvite(_BM):
     email: str
     name:  str
     role:  str = "team"
+
+
+class _ReferralWithdraw(_BM):
+    learner_id: str
+    email: str
+    amount: float
+    bank_name: str
+    account_name: str
+    account_num: str
 
 
 def _require_admin(request: Request) -> str:
@@ -2149,6 +2164,43 @@ async def use_referral(body: ReferralUse) -> dict:
         "discount_pct": 5,
         "message": "Referral applied! You get 5% off your first payment.",
     }
+
+
+@app.post("/referral/withdraw")
+async def request_referral_withdrawal(body: _ReferralWithdraw) -> dict:
+    """Create a referral payout request when the learner has enough balance."""
+    validate_learner_id(body.learner_id)
+    balance = get_referral_bonus_balance(body.learner_id).get("balance", 0.0)
+
+    if body.amount <= 0:
+        raise HTTPException(status_code=400, detail="Withdrawal amount must be greater than zero.")
+    if body.amount > balance:
+        raise HTTPException(status_code=400, detail="Withdrawal amount exceeds available referral balance.")
+
+    if not body.bank_name.strip() or not body.account_name.strip() or not body.account_num.strip():
+        raise HTTPException(status_code=400, detail="Bank name, account name, and account number are required.")
+
+    withdrawal_id = create_withdrawal_request(
+        learner_id=body.learner_id,
+        email=body.email,
+        amount=float(body.amount),
+        bank_name=body.bank_name.strip(),
+        account_name=body.account_name.strip(),
+        account_num=body.account_num.strip(),
+    )
+    log_activity(body.learner_id, "referral:withdraw-request", f"amount={body.amount}")
+    return {
+        "ok": True,
+        "withdrawal_id": withdrawal_id,
+        "message": "Withdrawal request submitted successfully.",
+    }
+
+
+@app.get("/referral/withdrawals/{learner_id}")
+async def get_referral_withdrawals(learner_id: str) -> dict:
+    validate_learner_id(learner_id)
+    rows = get_withdrawals_for_learner(learner_id)
+    return {"learner_id": learner_id, "withdrawals": rows, "total": len(rows)}
 
 
 # ---------------------------------------------------------------------------
