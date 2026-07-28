@@ -1,5 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import {
+  Menu, MessageSquare, BookOpen, Trophy, BarChart2, Award,
+  CreditCard, User, LogOut, Copy, Link2, Lock, TrendingUp,
+  ChevronDown, X, Zap,
+} from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import Logo from './Logo'
 
 type Panel = 'chat' | 'courses' | 'quiz' | 'progress' | 'certificates' | 'pricing' | 'profile'
 
@@ -11,28 +18,31 @@ interface Props {
   onReferralClick: () => void
 }
 
-const TABS: { id: Panel; label: string }[] = [
-  { id: 'chat',         label: '💬 Chat' },
-  { id: 'courses',      label: '📚 Courses' },
-  { id: 'quiz',         label: '🏆 Quiz' },
-  { id: 'progress',     label: '📊 Progress' },
-  { id: 'certificates', label: '🎓 Certs' },
-  { id: 'pricing',      label: '💎 Plans' },
+const TABS: { id: Panel; icon: React.ReactNode; label: string }[] = [
+  { id: 'chat',         icon: <MessageSquare size={14} />, label: 'Chat' },
+  { id: 'courses',      icon: <BookOpen size={14} />,      label: 'Courses' },
+  { id: 'quiz',         icon: <Trophy size={14} />,        label: 'Quiz' },
+  { id: 'progress',     icon: <BarChart2 size={14} />,     label: 'Progress' },
+  { id: 'certificates', icon: <Award size={14} />,         label: 'Certs' },
+  { id: 'pricing',      icon: <CreditCard size={14} />,    label: 'Plans' },
+]
+
+const LEVELS = [
+  { value: 'beginner',     label: '🟢 Beginner' },
+  { value: 'intermediate', label: '🟡 Mid' },
+  { value: 'advanced',     label: '🔴 Advanced' },
 ]
 
 export default function Header({ panel, onPanelChange, onMenuClick, onAuthClick, onReferralClick }: Props) {
   const { user, signOut } = useAuth()
-  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [dropOpen, setDropOpen] = useState(false)
   const [level, setLevel] = useState(localStorage.getItem('mypy_tutor_level') || 'beginner')
   const [copyMsg, setCopyMsg] = useState('')
   const dropRef = useRef<HTMLDivElement>(null)
 
-  // Close dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (dropRef.current && !dropRef.current.contains(e.target as Node)) {
-        setDropdownOpen(false)
-      }
+      if (dropRef.current && !dropRef.current.contains(e.target as Node)) setDropOpen(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -44,189 +54,133 @@ export default function Header({ panel, onPanelChange, onMenuClick, onAuthClick,
     window.dispatchEvent(new Event('level-changed'))
   }
 
-  const navigate = (p: Panel) => {
-    onPanelChange(p)
-    setDropdownOpen(false)
-  }
+  const nav = (p: Panel) => { onPanelChange(p); setDropOpen(false) }
 
-  const copyLearnerId = () => {
-    const lid = user?.learner_id || ''
-    navigator.clipboard.writeText(lid).then(() => {
-      setCopyMsg('Copied!')
-      setTimeout(() => setCopyMsg(''), 2000)
-    })
+  const copyId = () => {
+    navigator.clipboard.writeText(user?.learner_id || '')
+    setCopyMsg('Copied!')
+    setTimeout(() => setCopyMsg(''), 2000)
   }
 
   const handleSignOut = () => {
-    signOut()
-    setDropdownOpen(false)
+    signOut(); setDropOpen(false)
     localStorage.removeItem('mypy_tutor_history_v2')
     localStorage.removeItem('mpt_conv_id')
     window.dispatchEvent(new Event('clear-chat'))
   }
 
   const initials = (user?.name || user?.email || 'U')
-    .split(' ')
-    .map(w => w[0])
-    .slice(0, 2)
-    .join('')
-    .toUpperCase()
+    .split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
 
   return (
-    <header style={{
-      background: '#0f1117', borderBottom: '1px solid #2d3748',
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '10px 16px', gap: 10, flexShrink: 0, zIndex: 100,
-    }}>
-      {/* Left */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-        <button onClick={onMenuClick} style={{
-          background: 'transparent', border: '1px solid #2d3748', color: '#718096',
-          borderRadius: 8, width: 36, height: 36, fontSize: '1.1rem', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} aria-label="Menu">☰</button>
+    <header className="flex items-center justify-between px-4 py-2 gap-3 shrink-0 z-50"
+      style={{ background: 'rgba(15,23,42,0.95)', borderBottom: '1px solid #1e293b', backdropFilter: 'blur(20px)' }}>
 
-        <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#63b3ed', whiteSpace: 'nowrap' }}>
-          🐍 MyPy Tutor
+      {/* Left */}
+      <div className="flex items-center gap-2 min-w-0">
+        <button onClick={onMenuClick} className="btn btn-ghost btn-sm w-9 h-9 rounded-xl p-0" aria-label="Menu">
+          <Menu size={18} />
+        </button>
+
+        <div className="flex items-center gap-2 shrink-0">
+          <Logo size={32} shape="circle" style={{ border: '2px solid rgba(37,99,235,0.4)' }} />
+          <span className="font-bold text-sm text-slate-100 hidden sm:block" style={{ fontFamily: 'Sora, sans-serif' }}>
+            MyPy Tutor
+          </span>
         </div>
 
-        {/* Desktop nav */}
-        <nav style={{ display: 'flex', gap: 4 }} className="desktop-nav">
+        {/* Desktop tabs */}
+        <nav className="desktop-nav gap-1 ml-2">
           {TABS.map(t => (
-            <button key={t.id} onClick={() => onPanelChange(t.id)} style={{
-              background: panel === t.id ? '#2c5282' : 'transparent',
-              border: `1px solid ${panel === t.id ? '#4299e1' : '#2d3748'}`,
-              color: panel === t.id ? '#90cdf4' : '#718096',
-              borderRadius: 8, padding: '5px 12px', fontSize: '0.8rem',
-              cursor: 'pointer', whiteSpace: 'nowrap', height: 34, transition: 'all .15s',
-            }}>{t.label}</button>
+            <button key={t.id} onClick={() => onPanelChange(t.id)}
+              className={`nav-tab flex items-center gap-1.5 ${panel === t.id ? 'active' : ''}`}>
+              {t.icon}{t.label}
+            </button>
           ))}
         </nav>
       </div>
 
       {/* Right */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-        <select value={level} onChange={handleLevel} style={{
-          background: '#1a202c', border: '1px solid #2d3748', color: '#e2e8f0',
-          borderRadius: 8, padding: '6px 8px', fontSize: '0.8rem', height: 36, cursor: 'pointer',
-        }}>
-          <option value="beginner">🟢 Beginner</option>
-          <option value="intermediate">🟡 Mid</option>
-          <option value="advanced">🔴 Advanced</option>
+      <div className="flex items-center gap-2 shrink-0">
+        <select value={level} onChange={handleLevel}
+          className="text-xs rounded-xl h-9 px-2 border-slate-600 bg-slate-800/60 text-slate-300 cursor-pointer"
+          style={{ width: 'auto' }}>
+          {LEVELS.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
         </select>
 
         {user ? (
-          <div style={{ position: 'relative' }} ref={dropRef}>
-            <button onClick={() => setDropdownOpen(d => !d)} style={{
-              display: 'flex', alignItems: 'center', gap: 7,
-              background: '#1a202c', border: '1px solid #2d3748',
-              borderRadius: 999, padding: '3px 12px 3px 4px',
-              cursor: 'pointer', color: '#e2e8f0',
-            }}>
+          <div className="relative" ref={dropRef}>
+            <button onClick={() => setDropOpen(d => !d)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-slate-700 bg-slate-800/60 hover:border-slate-500 transition-all duration-200">
               {user.picture ? (
-                <img src={user.picture} alt="" style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover' }} />
+                <img src={user.picture} alt="" className="w-7 h-7 rounded-full object-cover" />
               ) : (
-                <div style={{
-                  width: 28, height: 28, borderRadius: '50%',
-                  background: 'linear-gradient(135deg,#2b6cb0,#553c9a)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#fff', fontSize: '0.72rem', fontWeight: 700,
-                }}>
-                  {initials}
-                </div>
+                <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                  style={{ background: 'linear-gradient(135deg,#2563eb,#7c3aed)' }}>{initials}</div>
               )}
-              <span style={{ fontSize: '0.78rem', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span className="text-xs text-slate-200 font-medium max-w-[80px] truncate hidden sm:block">
                 {user.name?.split(' ')[0] || 'Learner'}
               </span>
-              <span style={{ fontSize: '0.6rem', color: '#718096' }}>▾</span>
+              <ChevronDown size={12} className="text-slate-500" />
             </button>
 
-            {dropdownOpen && (
-              <div style={{
-                position: 'absolute', top: 'calc(100% + 8px)', right: 0,
-                background: '#1a202c', border: '1px solid #2d3748', borderRadius: 12,
-                minWidth: 220, padding: 6, zIndex: 500,
-                boxShadow: '0 12px 32px rgba(0,0,0,.55)',
-              }} className="slide-in">
-                {/* User info header */}
-                <div style={{ padding: '10px 14px 8px', borderBottom: '1px solid #2d3748', marginBottom: 4 }}>
-                  <div style={{ fontWeight: 700, fontSize: '.88rem', color: '#f1f5f9' }}>{user.name}</div>
-                  <div style={{ fontSize: '.72rem', color: '#718096', marginTop: 2 }}>{user.email}</div>
-                </div>
+            <AnimatePresence>
+              {dropOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8, scale: 0.96 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.96 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute top-[calc(100%+8px)] right-0 w-60 z-50 py-1.5 rounded-2xl"
+                  style={{ background: '#1e293b', border: '1px solid #334155', boxShadow: '0 20px 60px rgba(0,0,0,0.6)' }}>
 
-                {/* Menu items */}
-                {[
-                  { icon: '👤', label: 'Edit Profile',      action: () => navigate('profile') },
-                  { icon: '📊', label: 'Progress & Badges', action: () => navigate('progress') },
-                  { icon: '💎', label: 'Upgrade Plan',       action: () => navigate('pricing') },
-                  { icon: '🎓', label: 'My Certificates',    action: () => navigate('certificates') },
-                ].map(item => (
-                  <button key={item.label} onClick={item.action} style={{
-                    display: 'flex', alignItems: 'center', gap: 9, padding: '9px 12px',
-                    borderRadius: 7, width: '100%', background: 'transparent', border: 'none',
-                    color: '#e2e8f0', cursor: 'pointer', fontSize: '.84rem', textAlign: 'left',
-                    transition: 'background .12s',
-                  }}
-                    onMouseEnter={e => (e.currentTarget.style.background = '#2d3748')}
-                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                  >
-                    {item.icon} {item.label}
+                  {/* User info */}
+                  <div className="px-4 py-3 border-b border-slate-700/60 mb-1">
+                    <div className="font-semibold text-sm text-slate-100 truncate">{user.name}</div>
+                    <div className="text-xs text-slate-500 mt-0.5 truncate">{user.email}</div>
+                  </div>
+
+                  {/* Navigation items */}
+                  {[
+                    { icon: <User size={14} />,      label: 'Edit Profile',      action: () => nav('profile') },
+                    { icon: <TrendingUp size={14} />, label: 'Progress & Badges', action: () => nav('progress') },
+                    { icon: <Zap size={14} />,        label: 'Upgrade Plan',      action: () => nav('pricing') },
+                    { icon: <Award size={14} />,      label: 'My Certificates',   action: () => nav('certificates') },
+                  ].map(item => (
+                    <button key={item.label} onClick={item.action}
+                      className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-slate-300 hover:bg-white/5 hover:text-slate-100 transition-colors duration-100">
+                      <span className="text-slate-500">{item.icon}</span>{item.label}
+                    </button>
+                  ))}
+
+                  <div className="divider mx-3" />
+
+                  {/* Account actions */}
+                  <button onClick={() => nav('profile')}
+                    className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-slate-300 hover:bg-white/5 hover:text-slate-100 transition-colors duration-100">
+                    <Lock size={14} className="text-slate-500" /> Change Password
                   </button>
-                ))}
 
-                <div style={{ borderTop: '1px solid #2d3748', margin: '4px 0' }} />
+                  <button onClick={copyId}
+                    className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-slate-300 hover:bg-white/5 hover:text-slate-100 transition-colors duration-100">
+                    <Copy size={14} className="text-slate-500" /> {copyMsg || 'Copy Learner ID'}
+                  </button>
 
-                {/* Change password */}
-                <button onClick={() => { navigate('profile') }} style={{
-                  display: 'flex', alignItems: 'center', gap: 9, padding: '9px 12px',
-                  borderRadius: 7, width: '100%', background: 'transparent', border: 'none',
-                  color: '#e2e8f0', cursor: 'pointer', fontSize: '.84rem', textAlign: 'left',
-                }}
-                  onMouseEnter={e => (e.currentTarget.style.background = '#2d3748')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                >
-                  🔐 Change Password
-                </button>
+                  <button onClick={() => { onReferralClick(); setDropOpen(false) }}
+                    className="flex items-center gap-3 w-full px-4 py-2.5 text-sm font-semibold text-emerald-400 hover:bg-emerald-500/5 transition-colors duration-100">
+                    <Link2 size={14} /> Referral &amp; Bonus
+                  </button>
 
-                {/* Copy Learner ID */}
-                <button onClick={copyLearnerId} style={{
-                  display: 'flex', alignItems: 'center', gap: 9, padding: '9px 12px',
-                  borderRadius: 7, width: '100%', background: 'transparent', border: 'none',
-                  color: '#e2e8f0', cursor: 'pointer', fontSize: '.84rem', textAlign: 'left',
-                }}
-                  onMouseEnter={e => (e.currentTarget.style.background = '#2d3748')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                >
-                  🪪 {copyMsg || 'Copy Learner ID'}
-                </button>
+                  <div className="divider mx-3" />
 
-                {/* Referral & Bonus */}
-                <button onClick={() => { onReferralClick(); setDropdownOpen(false) }} style={{
-                  display: 'flex', alignItems: 'center', gap: 9, padding: '9px 12px',
-                  borderRadius: 7, width: '100%', background: 'transparent', border: 'none',
-                  color: '#34d399', cursor: 'pointer', fontSize: '.84rem', fontWeight: 600, textAlign: 'left',
-                }}
-                  onMouseEnter={e => (e.currentTarget.style.background = '#2d3748')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                >
-                  🔗 Referral &amp; Bonus
-                </button>
-
-                <div style={{ borderTop: '1px solid #2d3748', margin: '4px 0' }} />
-
-                {/* Sign out */}
-                <button onClick={handleSignOut} style={{
-                  display: 'flex', alignItems: 'center', gap: 9, padding: '9px 12px',
-                  borderRadius: 7, width: '100%', background: 'transparent', border: 'none',
-                  color: '#fc8181', cursor: 'pointer', fontSize: '.84rem', textAlign: 'left',
-                }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(252,129,129,.08)')}
-                  onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                >
-                  🚪 Sign Out
-                </button>
-              </div>
-            )}
+                  {/* Sign out — NO admin link here */}
+                  <button onClick={handleSignOut}
+                    className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/5 transition-colors duration-100">
+                    <LogOut size={14} /> Sign Out
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         ) : (
           <button onClick={() => onAuthClick('signin')} className="btn btn-primary btn-sm">
@@ -239,10 +193,9 @@ export default function Header({ panel, onPanelChange, onMenuClick, onAuthClick,
           localStorage.removeItem('mypy_tutor_history_v2')
           localStorage.removeItem('mpt_conv_id')
           window.dispatchEvent(new Event('clear-chat'))
-        }} style={{
-          background: 'transparent', border: '1px solid #2d3748', color: '#718096',
-          borderRadius: 8, padding: '0 10px', fontSize: '0.8rem', height: 36, cursor: 'pointer',
-        }}>✕ Clear</button>
+        }} className="btn btn-ghost btn-sm px-2.5 h-9 rounded-xl" title="Clear chat">
+          <X size={16} />
+        </button>
       </div>
     </header>
   )

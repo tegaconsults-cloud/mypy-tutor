@@ -1,116 +1,143 @@
 import React, { useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import Logo from './Logo'
 
 interface Props { onDone: (firstMsg: string) => void }
 
 const LEVELS = [
-  { id: 'beginner', icon: '🟢', label: 'Beginner', sub: "I'm new to Python" },
+  { id: 'beginner',     icon: '🟢', label: 'Beginner',     sub: "I'm new to Python" },
   { id: 'intermediate', icon: '🟡', label: 'Intermediate', sub: 'I know the basics' },
-  { id: 'advanced', icon: '🔴', label: 'Advanced', sub: 'I write Python regularly' },
+  { id: 'advanced',     icon: '🔴', label: 'Advanced',     sub: 'I write Python regularly' },
 ]
 const GOALS = [
-  { id: 'career', label: '💼 Get a tech job or freelance career' },
-  { id: 'data', label: '📊 Learn data science or machine learning' },
-  { id: 'build', label: '🚀 Build apps and automate tasks' },
-  { id: 'general', label: '📚 General Python knowledge' },
+  { id: 'career',  label: '💼', title: 'Tech Career',       sub: 'Get a job or freelance with Python' },
+  { id: 'data',    label: '📊', title: 'Data Science',      sub: 'Learn data science and ML' },
+  { id: 'build',   label: '🚀', title: 'Build Things',      sub: 'Build apps and automate tasks' },
+  { id: 'general', label: '📚', title: 'General Knowledge', sub: 'Learn Python from scratch' },
 ]
 const FIRST_MSGS: Record<string, string> = {
-  career: "I want to build a Python career. What should I learn first?",
-  data: "I want to learn data science and machine learning. Where do I start?",
-  build: "I want to build apps and automate tasks with Python. Where do I begin?",
-  general: "I want to learn Python from scratch. Can you give me a learning roadmap?",
+  career:  "I want to build a Python career. What should I learn first?",
+  data:    "I want to learn data science and ML. Where do I start?",
+  build:   "I want to build apps and automate tasks with Python. Where do I begin?",
+  general: "I want to learn Python from scratch. Can you give me a roadmap?",
 }
 
 export default function OnboardingModal({ onDone }: Props) {
-  const [step, setStep] = useState(1)
-  const [selectedLevel, setSelectedLevel] = useState('')
-  const [selectedGoal, setSelectedGoal] = useState('')
+  const [step, setStep]               = useState(1)
+  const [selectedLevel, setLevel]     = useState('')
+  const [selectedGoal,  setGoal]      = useState('')
 
   const pickLevel = (id: string) => {
-    setSelectedLevel(id)
+    setLevel(id)
     localStorage.setItem('mypy_tutor_level', id)
     window.dispatchEvent(new Event('level-changed'))
-    setTimeout(() => setStep(2), 300)
+    setTimeout(() => setStep(2), 280)
   }
 
-  const pickGoal = (id: string) => {
-    setSelectedGoal(id)
-    setTimeout(() => setStep(3), 300)
-  }
+  const pickGoal = (id: string) => { setGoal(id); setTimeout(() => setStep(3), 280) }
 
   const finish = () => {
     localStorage.setItem('mpt_onboarded', '1')
-    const msg = FIRST_MSGS[selectedGoal] || FIRST_MSGS.general
-    onDone(msg)
+    onDone(FIRST_MSGS[selectedGoal] || FIRST_MSGS.general)
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(12px)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div className="slide-in" style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 24, padding: '32px 28px', width: '100%', maxWidth: 460, display: 'flex', flexDirection: 'column', gap: 20, position: 'relative', boxShadow: '0 30px 80px rgba(0,0,0,.7)' }}>
+    <div className="glass-overlay flex items-center justify-center p-4" style={{ zIndex: 2000 }}>
+      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+        className="w-full max-w-md rounded-3xl p-7 flex flex-col gap-5"
+        style={{ background: '#1e293b', border: '1px solid #334155', boxShadow: '0 30px 80px rgba(0,0,0,.7)' }}>
 
         {/* Progress dots */}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
-          {[1,2,3].map(i => <div key={i} style={{ width: 10, height: 10, borderRadius: '50%', background: i <= step ? '#3b82f6' : '#374151', transition: '.2s' }} />)}
+        <div className="flex justify-center gap-2">
+          {[1,2,3].map(i => (
+            <motion.div key={i} animate={{ width: i === step ? 24 : 8, background: i <= step ? '#2563eb' : '#334155' }}
+              className="h-2 rounded-full transition-all" />
+          ))}
         </div>
 
-        {/* Step 1 — Level */}
-        {step === 1 && (
-          <div>
-            <div style={{ textAlign: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>🐍</div>
-              <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#f1f5f9', marginBottom: 6 }}>Welcome to MyPy Tutor!</h2>
-              <p style={{ fontSize: '.84rem', color: '#94a3b8' }}>Let's personalise your learning. What's your Python level?</p>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {LEVELS.map(l => (
-                <button key={l.id} onClick={() => pickLevel(l.id)} style={{ padding: 14, borderRadius: 12, border: `2px solid ${selectedLevel === l.id ? '#3b82f6' : '#374151'}`, background: '#1f2937', color: '#f1f5f9', fontSize: '.93rem', fontWeight: 600, cursor: 'pointer', textAlign: 'left', transition: 'all .15s' }}>
-                  {l.icon} <strong>{l.label}</strong> — {l.sub}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Step 2 — Goal */}
-        {step === 2 && (
-          <div>
-            <div style={{ textAlign: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>🎯</div>
-              <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#f1f5f9', marginBottom: 6 }}>What's your goal?</h2>
-              <p style={{ fontSize: '.84rem', color: '#94a3b8' }}>Sir. Tega will tailor his teaching to your ambitions.</p>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {GOALS.map(g => (
-                <button key={g.id} onClick={() => pickGoal(g.id)} style={{ padding: 14, borderRadius: 12, border: `2px solid ${selectedGoal === g.id ? '#3b82f6' : '#374151'}`, background: '#1f2937', color: '#f1f5f9', fontSize: '.93rem', fontWeight: 600, cursor: 'pointer', textAlign: 'left', transition: 'all .15s' }}>
-                  {g.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Step 3 — Start */}
-        {step === 3 && (
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: '3rem', marginBottom: 12 }}>🎉</div>
-            <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#f1f5f9', marginBottom: 10 }}>You're all set!</h2>
-            <p style={{ fontSize: '.86rem', color: '#94a3b8', lineHeight: 1.6, marginBottom: 16 }}>
-              Sir. Tega is ready. You have <strong style={{ color: '#34d399' }}>10 free AI prompts today</strong> to ask anything about Python.
-            </p>
-            <div style={{ background: '#1f2937', borderRadius: 12, padding: 16, marginBottom: 16, textAlign: 'left' }}>
-              <div style={{ fontSize: '.72rem', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 8 }}>Quick start</div>
-              <div style={{ fontSize: '.84rem', color: '#e5e7eb', lineHeight: 1.8 }}>
-                💬 Type any Python question in chat<br />
-                📚 Browse courses in the Courses tab<br />
-                🏆 Test yourself with the Quiz tab<br />
-                💎 See all plans in the Plans tab
+        <AnimatePresence mode="wait">
+          {/* Step 1 — Level */}
+          {step === 1 && (
+            <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
+              <div className="text-center mb-5">
+                <div className="flex justify-center mb-3">
+                  <Logo size={72} shape="circle" style={{ border: '3px solid rgba(37,99,235,0.4)', boxShadow: '0 0 24px rgba(37,99,235,0.3)' }} />
+                </div>
+                <h2 className="font-bold text-xl text-slate-100 mb-1" style={{ fontFamily: 'Sora' }}>Welcome to MyPy Tutor!</h2>
+                <p className="text-sm text-slate-400">Let's personalise your learning path.</p>
               </div>
-            </div>
-            <button onClick={finish} className="btn btn-primary" style={{ width: '100%', padding: 14, fontSize: '.95rem' }}>
-              🚀 Start Learning Now
-            </button>
-          </div>
-        )}
-      </div>
+              <p className="text-xs text-slate-500 font-semibold uppercase tracking-wide mb-3">What's your Python level?</p>
+              <div className="flex flex-col gap-2">
+                {LEVELS.map(l => (
+                  <button key={l.id} onClick={() => pickLevel(l.id)}
+                    className={`flex items-center gap-3 p-4 rounded-2xl border text-left transition-all duration-150 ${
+                      selectedLevel === l.id ? 'border-blue-500 bg-blue-500/10' : 'border-slate-700 bg-slate-800/40 hover:border-slate-500'
+                    }`}>
+                    <span className="text-xl">{l.icon}</span>
+                    <div>
+                      <div className="font-semibold text-sm text-slate-100">{l.label}</div>
+                      <div className="text-xs text-slate-500">{l.sub}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
+          {/* Step 2 — Goal */}
+          {step === 2 && (
+            <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
+              <div className="text-center mb-5">
+                <div className="text-5xl mb-3">🎯</div>
+                <h2 className="font-bold text-xl text-slate-100 mb-1" style={{ fontFamily: 'Sora' }}>What's your goal?</h2>
+                <p className="text-sm text-slate-400">Sir. Tega will tailor his teaching to your ambitions.</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {GOALS.map(g => (
+                  <button key={g.id} onClick={() => pickGoal(g.id)}
+                    className={`flex flex-col gap-2 p-4 rounded-2xl border text-left transition-all duration-150 ${
+                      selectedGoal === g.id ? 'border-purple-500 bg-purple-500/10' : 'border-slate-700 bg-slate-800/40 hover:border-slate-500'
+                    }`}>
+                    <span className="text-2xl">{g.label}</span>
+                    <div>
+                      <div className="font-semibold text-xs text-slate-100">{g.title}</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">{g.sub}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
+          {/* Step 3 — Done */}
+          {step === 3 && (
+            <motion.div key="step3" initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+              className="flex flex-col items-center gap-4 text-center">
+              <div className="text-6xl">🎉</div>
+              <div>
+                <h2 className="font-bold text-xl text-slate-100 mb-2" style={{ fontFamily: 'Sora' }}>You're all set!</h2>
+                <p className="text-sm text-slate-400 leading-relaxed">
+                  Sir. Tega is ready. You have{' '}
+                  <strong className="text-green-400">10 free AI prompts today</strong>{' '}
+                  to ask anything about Python.
+                </p>
+              </div>
+              <div className="w-full rounded-2xl p-4 text-left border border-slate-700/60" style={{ background: '#0f172a' }}>
+                <p className="text-[10px] text-slate-600 uppercase tracking-widest mb-2">Quick Start</p>
+                <div className="text-xs text-slate-300 space-y-1.5">
+                  <p>💬 Type any Python question in chat</p>
+                  <p>📚 Browse courses in the Courses tab</p>
+                  <p>🏆 Test yourself in the Quiz tab</p>
+                  <p>💎 View all plans in the Plans tab</p>
+                </div>
+              </div>
+              <button onClick={finish} className="btn btn-primary w-full btn-lg">
+                🚀 Start Learning Now
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
     </div>
   )
 }
