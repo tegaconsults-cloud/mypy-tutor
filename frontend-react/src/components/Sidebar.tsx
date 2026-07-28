@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { X, MessageSquare, BookOpen, Trophy, BarChart2, Award, CreditCard, User, Zap, Code, Layers, Shield, Database, Brain, MessageCircle } from 'lucide-react'
 import { useProgress } from '../context/ProgressContext'
 import { getTopics } from '../api'
+import Logo from './Logo'
 
 type Panel = 'chat' | 'courses' | 'quiz' | 'progress' | 'certificates' | 'pricing' | 'profile'
 
@@ -11,18 +14,28 @@ interface Props {
   onAuthClick: (tab?: 'signin' | 'signup') => void
 }
 
-const QUICK_ASK = [
-  { label: '📦 Variables', ask: 'Explain Python variables for me' },
-  { label: '🔄 Loops', ask: 'Explain loops in Python' },
-  { label: '⚙️ Functions', ask: 'Explain functions in Python' },
-  { label: '🏗️ OOP', ask: 'Explain OOP in Python' },
-  { label: '🛡️ Exceptions', ask: 'Explain exception handling in Python' },
-  { label: '📐 Data Structures', ask: 'Explain data structures in Python' },
+const NAV_ITEMS: { id: Panel; icon: React.ReactNode; label: string }[] = [
+  { id: 'chat',         icon: <MessageSquare size={16} />, label: 'AI Chat' },
+  { id: 'courses',      icon: <BookOpen size={16} />,      label: 'Courses' },
+  { id: 'quiz',         icon: <Trophy size={16} />,        label: 'Quiz' },
+  { id: 'progress',     icon: <BarChart2 size={16} />,     label: 'Progress' },
+  { id: 'certificates', icon: <Award size={16} />,         label: 'Certificates' },
+  { id: 'pricing',      icon: <CreditCard size={16} />,    label: 'Plans' },
+  { id: 'profile',      icon: <User size={16} />,          label: 'Profile' },
 ]
 
-export default function Sidebar({ open, onClose, onPanelChange, onAuthClick }: Props) {
+const QUICK_ASK = [
+  { icon: <Code size={14} />,     label: 'Variables & Types',  ask: 'Explain Python variables and data types' },
+  { icon: <Layers size={14} />,   label: 'Loops & Iteration',  ask: 'Explain loops in Python with examples' },
+  { icon: <Zap size={14} />,      label: 'Functions',          ask: 'Explain functions in Python' },
+  { icon: <Shield size={14} />,   label: 'OOP',                ask: 'Explain object-oriented programming in Python' },
+  { icon: <Database size={14} />, label: 'Data Structures',    ask: 'Explain data structures in Python' },
+  { icon: <Brain size={14} />,    label: 'ML Basics',          ask: 'What is machine learning? Explain with Python examples' },
+]
+
+export default function Sidebar({ open, onClose, onPanelChange, onAuthClick: _onAuthClick }: Props) {
   const { progress } = useProgress()
-  const [topics, setTopics] = useState<string[]>([])
+  const [, setTopics] = useState<string[]>([])
 
   useEffect(() => {
     getTopics().then(d => setTopics(d.topics || []))
@@ -35,82 +48,108 @@ export default function Sidebar({ open, onClose, onPanelChange, onAuthClick }: P
   }
 
   return (
-    <>
-      {/* Overlay */}
+    <AnimatePresence>
       {open && (
-        <div onClick={onClose} style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-          zIndex: 200,
-        }} className="sidebar-overlay" />
-      )}
+        <>
+          {/* Backdrop */}
+          <motion.div key="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }} onClick={onClose}
+            className="fixed inset-0 z-40"
+            style={{ background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(4px)' }} />
 
-      {/* Drawer */}
-      <div style={{
-        position: 'fixed', top: 0, left: 0, bottom: 0, width: 260,
-        maxWidth: '80vw', background: '#0f1117', borderRight: '1px solid #2d3748',
-        display: 'flex', flexDirection: 'column', overflowY: 'auto',
-        padding: '16px 12px', gap: 16, zIndex: 300,
-        transform: open ? 'translateX(0)' : 'translateX(-100%)',
-        transition: 'transform .25s ease',
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 12, borderBottom: '1px solid #2d3748' }}>
-          <span style={{ fontWeight: 700, color: '#63b3ed' }}>🐍 MyPy Tutor</span>
-          <button onClick={onClose} style={{ background: 'transparent', border: 'none', color: '#718096', fontSize: '1.2rem', cursor: 'pointer' }}>✕</button>
-        </div>
+          {/* Drawer */}
+          <motion.div key="drawer"
+            initial={{ x: -280 }} animate={{ x: 0 }} exit={{ x: -280 }}
+            transition={{ type: 'spring', stiffness: 350, damping: 35 }}
+            className="fixed top-0 left-0 bottom-0 z-50 flex flex-col overflow-y-auto"
+            style={{ width: 270, background: '#0f172a', borderRight: '1px solid #1e293b' }}>
 
-        {/* Quick Ask */}
-        <div>
-          <h4 style={{ fontSize: '.7rem', textTransform: 'uppercase', letterSpacing: '.08em', color: '#4a5568', marginBottom: 8 }}>Quick Ask</h4>
-          {QUICK_ASK.map(q => (
-            <button key={q.label} onClick={() => sendAsk(q.ask)} style={{
-              display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-              background: 'transparent', border: '1px solid #2d3748', color: '#a0aec0',
-              borderRadius: 8, padding: '9px 12px', fontSize: '.84rem',
-              cursor: 'pointer', textAlign: 'left', marginBottom: 4, minHeight: 44,
-              transition: 'all .15s',
-            }}>{q.label}</button>
-          ))}
-        </div>
-
-        {/* Knowledge Gaps */}
-        {progress && progress.knowledge_gaps.length > 0 && (
-          <div>
-            <h4 style={{ fontSize: '.7rem', textTransform: 'uppercase', letterSpacing: '.08em', color: '#4a5568', marginBottom: 8 }}>Knowledge Gaps</h4>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-              {progress.knowledge_gaps.map(g => (
-                <span key={g} onClick={() => sendAsk(`I need help understanding ${g}`)} style={{
-                  display: 'inline-block', background: '#3b1a1a', border: '1px solid #742a2a',
-                  color: '#fc8181', borderRadius: 6, padding: '4px 10px', fontSize: '.78rem',
-                  cursor: 'pointer',
-                }}>{g}</span>
-              ))}
+            {/* Header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 shrink-0">
+              <div className="flex items-center gap-2">
+                <Logo size={32} shape="circle" style={{ border: '2px solid rgba(37,99,235,0.35)' }} />
+                <span className="font-bold text-slate-100 text-sm" style={{ fontFamily: 'Sora' }}>MyPy Tutor</span>
+              </div>
+              <button onClick={onClose} className="btn btn-ghost btn-sm w-8 h-8 p-0 rounded-lg">
+                <X size={16} />
+              </button>
             </div>
-          </div>
-        )}
 
-        {/* Recent Topics */}
-        {progress && progress.topics_seen.length > 0 && (
-          <div>
-            <h4 style={{ fontSize: '.7rem', textTransform: 'uppercase', letterSpacing: '.08em', color: '#4a5568', marginBottom: 8 }}>Recent Topics</h4>
-            {progress.topics_seen.slice(-5).reverse().map(t => (
-              <div key={t} onClick={() => sendAsk(`Explain ${t} in Python`)} style={{
-                background: '#2d3748', borderRadius: 999, padding: '3px 10px',
-                fontSize: '.76rem', margin: 3, cursor: 'pointer', display: 'inline-block',
-              }}>{t}</div>
-            ))}
-          </div>
-        )}
+            <div className="flex flex-col gap-1 px-3 py-3 flex-1 overflow-y-auto scrollbar-thin">
+              {/* Navigation */}
+              <div className="mb-2">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-600 px-2 mb-1.5">Navigation</div>
+                {NAV_ITEMS.map(item => (
+                  <button key={item.id} onClick={() => { onPanelChange(item.id); onClose() }}
+                    className="sidebar-item w-full">
+                    <span className="text-slate-500">{item.icon}</span>
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </div>
 
-        {/* Feedback */}
-        <div style={{ marginTop: 'auto', paddingTop: 8, borderTop: '1px solid #2d3748' }}>
-          <button onClick={() => window.dispatchEvent(new Event('open-feedback'))} style={{
-            display: 'flex', alignItems: 'center', gap: 8, width: '100%',
-            background: '#9f7aea', color: '#fff', border: 'none',
-            borderRadius: 10, padding: '11px 14px', fontSize: '.86rem',
-            fontWeight: 700, cursor: 'pointer', minHeight: 44,
-          }}>💬 Send Feedback</button>
-        </div>
-      </div>
-    </>
+              <div className="divider" />
+
+              {/* Quick Ask */}
+              <div className="mb-2">
+                <div className="text-[10px] font-bold uppercase tracking-widest text-slate-600 px-2 mb-1.5">Quick Ask Sir. Tega</div>
+                {QUICK_ASK.map(q => (
+                  <button key={q.label} onClick={() => sendAsk(q.ask)}
+                    className="sidebar-item w-full text-left">
+                    <span className="text-slate-600">{q.icon}</span>
+                    <span className="text-sm">{q.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Knowledge Gaps */}
+              {progress && progress.knowledge_gaps.length > 0 && (
+                <>
+                  <div className="divider" />
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-slate-600 px-2 mb-2">Knowledge Gaps</div>
+                    <div className="flex flex-wrap gap-1.5 px-2">
+                      {progress.knowledge_gaps.map(g => (
+                        <button key={g} onClick={() => sendAsk(`I need help understanding ${g}`)}
+                          className="px-2.5 py-1 text-xs rounded-full border border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20 transition-colors">
+                          {g}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Recent Topics */}
+              {progress && progress.topics_seen.length > 0 && (
+                <>
+                  <div className="divider" />
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-slate-600 px-2 mb-2">Recent Topics</div>
+                    <div className="flex flex-wrap gap-1.5 px-2">
+                      {progress.topics_seen.slice(-6).reverse().map(t => (
+                        <button key={t} onClick={() => sendAsk(`Explain ${t} in Python`)}
+                          className="px-2.5 py-1 text-xs rounded-full border border-slate-700 bg-slate-800/60 text-slate-400 hover:bg-slate-700 transition-colors">
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-3 py-3 border-t border-slate-800 shrink-0">
+              <button onClick={() => window.dispatchEvent(new Event('open-feedback'))}
+                className="flex items-center gap-2 w-full px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all duration-200"
+                style={{ background: 'linear-gradient(135deg,#7c3aed,#2563eb)' }}>
+                <MessageCircle size={15} /> Send Feedback
+              </button>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
   )
 }

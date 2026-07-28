@@ -1,14 +1,30 @@
 import React, { useEffect, useState } from 'react'
+import { motion } from 'framer-motion'
+import { BookOpen, Play, CheckCircle, Lock, Clock, Layers, ArrowRight, Zap } from 'lucide-react'
 import { getCatalog, getLearnerCourses, startCourse } from '../api'
 import { useAuth } from '../context/AuthContext'
 import { useProgress } from '../context/ProgressContext'
 
 const CAT_ORDER = ['Python Basics','Intermediate Python','Advanced Python','Data Science','Machine Learning','AI & Prompting']
+const CAT_ICONS: Record<string, string> = {
+  'Python Basics':      '🐍',
+  'Intermediate Python':'⚡',
+  'Advanced Python':    '🔥',
+  'Data Science':       '📊',
+  'Machine Learning':   '🤖',
+  'AI & Prompting':     '✨',
+}
+
+interface Course {
+  name: string; display_name: string; description: string
+  level: string; total_steps: number; badge: string
+  price_ngn: number; paystack_url: string
+}
 
 export default function CoursesPanel() {
   const { user } = useAuth()
   const { progress } = useProgress()
-  const [catalog, setCatalog] = useState<Record<string, unknown[]>>({})
+  const [catalog, setCatalog] = useState<Record<string, Course[]>>({})
   const [accessMap, setAccessMap] = useState<Record<string, { unlocked: boolean; via: string }>>({})
   const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState<string | null>(null)
@@ -17,11 +33,11 @@ export default function CoursesPanel() {
     const load = async () => {
       const data = await getCatalog()
       if (!data) return
-      const byCat: Record<string, unknown[]> = {}
+      const byCat: Record<string, Course[]> = {}
       for (const c of data.courses || []) {
-        const cat = (c as { category: string }).category
+        const cat = (c as Course & { category: string }).category
         if (!byCat[cat]) byCat[cat] = []
-        byCat[cat].push(c)
+        byCat[cat].push(c as Course)
       }
       setCatalog(byCat)
       if (user) {
@@ -51,90 +67,151 @@ export default function CoursesPanel() {
 
   const completed = new Set(progress?.completed_projects || [])
 
+  const LEVEL_STYLE: Record<string, { badge: string; cls: string }> = {
+    beginner:     { badge: '🟢 Beginner',     cls: 'badge-green' },
+    intermediate: { badge: '🟡 Intermediate', cls: 'badge-yellow' },
+    advanced:     { badge: '🔴 Advanced',     cls: 'badge-red' },
+  }
+
   if (loading) return (
-    <div style={{ padding: 20, color: '#718096' }}>Loading courses…</div>
+    <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
+      {[...Array(4)].map((_, i) => (
+        <div key={i} className="skeleton h-28 rounded-2xl" />
+      ))}
+    </div>
   )
 
   return (
-    <div style={{ overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 14, WebkitOverflowScrolling: 'touch' }}>
-      <h3 style={{ color: '#90cdf4', fontSize: '.97rem' }}>📚 Learning Paths</h3>
+    <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-5 touch-scroll scrollbar-thin">
 
       {/* Active course bar */}
       {progress?.current_course && (
-        <div style={{ background: '#1a365d', border: '1px solid #2c5282', borderRadius: 10, padding: '12px 14px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ flex: 1, fontSize: '.86rem', color: '#90cdf4', fontWeight: 600 }}>
-            {progress.current_course.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-          </span>
-          <span style={{ fontSize: '.76rem', color: '#718096' }}>Step {progress.current_course_step}</span>
-          <button onClick={() => handleStart(progress.current_course!)} className="btn btn-primary btn-sm">Continue →</button>
-        </div>
+        <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
+          className="rounded-2xl p-4 border"
+          style={{ background: 'rgba(37,99,235,0.1)', borderColor: 'rgba(37,99,235,0.3)' }}>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg"
+                style={{ background: 'rgba(37,99,235,0.2)' }}>▶</div>
+              <div>
+                <div className="text-xs text-blue-400 font-bold uppercase tracking-wide mb-0.5">Continue Learning</div>
+                <div className="text-sm font-semibold text-slate-100">
+                  {progress.current_course.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                </div>
+              </div>
+            </div>
+            <button onClick={() => handleStart(progress.current_course!)} className="btn btn-primary btn-sm">
+              Continue <ArrowRight size={13} />
+            </button>
+          </div>
+        </motion.div>
       )}
 
-      {CAT_ORDER.map(cat => {
+      {/* Category sections */}
+      {CAT_ORDER.map((cat, ci) => {
         const items = catalog[cat]
         if (!items?.length) return null
         return (
-          <div key={cat}>
-            <div style={{ fontSize: '.65rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.1em', color: '#4a5568', marginBottom: 6, paddingBottom: 4, borderBottom: '1px solid #2d3748' }}>{cat}</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
-              {items.map((c: unknown) => {
-                const course = c as { name: string; display_name: string; description: string; level: string; total_steps: number; badge: string; price_ngn: number; paystack_url: string }
-                const access = accessMap[course.name]
+          <motion.div key={cat} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: ci * 0.04 }}>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xl">{CAT_ICONS[cat] || '📚'}</span>
+              <h3 className="font-bold text-slate-200 text-sm" style={{ fontFamily: 'Sora' }}>{cat}</h3>
+              <div className="flex-1 h-px bg-slate-700/40" />
+              <span className="badge badge-blue">{items.length}</span>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              {items.map((course, idx) => {
+                const access  = accessMap[course.name]
                 const isUnlocked = access?.unlocked
-                const isDone = completed.has(course.name)
-                const isActive = progress?.current_course === course.name
-                const step = isActive ? (progress?.current_course_step || 0) : (isDone ? course.total_steps : 0)
-                const pct = course.total_steps > 0 ? Math.round((step / course.total_steps) * 100) : 0
-                const levelColors: Record<string, { bg: string; color: string }> = {
-                  beginner: { bg: 'rgba(39,103,73,.15)', color: '#68d391' },
-                  intermediate: { bg: 'rgba(116,66,16,.15)', color: '#f6ad55' },
-                  advanced: { bg: 'rgba(116,42,42,.12)', color: '#fc8181' },
-                }
-                const lc = levelColors[course.level] || levelColors.beginner
+                const isDone  = completed.has(course.name)
+                const isActive= progress?.current_course === course.name
+                const step    = isActive ? (progress?.current_course_step || 0) : (isDone ? course.total_steps : 0)
+                const pct     = course.total_steps > 0 ? Math.round((step / course.total_steps) * 100) : 0
+                const ls      = LEVEL_STYLE[course.level] || LEVEL_STYLE.beginner
 
                 return (
-                  <div key={course.name} style={{ background: '#1a202c', border: `1px solid ${isUnlocked ? '#276749' : '#2d3748'}`, borderRadius: 12, padding: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <h4 style={{ fontSize: '.9rem', color: '#e2e8f0', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
-                        <span>{course.badge}</span>
-                        {course.display_name}
-                        {isDone && <span style={{ background: '#276749', color: '#68d391', borderRadius: 999, padding: '2px 9px', fontSize: '.7rem', fontWeight: 700 }}>✅ Done</span>}
-                        {isActive && !isDone && <span style={{ background: '#1a365d', color: '#90cdf4', borderRadius: 999, padding: '2px 9px', fontSize: '.7rem', fontWeight: 700 }}>▶ Active</span>}
-                      </h4>
-                      <p style={{ fontSize: '.78rem', color: '#718096', lineHeight: 1.4 }}>{course.description}</p>
-                      <p style={{ marginTop: 3, fontSize: '.73rem', color: '#4a5568' }}>{course.total_steps} steps</p>
-                      {(isActive || isDone) && (
-                        <div style={{ marginTop: 6 }}>
-                          <div style={{ height: 4, background: '#2d3748', borderRadius: 99, overflow: 'hidden' }}>
-                            <div style={{ height: '100%', width: `${pct}%`, background: isDone ? '#68d391' : '#3182ce', borderRadius: 99, transition: 'width .4s' }} />
+                  <motion.div key={course.name} initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                    transition={{ delay: ci * 0.04 + idx * 0.03 }}
+                    className="card card-hover border group"
+                    style={{ borderColor: isDone ? 'rgba(34,197,94,0.25)' : isActive ? 'rgba(37,99,235,0.3)' : '#334155' }}>
+
+                    <div className="flex items-start gap-3">
+                      {/* Icon */}
+                      <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shrink-0 mt-0.5"
+                        style={{ background: isDone ? 'rgba(34,197,94,0.1)' : isUnlocked ? 'rgba(37,99,235,0.1)' : 'rgba(100,116,139,0.1)' }}>
+                        {isDone ? '✅' : course.badge}
+                      </div>
+
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2 flex-wrap">
+                          <div>
+                            <h4 className="font-semibold text-sm text-slate-100 flex items-center gap-2 flex-wrap">
+                              {course.display_name}
+                              {isActive && !isDone && <span className="badge badge-blue text-[9px]">▶ Active</span>}
+                              {isDone && <span className="badge badge-green text-[9px]">Done</span>}
+                            </h4>
+                            <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">{course.description}</p>
                           </div>
-                          <div style={{ fontSize: '.68rem', color: '#4a5568', marginTop: 2 }}>Step {step}/{course.total_steps} · {pct}%</div>
+                          <span className={`badge ${ls.cls} text-[9px] shrink-0`}>{ls.badge}</span>
                         </div>
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
-                      <span style={{ fontSize: '.65rem', fontWeight: 700, textTransform: 'uppercase', padding: '2px 8px', borderRadius: 999, ...lc }}>{course.level}</span>
-                      {isUnlocked ? (
-                        <>
-                          <span style={{ fontSize: '.7rem', fontWeight: 700, color: '#68d391' }}>{access.via === 'tier' ? '✅ Bundle' : '✅ Purchased'}</span>
-                          <button onClick={() => handleStart(course.name)} disabled={starting === course.name} className="btn btn-sm" style={{ background: '#2c5282', color: '#90cdf4', border: '1px solid #4299e1' }}>
-                            {starting === course.name ? '…' : isDone ? '🔄 Redo' : isActive ? '▶ Continue' : '▶ Start'}
+
+                        <div className="flex items-center gap-3 mt-2 text-xs text-slate-600">
+                          <span className="flex items-center gap-1"><Layers size={10} />{course.total_steps} steps</span>
+                          <span className="flex items-center gap-1"><Clock size={10} />{Math.ceil(course.total_steps * 5)} min</span>
+                          <span className="flex items-center gap-1"><Zap size={10} className="text-amber-500" />{course.total_steps * 10} XP</span>
+                        </div>
+
+                        {/* Progress bar */}
+                        {(isActive || isDone) && (
+                          <div className="mt-2">
+                            <div className="flex justify-between text-[10px] text-slate-600 mb-1">
+                              <span>Step {step}/{course.total_steps}</span>
+                              <span>{pct}%</span>
+                            </div>
+                            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#1e293b' }}>
+                              <motion.div className="h-full rounded-full"
+                                initial={{ width: 0 }} animate={{ width: `${pct}%` }}
+                                style={{ background: isDone ? '#22c55e' : 'linear-gradient(90deg,#2563eb,#7c3aed)' }} />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Action */}
+                      <div className="flex flex-col items-end gap-2 shrink-0 ml-1">
+                        {isUnlocked ? (
+                          <button onClick={() => handleStart(course.name)} disabled={starting === course.name}
+                            className="btn btn-sm"
+                            style={{ background: 'rgba(37,99,235,0.15)', color: '#93c5fd', border: '1px solid rgba(37,99,235,0.3)' }}>
+                            {starting === course.name ? '…' : isDone ? <><RefreshCwIcon />Redo</> : isActive ? <><Play size={12} />Continue</> : <><Play size={12} />Start</>}
                           </button>
-                        </>
-                      ) : (
-                        <>
-                          <span style={{ fontSize: '.75rem', fontWeight: 700, color: '#e2e8f0' }}>₦{course.price_ngn.toLocaleString()}</span>
-                          <a href={course.paystack_url} target="_blank" rel="noopener" className="btn btn-sm btn-primary">💳 Buy</a>
-                        </>
-                      )}
+                        ) : (
+                          <div className="flex flex-col items-end gap-1">
+                            <div className="flex items-center gap-1 text-slate-500">
+                              <Lock size={11} />
+                              <span className="text-xs font-bold text-slate-300">₦{course.price_ngn.toLocaleString()}</span>
+                            </div>
+                            <a href={course.paystack_url} target="_blank" rel="noopener" className="btn btn-primary btn-sm">
+                              Buy
+                            </a>
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  </motion.div>
                 )
               })}
             </div>
-          </div>
+          </motion.div>
         )
       })}
     </div>
   )
+}
+
+function RefreshCwIcon() {
+  return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
 }

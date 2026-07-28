@@ -402,9 +402,24 @@ async def auth_google(request: GoogleAuthRequest) -> AuthResponse:
 @app.get("/auth/me", response_model=AuthResponse)
 async def auth_me(user=Depends(require_user)) -> AuthResponse:
     token = create_session_token(user.learner_id)
+    # If picture is empty (user reconstructed after restart), load from DB
+    picture = user.picture or ""
+    if not picture:
+        try:
+            from app.db import get_db as _gdb
+            with _gdb() as _conn:
+                row = _conn.execute(
+                    "SELECT photo_url FROM user_profiles WHERE learner_id=?",
+                    (user.learner_id,)
+                ).fetchone()
+                if row and row["photo_url"]:
+                    picture = row["photo_url"]
+                    user.picture = picture  # update in-memory cache
+        except Exception:
+            pass
     return AuthResponse(
         token=token, learner_id=user.learner_id,
-        name=user.name, email=user.email, picture=user.picture,
+        name=user.name, email=user.email, picture=picture,
     )
 
 
@@ -2832,6 +2847,21 @@ async def auth_github_callback(code: str = None, error: str = None,
         token = _cst(learner_id)
         sb_upsert_profile(learner_id, email, name)
         log_activity(learner_id, "auth:github", f"login for {email}")
+
+        # Persist picture to user_profiles so it survives Render restarts
+        if picture:
+            try:
+                from app.db import get_db as _gdb
+                with _gdb() as _conn:
+                    _conn.execute("""
+                        INSERT INTO user_profiles (learner_id, display_name, photo_url)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT(learner_id) DO UPDATE SET
+                          photo_url = excluded.photo_url,
+                          display_name = CASE WHEN excluded.display_name != '' THEN excluded.display_name ELSE user_profiles.display_name END
+                    """, (learner_id, name or "", picture))
+            except Exception:
+                pass
 
         import urllib.parse as _up
         user_data = _up.quote(_json.dumps({

@@ -265,6 +265,20 @@ def init_db() -> None:
             count    INTEGER DEFAULT 0,
             PRIMARY KEY (key, date_str)
         );
+
+        -- Referral withdrawal requests
+        CREATE TABLE IF NOT EXISTS referral_withdrawals (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            learner_id   TEXT NOT NULL,
+            email        TEXT NOT NULL,
+            amount       REAL NOT NULL,
+            bank_name    TEXT NOT NULL,
+            account_name TEXT NOT NULL,
+            account_num  TEXT NOT NULL,
+            status       TEXT DEFAULT 'pending',
+            notes        TEXT DEFAULT '',
+            created_at   REAL DEFAULT (unixepoch())
+        );
         """)
 
         # ── PASS 2: All indexes (tables guaranteed to exist now) ─────────────
@@ -303,6 +317,12 @@ def init_db() -> None:
             "ALTER TABLE referral_uses ADD COLUMN referrer_bonus REAL DEFAULT 0",
             "ALTER TABLE referral_uses ADD COLUMN referee_discount REAL DEFAULT 0",
             "ALTER TABLE user_profiles ADD COLUMN photo_url TEXT DEFAULT ''",
+            """CREATE TABLE IF NOT EXISTS referral_withdrawals (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, learner_id TEXT NOT NULL,
+                email TEXT NOT NULL, amount REAL NOT NULL, bank_name TEXT NOT NULL,
+                account_name TEXT NOT NULL, account_num TEXT NOT NULL,
+                status TEXT DEFAULT 'pending', notes TEXT DEFAULT '',
+                created_at REAL DEFAULT (unixepoch()))""",
         ]
         for sql in _migrations:
             try:
@@ -1107,3 +1127,60 @@ def purge_old_prompt_counts(keep_date: str) -> None:
             )
     except Exception:
         pass
+
+
+# ---------------------------------------------------------------------------
+# Referral withdrawal requests
+# ---------------------------------------------------------------------------
+
+def create_withdrawal_request(learner_id: str, email: str, amount: float,
+                               bank_name: str, account_name: str,
+                               account_num: str) -> int:
+    """Create a new withdrawal request. Returns the new row id."""
+    with get_db() as conn:
+        cur = conn.execute("""
+            INSERT INTO referral_withdrawals
+              (learner_id, email, amount, bank_name, account_name, account_num)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (learner_id, email.lower(), amount, bank_name, account_name, account_num))
+    return cur.lastrowid
+
+
+def get_withdrawals_for_learner(learner_id: str) -> list[dict]:
+    """Return all withdrawal requests for a learner."""
+    import datetime as _dt
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM referral_withdrawals WHERE learner_id=? ORDER BY id DESC",
+            (learner_id,)
+        ).fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["created_at_fmt"] = _dt.datetime.fromtimestamp(d["created_at"]).strftime("%Y-%m-%d %H:%M")
+        result.append(d)
+    return result
+
+
+def get_all_withdrawal_requests() -> list[dict]:
+    """Admin: return all withdrawal requests."""
+    import datetime as _dt
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM referral_withdrawals ORDER BY id DESC LIMIT 500"
+        ).fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["created_at_fmt"] = _dt.datetime.fromtimestamp(d["created_at"]).strftime("%Y-%m-%d %H:%M")
+        result.append(d)
+    return result
+
+
+def update_withdrawal_status(withdrawal_id: int, status: str, notes: str = "") -> bool:
+    with get_db() as conn:
+        cur = conn.execute(
+            "UPDATE referral_withdrawals SET status=?, notes=? WHERE id=?",
+            (status, notes, withdrawal_id)
+        )
+    return cur.rowcount > 0

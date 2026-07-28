@@ -2,6 +2,18 @@
   "buildCommand": "npm install && node node_modules/vite/bin/vite.js build",
   "outputDirectory": "dist",
   "framework": "vite",
+  "redirects": [
+    {
+      "source": "/admin.html",
+      "destination": "https://mypytutor.onrender.com/admin.html",
+      "permanent": false
+    },
+    {
+      "source": "/admin",
+      "destination": "https://mypytutor.onrender.com/admin.html",
+      "permanent": false
+    }
+  ],
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ],

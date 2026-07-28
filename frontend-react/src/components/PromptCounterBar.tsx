@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react'
+import { motion } from 'framer-motion'
+import { Cpu, ArrowUpRight } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { getPromptCount } from '../api'
 
@@ -18,38 +20,40 @@ export default function PromptCounterBar() {
     }).catch(() => {})
   }, [user])
 
-  // Also listen for chat responses that increment usage
   useEffect(() => {
-    const handler = () => {
-      setUsed(u => Math.min(u + 1, limit))
-    }
+    const handler = () => setUsed(u => Math.min(u + 1, limit))
     window.addEventListener('prompt-used', handler)
     return () => window.removeEventListener('prompt-used', handler)
   }, [limit])
 
   const pct = Math.min((used / limit) * 100, 100)
-  const color = pct >= 90 ? '#fc8181' : pct >= 70 ? '#f6ad55' : '#68d391'
+  const isNearLimit = pct >= 80
+  const isAtLimit   = used >= limit
 
   return (
-    <div style={{
-      background: '#0f1117',
-      borderBottom: '1px solid #1e2533',
-      padding: '5px 16px',
-      display: 'flex',
-      alignItems: 'center',
-      gap: 10,
-      flexShrink: 0,
-    }}>
-      <span style={{ fontSize: '.7rem', color: '#718096', whiteSpace: 'nowrap', minWidth: 90 }}>
-        ⚡ {used}/{limit} prompts
-      </span>
-      <div style={{ flex: 1, height: 4, background: '#2d3748', borderRadius: 999, overflow: 'hidden' }}>
-        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 999, transition: 'width .4s ease' }} />
+    <div className="flex items-center gap-3 px-4 py-1 shrink-0"
+      style={{ background: 'rgba(15,23,42,0.7)', borderBottom: '1px solid #1e293b' }}>
+
+      <div className="flex items-center gap-1.5 shrink-0">
+        <Cpu size={11} className={isAtLimit ? 'text-red-400' : isNearLimit ? 'text-amber-400' : 'text-slate-500'} />
+        <span className={`text-[10px] font-semibold ${isAtLimit ? 'text-red-400' : isNearLimit ? 'text-amber-400' : 'text-slate-500'}`}>
+          {used}/{limit} prompts
+        </span>
       </div>
-      {used >= limit && (
+
+      <div className="flex-1 h-1 rounded-full overflow-hidden" style={{ background: '#1e293b' }}>
+        <motion.div
+          className="h-full rounded-full"
+          style={{ background: isAtLimit ? '#ef4444' : isNearLimit ? '#f59e0b' : '#22c55e' }}
+          animate={{ width: `${pct}%` }}
+          transition={{ duration: 0.4 }}
+        />
+      </div>
+
+      {isAtLimit && (
         <a href="https://paystack.shop/pay/vt_re4d3h52" target="_blank" rel="noopener noreferrer"
-          style={{ fontSize: '.68rem', color: '#63b3ed', whiteSpace: 'nowrap', fontWeight: 600 }}>
-          Upgrade ↗
+          className="flex items-center gap-1 text-[10px] font-bold text-blue-400 hover:text-blue-300 shrink-0 transition-colors">
+          Upgrade <ArrowUpRight size={10} />
         </a>
       )}
     </div>
