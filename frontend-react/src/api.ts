@@ -88,6 +88,30 @@ export async function saveProfile(learnerId: string, body: Record<string, string
   return r.json()
 }
 
+export async function requestReferralWithdrawal(payload: {
+  learner_id: string
+  email: string
+  amount: number
+  bank_name: string
+  account_name: string
+  account_num: string
+}) {
+  const r = await fetch(url('/referral/withdraw'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  const data = await r.json()
+  if (!r.ok) throw new Error(data.error || data.detail || data.message || 'Withdrawal request failed')
+  return data
+}
+
+export async function getReferralWithdrawals(learnerId: string) {
+  const r = await fetch(url(`/referral/withdrawals/${learnerId}`))
+  if (!r.ok) return null
+  return r.json()
+}
+
 // ── Chat ──────────────────────────────────────────────────────────────────
 
 export async function sendChat(payload: {
