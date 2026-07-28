@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext'
 import { getProfile, saveProfile, forgotPassword, API_BASE } from '../api'
 
 export default function ProfilePanel() {
-  const { user, signOut } = useAuth()
+  const { user, signOut, setUser } = useAuth()
   const [name,     setName]     = useState('')
   const [bio,      setBio]      = useState('')
   const [location, setLocation] = useState('')
@@ -25,11 +25,16 @@ export default function ProfilePanel() {
     setPhotoUrl(user.picture || '')
     getProfile(lid).then(d => {
       if (!d) return
-      setName(d.display_name || user.name || '')
+      const nextName = d.display_name || user.name || ''
+      const nextPhoto = d.photo_url || user.picture || ''
+      setName(nextName)
       setBio(d.bio || '')
       setLocation(d.location || '')
       setWebsite(d.website || '')
-      setPhotoUrl(d.photo_url || user.picture || '')
+      setPhotoUrl(nextPhoto)
+      if (nextPhoto || nextName) {
+        setUser({ ...user, name: nextName, picture: nextPhoto })
+      }
     })
     fetch(`${API_BASE}/invoices/${lid}`).then(r => r.ok ? r.json() : null).then(d => {
       if (d?.invoices) setInvoices(d.invoices)
@@ -41,6 +46,9 @@ export default function ProfilePanel() {
     const ws = website && !website.startsWith('http') ? 'https://' + website : website
     try {
       await saveProfile(lid, { display_name: name, bio, location, website: ws, photo_url: photoUrl })
+      if (user) {
+        setUser({ ...user, name: name || user.name, picture: photoUrl || user.picture })
+      }
       setMsg('✅ Profile saved!')
     } catch { setMsg('❌ Save failed.') }
     finally { setSaving(false) }
