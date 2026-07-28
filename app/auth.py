@@ -193,7 +193,7 @@ def get_or_create_user(google_payload: dict) -> UserAccount:
         user.picture = picture
         user.email   = email
 
-    # Persist email + name to the learner profile so we can reconstruct after restart
+    # Persist email + name + picture to the learner profile so we can reconstruct after restart
     try:
         from app.progress import get_profile as _gp, save_profile as _sp
         profile = _gp(learner_id)
@@ -204,6 +204,20 @@ def get_or_create_user(google_payload: dict) -> UserAccount:
             profile.display_name = name; changed = True
         if changed:
             _sp(profile)
+        # Also save picture to user_profiles table so get_user_by_id can retrieve it
+        if picture:
+            try:
+                from app.db import get_db as _gdb2
+                with _gdb2() as _conn2:
+                    _conn2.execute("""
+                        INSERT INTO user_profiles (learner_id, display_name, photo_url)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT(learner_id) DO UPDATE SET
+                          photo_url = CASE WHEN excluded.photo_url != '' THEN excluded.photo_url ELSE user_profiles.photo_url END,
+                          display_name = CASE WHEN excluded.display_name != '' THEN excluded.display_name ELSE user_profiles.display_name END
+                    """, (learner_id, name or "", picture))
+            except Exception:
+                pass
     except Exception:
         pass
 

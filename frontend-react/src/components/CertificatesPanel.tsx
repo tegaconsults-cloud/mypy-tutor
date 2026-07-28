@@ -1,18 +1,32 @@
 import React, { useState } from 'react'
+import { motion } from 'framer-motion'
+import { Award, CheckCircle, Lock, Download, Share2, ExternalLink } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useProgress } from '../context/ProgressContext'
 import { API_BASE } from '../api'
 
 const CERT_TRACKS = {
-  basic:     { courses: ['python-fundamentals','python-strings','python-collections','python-control-flow'], label: 'Basic Certificate', fee: '₦30,000' },
-  advanced:  { courses: ['python-fundamentals','python-strings','python-collections','python-control-flow','python-functions-advanced','python-oop','python-modules-stdlib'], label: 'Advanced Certificate', fee: '₦60,000' },
-  executive: { courses: ['python-fundamentals','python-strings','python-collections','python-control-flow','python-functions-advanced','python-oop','python-modules-stdlib','python-dsa','numpy-mastery','pandas-mastery','data-science-python','machine-learning'], label: 'Executive Masters', fee: '₦100,000' },
-}
-
-const CERT_STYLES = {
-  basic:     { bg: 'linear-gradient(135deg,#1a2a5e,#1a202c)', border: '#3182ce', badge: { bg: '#1a365d', color: '#63b3ed' }, btn: '#63b3ed' },
-  advanced:  { bg: 'linear-gradient(135deg,#2d1a5e,#1a202c)', border: '#9f7aea', badge: { bg: '#322659', color: '#b794f4' }, btn: '#b794f4' },
-  executive: { bg: 'linear-gradient(135deg,#5e3a00,#1a202c)', border: '#f6ad55', badge: { bg: '#7b3a00', color: '#f6ad55' }, btn: '#f6ad55' },
+  basic: {
+    courses: ['python-fundamentals','python-strings','python-collections','python-control-flow'],
+    label: 'Basic Certificate', fee: '₦30,000',
+    icon: '🎓', desc: 'Foundational Python — syntax, variables, data structures, loops, functions.',
+    gradient: 'linear-gradient(135deg,rgba(37,99,235,0.15),rgba(30,41,59,0.8))',
+    border: 'rgba(37,99,235,0.35)', accentColor: '#93c5fd', badgeBg: 'rgba(37,99,235,0.2)',
+  },
+  advanced: {
+    courses: ['python-fundamentals','python-strings','python-collections','python-control-flow','python-functions-advanced','python-oop','python-modules-stdlib'],
+    label: 'Advanced Certificate', fee: '₦60,000',
+    icon: '🏆', desc: 'OOP, algorithms, REST APIs, design patterns, real projects.',
+    gradient: 'linear-gradient(135deg,rgba(124,58,237,0.15),rgba(30,41,59,0.8))',
+    border: 'rgba(124,58,237,0.4)', accentColor: '#c4b5fd', badgeBg: 'rgba(124,58,237,0.2)',
+  },
+  executive: {
+    courses: ['python-fundamentals','python-strings','python-collections','python-control-flow','python-functions-advanced','python-oop','python-modules-stdlib','python-dsa','numpy-mastery','pandas-mastery','data-science-python','machine-learning'],
+    label: 'Executive Masters', fee: '₦100,000',
+    icon: '👑', desc: 'ML, AI engineering, data science, NumPy, Pandas, prompt engineering.',
+    gradient: 'linear-gradient(135deg,rgba(245,158,11,0.15),rgba(30,41,59,0.8))',
+    border: 'rgba(245,158,11,0.4)', accentColor: '#fcd34d', badgeBg: 'rgba(245,158,11,0.15)',
+  },
 }
 
 export default function CertificatesPanel() {
@@ -21,7 +35,7 @@ export default function CertificatesPanel() {
   const [name, setName] = useState(user?.name || '')
 
   const completed = new Set(progress?.completed_projects || [])
-  const learnerId = user?.learner_id || 'default'
+  const learnerId  = user?.learner_id || 'default'
 
   const preview = (level: string) => {
     const certName = name.trim() || 'Learner'
@@ -30,63 +44,111 @@ export default function CertificatesPanel() {
   }
 
   return (
-    <div style={{ overflowY: 'auto', padding: 20, display: 'flex', flexDirection: 'column', gap: 18, WebkitOverflowScrolling: 'touch' }}>
-      <h3 style={{ color: '#90cdf4', fontSize: '.97rem' }}>🎓 Your Certificates</h3>
+    <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-5 touch-scroll scrollbar-thin">
 
-      <div style={{ background: '#1a202c', border: '1px solid #2d3748', borderRadius: 10, padding: 14, fontSize: '.82rem', color: '#a0aec0', lineHeight: 1.6 }}>
-        <strong style={{ color: '#e2e8f0' }}>Issued by:</strong> Teamsamikoko Global Academy &nbsp;·&nbsp;
-        <strong style={{ color: '#e2e8f0' }}>Reg No:</strong> 3508656 &nbsp;·&nbsp;
-        <strong style={{ color: '#e2e8f0' }}>Est:</strong> 2021
-        <br />Enter your full name for the certificate, then click Preview.
-      </div>
+      {/* Issuer info */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+        className="rounded-2xl p-4 border" style={{ background: 'rgba(37,99,235,0.08)', borderColor: 'rgba(37,99,235,0.2)' }}>
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0"
+            style={{ background: 'rgba(37,99,235,0.2)' }}>🏛️</div>
+          <div>
+            <div className="text-sm font-semibold text-slate-100 mb-0.5">Teamsamikoko Global Academy</div>
+            <div className="text-xs text-slate-500">Reg No: 3508656 · Est. 2021</div>
+            <div className="text-xs text-slate-400 mt-1">
+              Certificates are industry-recognised with QR verification and a unique Certificate ID.
+            </div>
+          </div>
+        </div>
+      </motion.div>
 
+      {/* Name input */}
       <div>
-        <label style={{ fontSize: '.8rem', color: '#718096', display: 'block', marginBottom: 6 }}>Your full name for the certificate:</label>
-        <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Adaora Chukwuemeka" maxLength={80} style={{ height: 42 }} />
+        <label className="text-xs text-slate-500 font-semibold uppercase tracking-wide block mb-2">
+          Your full name for the certificate
+        </label>
+        <input value={name} onChange={e => setName(e.target.value)}
+          placeholder="e.g. Adaora Chukwuemeka" maxLength={80} className="h-11" />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
-        {(Object.entries(CERT_TRACKS) as [keyof typeof CERT_TRACKS, typeof CERT_TRACKS['basic']][]).map(([level, track]) => {
-          const done = track.courses.filter(c => completed.has(c)).length
-          const total = track.courses.length
-          const pct = Math.round((done / total) * 100)
-          const isReady = done === total
-          const styles = CERT_STYLES[level]
+      {/* Certificate cards */}
+      <div className="grid gap-4">
+        {(Object.entries(CERT_TRACKS) as [keyof typeof CERT_TRACKS, typeof CERT_TRACKS['basic']][]).map(([level, track], i) => {
+          const done   = track.courses.filter(c => completed.has(c)).length
+          const total  = track.courses.length
+          const pct    = Math.round((done / total) * 100)
+          const isReady= done === total
 
           return (
-            <div key={level} style={{ background: styles.bg, border: `2px solid ${styles.border}`, borderRadius: 14, padding: '22px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <span style={{ display: 'inline-block', fontSize: '.65rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.14em', padding: '3px 12px', borderRadius: 999, background: styles.badge.bg, color: styles.badge.color }}>{level === 'executive' ? 'Executive Masters' : level.charAt(0).toUpperCase() + level.slice(1)}</span>
+            <motion.div key={level} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.08 }}
+              className="rounded-3xl p-5 border relative overflow-hidden"
+              style={{ background: track.gradient, borderColor: track.border }}>
 
-              <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#e2e8f0' }}>
-                {level === 'basic' ? 'Certificate of Completion' : level === 'advanced' ? 'Certificate of Achievement' : 'Executive Masters Certificate'}
+              {/* Background decoration */}
+              <div className="absolute top-0 right-0 text-8xl opacity-5 pointer-events-none select-none -mt-2 -mr-2">
+                {track.icon}
               </div>
 
-              <div style={{ fontSize: '.78rem', color: '#a0aec0', lineHeight: 1.5, flex: 1 }}>
-                {level === 'basic' ? 'Foundational Python — syntax, data structures, loops, functions.' : level === 'advanced' ? 'OOP, algorithms, REST APIs, design patterns.' : 'ML, AI engineering, data science, prompt engineering.'}
+              {/* Badge */}
+              <div className="flex items-center justify-between mb-3">
+                <span className="badge text-[10px] font-bold px-2.5 py-1 rounded-full"
+                  style={{ background: track.badgeBg, color: track.accentColor, border: `1px solid ${track.border}` }}>
+                  {track.icon} {track.label}
+                </span>
+                {isReady && (
+                  <span className="badge badge-green flex items-center gap-1">
+                    <CheckCircle size={10} /> Ready
+                  </span>
+                )}
               </div>
 
-              <div style={{ fontSize: '.9rem', fontWeight: 700, color: '#e2e8f0' }}>{track.fee}</div>
+              <div className="text-sm text-slate-300 leading-relaxed mb-3">{track.desc}</div>
+
+              <div className="text-xl font-bold mb-3" style={{ color: track.accentColor, fontFamily: 'Sora' }}>
+                {track.fee}
+              </div>
 
               {/* Progress */}
-              <div>
-                <div style={{ fontSize: '.75rem', color: isReady ? '#68d391' : '#94a3b8', marginBottom: 4, fontWeight: 600 }}>
-                  {isReady ? '✅ Ready to claim!' : `📚 ${done}/${total} courses (${pct}%)`}
+              <div className="mb-4">
+                <div className="flex justify-between text-xs mb-1.5" style={{ color: isReady ? '#86efac' : '#94a3b8' }}>
+                  <span className="flex items-center gap-1">
+                    {isReady ? <CheckCircle size={11} /> : <Lock size={11} />}
+                    {isReady ? 'All courses completed!' : `${done}/${total} courses (${pct}%)`}
+                  </span>
+                  <span>{pct}%</span>
                 </div>
-                <div style={{ height: 5, background: '#1f2937', borderRadius: 99, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: `${pct}%`, background: isReady ? '#34d399' : styles.border, borderRadius: 99, transition: 'width .5s' }} />
+                <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(15,23,42,0.5)' }}>
+                  <motion.div className="h-full rounded-full" initial={{ width: 0 }} animate={{ width: `${pct}%` }}
+                    transition={{ duration: 0.8, delay: 0.3 + i * 0.08 }}
+                    style={{ background: isReady ? '#22c55e' : track.accentColor }} />
                 </div>
               </div>
 
-              <button onClick={() => preview(level)} style={{ background: 'transparent', border: `1px solid ${styles.btn}`, color: styles.btn, borderRadius: 8, padding: '9px 14px', fontSize: '.84rem', fontWeight: 600, cursor: 'pointer', minHeight: 40, width: '100%', transition: 'opacity .15s' }} onMouseOver={e => (e.currentTarget.style.opacity = '.8')} onMouseOut={e => (e.currentTarget.style.opacity = '1')}>
-                🎓 Preview {level === 'executive' ? 'Executive' : level.charAt(0).toUpperCase() + level.slice(1)} Certificate
-              </button>
-            </div>
+              {/* Actions */}
+              <div className="flex gap-2">
+                <button onClick={() => preview(level)}
+                  className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 hover:opacity-90"
+                  style={{ background: track.badgeBg, color: track.accentColor, border: `1px solid ${track.border}` }}>
+                  <ExternalLink size={14} /> Preview Certificate
+                </button>
+                {isReady && (
+                  <button onClick={() => preview(level)}
+                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all duration-200"
+                    style={{ background: 'linear-gradient(135deg,#2563eb,#7c3aed)' }}>
+                    <Download size={14} /> PDF
+                  </button>
+                )}
+              </div>
+            </motion.div>
           )
         })}
       </div>
 
-      <div style={{ background: '#1a202c', border: '1px solid #2d3748', borderRadius: 10, padding: 14, fontSize: '.75rem', color: '#4a5568' }}>
-        💡 Certificates open in a new tab. Use <strong style={{ color: '#718096' }}>Print → Save as PDF</strong> to download.
+      <div className="rounded-xl p-3 border border-slate-700/40 text-xs text-slate-600 flex items-start gap-2"
+        style={{ background: '#1e293b' }}>
+        <span>💡</span>
+        <span>Certificates open in a new tab. Use <strong className="text-slate-500">Print → Save as PDF</strong> to download.</span>
       </div>
     </div>
   )

@@ -1,29 +1,28 @@
 import React, { useEffect, useState } from 'react'
+import { motion } from 'framer-motion'
+import { User, MapPin, Globe, Lock, Camera, LogOut, ExternalLink, Mail } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { getProfile, saveProfile, forgotPassword } from '../api'
-import { API_BASE } from '../api'
+import { getProfile, saveProfile, forgotPassword, API_BASE } from '../api'
 
 export default function ProfilePanel() {
   const { user, signOut } = useAuth()
-  const [name, setName] = useState('')
-  const [bio, setBio] = useState('')
+  const [name,     setName]     = useState('')
+  const [bio,      setBio]      = useState('')
   const [location, setLocation] = useState('')
-  const [website, setWebsite] = useState('')
+  const [website,  setWebsite]  = useState('')
   const [photoUrl, setPhotoUrl] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [msg, setMsg] = useState('')
-  const [pwMsg, setPwMsg] = useState('')
+  const [saving,   setSaving]   = useState(false)
+  const [msg,      setMsg]      = useState('')
+  const [pwMsg,    setPwMsg]    = useState('')
   const [invoices, setInvoices] = useState<{id:string;plan:string;amount:number}[]>([])
 
-  const lid = user?.learner_id || 'default'
+  const lid      = user?.learner_id || 'default'
   const isGoogle = localStorage.getItem('mpt_auth_type') === 'google'
 
   useEffect(() => {
     if (!user) return
-    // Fill from user immediately
     setName(user.name || '')
     setPhotoUrl(user.picture || '')
-    // Load full profile
     getProfile(lid).then(d => {
       if (!d) return
       setName(d.display_name || user.name || '')
@@ -32,7 +31,6 @@ export default function ProfilePanel() {
       setWebsite(d.website || '')
       setPhotoUrl(d.photo_url || user.picture || '')
     })
-    // Load invoices
     fetch(`${API_BASE}/invoices/${lid}`).then(r => r.ok ? r.json() : null).then(d => {
       if (d?.invoices) setInvoices(d.invoices)
     }).catch(() => {})
@@ -53,7 +51,7 @@ export default function ProfilePanel() {
     if (!file) return
     if (file.size > 2 * 1024 * 1024) { setMsg('Photo must be under 2 MB.'); return }
     const reader = new FileReader()
-    reader.onload = ev => { setPhotoUrl(ev.target?.result as string) }
+    reader.onload = ev => setPhotoUrl(ev.target?.result as string)
     reader.readAsDataURL(file)
   }
 
@@ -68,80 +66,134 @@ export default function ProfilePanel() {
   }
 
   if (!user) return (
-    <div style={{ padding: 20, color: '#718096', textAlign: 'center' }}>Sign in to view your profile.</div>
+    <div className="flex-1 flex items-center justify-center p-8 text-center">
+      <div>
+        <User size={40} className="text-slate-700 mx-auto mb-3" />
+        <p className="text-slate-500 text-sm">Sign in to view your profile.</p>
+      </div>
+    </div>
   )
 
+  const initials = (user.name || 'U').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
+
   return (
-    <div style={{ overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 16, maxWidth: 560, margin: '0 auto', width: '100%' }}>
+    <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 touch-scroll scrollbar-thin max-w-xl mx-auto w-full">
 
-      {/* Avatar + name */}
-      <div className="card" style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        <label style={{ position: 'relative', flexShrink: 0, cursor: 'pointer' }}>
-          <div style={{ width: 72, height: 72, borderRadius: '50%', overflow: 'hidden', background: 'linear-gradient(135deg,#3b82f6,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: '1.8rem' }}>
-            {photoUrl ? <img src={photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (user.name || 'U').split(' ').map(w => w[0]).slice(0,2).join('').toUpperCase()}
+      {/* Avatar card */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="card">
+        <div className="flex items-center gap-4">
+          <label className="relative cursor-pointer shrink-0 group">
+            <div className="w-16 h-16 rounded-2xl overflow-hidden flex items-center justify-center font-bold text-xl text-white"
+              style={{ background: 'linear-gradient(135deg,#2563eb,#7c3aed)' }}>
+              {photoUrl ? <img src={photoUrl} alt="" className="w-full h-full object-cover" /> : initials}
+            </div>
+            <div className="absolute inset-0 bg-black/40 rounded-2xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <Camera size={16} className="text-white" />
+            </div>
+            <input type="file" accept="image/*" onChange={handlePhotoUpload} className="sr-only" />
+          </label>
+          <div className="flex-1 min-w-0">
+            <div className="font-bold text-slate-100 text-base truncate">{name || user.email.split('@')[0]}</div>
+            <div className="text-xs text-slate-500 truncate">{user.email}</div>
+            <span className="badge badge-blue text-[10px] mt-1.5">Free Plan</span>
           </div>
-          <div style={{ position: 'absolute', bottom: 2, right: 2, background: '#3b82f6', borderRadius: '50%', width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '.65rem' }}>📷</div>
-          <input type="file" accept="image/*" onChange={handlePhotoUpload} style={{ display: 'none' }} />
-        </label>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 800, color: '#f1f5f9', fontSize: '1.1rem' }}>{name || user.email.split('@')[0]}</div>
-          <div style={{ fontSize: '.8rem', color: '#64748b' }}>{user.email}</div>
-          <div style={{ display: 'inline-block', marginTop: 6, fontSize: '.62rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '.08em', padding: '2px 10px', borderRadius: 999, background: 'rgba(59,130,246,.15)', color: '#93c5fd', border: '1px solid rgba(59,130,246,.3)' }}>
-            Free Plan
-          </div>
+          <button onClick={signOut} className="btn btn-danger btn-sm shrink-0">
+            <LogOut size={13} /> Sign Out
+          </button>
         </div>
-        <button onClick={() => { signOut() }} style={{ background: 'rgba(239,68,68,.1)', border: '1px solid rgba(239,68,68,.3)', color: '#fca5a5', borderRadius: 10, padding: '8px 12px', fontSize: '.8rem', fontWeight: 600, cursor: 'pointer' }}>🚪 Sign Out</button>
-      </div>
+      </motion.div>
 
-      {/* Edit profile */}
-      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <h3 style={{ color: '#f1f5f9', fontSize: '.97rem', fontWeight: 700 }}>✏️ Edit Profile</h3>
+      {/* Edit Profile */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
+        className="card flex flex-col gap-4">
+        <div className="flex items-center gap-2">
+          <User size={15} className="text-blue-400" />
+          <h3 className="font-bold text-sm text-slate-100" style={{ fontFamily: 'Sora' }}>Edit Profile</h3>
+        </div>
+
         <div>
-          <label style={{ fontSize: '.72rem', color: '#718096', display: 'block', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Display Name</label>
-          <input value={name} onChange={e => setName(e.target.value)} placeholder="How should we call you?" maxLength={80} />
+          <label className="text-[10px] text-slate-500 font-bold uppercase tracking-widest block mb-1.5">Display Name</label>
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="How should we call you?" maxLength={80} className="h-11" />
         </div>
         <div>
-          <label style={{ fontSize: '.72rem', color: '#718096', display: 'block', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.05em' }}>Bio</label>
-          <textarea value={bio} onChange={e => setBio(e.target.value)} placeholder="A short bio…" maxLength={500} rows={3} style={{ resize: 'vertical' }} />
+          <label className="text-[10px] text-slate-500 font-bold uppercase tracking-widest block mb-1.5">Bio</label>
+          <textarea value={bio} onChange={e => setBio(e.target.value)} placeholder="A short bio…" maxLength={500} rows={3}
+            className="resize-y" style={{ lineHeight: 1.6 }} />
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div className="grid grid-cols-2 gap-3">
           <div>
-            <label style={{ fontSize: '.72rem', color: '#718096', display: 'block', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase' }}>Location</label>
-            <input value={location} onChange={e => setLocation(e.target.value)} placeholder="e.g. Lagos, Nigeria" maxLength={100} />
+            <label className="text-[10px] text-slate-500 font-bold uppercase tracking-widest block mb-1.5">Location</label>
+            <div className="relative">
+              <MapPin size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 pointer-events-none" />
+              <input value={location} onChange={e => setLocation(e.target.value)} placeholder="Lagos, Nigeria" maxLength={100} className="pl-8 h-11" />
+            </div>
           </div>
           <div>
-            <label style={{ fontSize: '.72rem', color: '#718096', display: 'block', marginBottom: 4, fontWeight: 600, textTransform: 'uppercase' }}>Website</label>
-            <input value={website} onChange={e => setWebsite(e.target.value)} placeholder="https://yoursite.com" maxLength={200} type="url" />
+            <label className="text-[10px] text-slate-500 font-bold uppercase tracking-widest block mb-1.5">Website</label>
+            <div className="relative">
+              <Globe size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600 pointer-events-none" />
+              <input value={website} onChange={e => setWebsite(e.target.value)} placeholder="https://…" maxLength={200} type="url" className="pl-8 h-11" />
+            </div>
           </div>
         </div>
-        {msg && <div style={{ fontSize: '.82rem', textAlign: 'center', color: msg.startsWith('✅') ? '#68d391' : '#fc8181' }}>{msg}</div>}
-        <button onClick={save} disabled={saving} className="btn btn-primary" style={{ width: '100%' }}>
+
+        {msg && (
+          <div className={`text-xs text-center py-2 px-3 rounded-xl ${msg.startsWith('✅') ? 'text-green-400 bg-green-500/10' : 'text-red-400 bg-red-500/10'}`}>
+            {msg}
+          </div>
+        )}
+        <button onClick={save} disabled={saving} className="btn btn-primary w-full">
           {saving ? 'Saving…' : 'Save Changes'}
         </button>
-      </div>
+      </motion.div>
 
       {/* Security */}
-      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <h3 style={{ color: '#f1f5f9', fontSize: '.97rem', fontWeight: 700 }}>🔐 Security</h3>
-        <p style={{ fontSize: '.82rem', color: '#64748b', lineHeight: 1.5 }}>To change your password, we'll send a secure reset link to your email.</p>
-        <button onClick={sendPasswordReset} className="btn btn-secondary" style={{ width: '100%', borderColor: 'rgba(59,130,246,.4)', color: '#93c5fd' }}>
-          📧 Send Password Reset Link
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+        className="card flex flex-col gap-3">
+        <div className="flex items-center gap-2">
+          <Lock size={15} className="text-purple-400" />
+          <h3 className="font-bold text-sm text-slate-100" style={{ fontFamily: 'Sora' }}>Security</h3>
+        </div>
+        <p className="text-xs text-slate-500 leading-relaxed">
+          To change your password, we'll send a secure reset link to your email address.
+        </p>
+        <button onClick={sendPasswordReset}
+          className="btn btn-secondary flex items-center justify-center gap-2 w-full">
+          <Mail size={14} /> Send Password Reset Link
         </button>
-        {pwMsg && <div style={{ fontSize: '.78rem', color: pwMsg.startsWith('✅') ? '#68d391' : '#f6ad55', textAlign: 'center' }}>{pwMsg}</div>}
-      </div>
+        {pwMsg && (
+          <div className={`text-xs text-center ${pwMsg.startsWith('✅') ? 'text-green-400' : 'text-amber-400'}`}>{pwMsg}</div>
+        )}
+      </motion.div>
+
+      {/* Learner ID */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
+        className="card">
+        <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mb-2">Learner ID</div>
+        <div className="font-mono text-xs text-blue-300 px-3 py-2 rounded-xl break-all"
+          style={{ background: '#0f172a', border: '1px solid #1e293b' }}>
+          {user.learner_id}
+        </div>
+      </motion.div>
 
       {/* Invoices */}
       {invoices.length > 0 && (
-        <div className="card">
-          <h3 style={{ color: '#f1f5f9', fontSize: '.97rem', fontWeight: 700, marginBottom: 12 }}>🧾 Your Invoices</h3>
-          {invoices.map(inv => (
-            <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: '1px solid #2d3748', fontSize: '.82rem' }}>
-              <span style={{ color: '#94a3b8' }}>{inv.plan}</span>
-              <span style={{ color: '#f1f5f9', fontWeight: 600 }}>₦{Number(inv.amount).toLocaleString()}</span>
-              <a href={`${API_BASE}/invoice/${inv.id}`} target="_blank" rel="noopener" style={{ color: '#60a5fa', fontSize: '.75rem' }}>View</a>
-            </div>
-          ))}
-        </div>
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
+          className="card">
+          <div className="font-bold text-sm text-slate-100 mb-3" style={{ fontFamily: 'Sora' }}>🧾 Your Invoices</div>
+          <div className="flex flex-col gap-2">
+            {invoices.map(inv => (
+              <div key={inv.id} className="flex items-center justify-between py-2 border-b border-slate-700/40 last:border-0 text-sm">
+                <span className="text-slate-400">{inv.plan}</span>
+                <span className="font-semibold text-slate-200">₦{Number(inv.amount).toLocaleString()}</span>
+                <a href={`${API_BASE}/invoice/${inv.id}`} target="_blank" rel="noopener"
+                  className="flex items-center gap-1 text-blue-400 hover:text-blue-300 text-xs transition-colors">
+                  View <ExternalLink size={10} />
+                </a>
+              </div>
+            ))}
+          </div>
+        </motion.div>
       )}
     </div>
   )
