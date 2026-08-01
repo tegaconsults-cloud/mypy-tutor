@@ -9,62 +9,60 @@ const BUNDLES = [
   {
     tier: 'tier-1', badge: '🟢 Beginner Bundle', name: 'Python Foundation', price: '₦8,000',
     period: 'one-time', desc: 'All 4 beginner courses bundled.',
-    features: ['43 structured lessons + exercises', 'Per-lesson quizzes & XP', 'Basic Certificate eligibility', 'Save ₦3,000 vs individual'],
+    features: ['43 structured lessons + exercises','Per-lesson quizzes & XP','Basic Certificate eligibility','Save ₦3,000 vs individual'],
     cta: 'Buy Beginner Bundle', link: `${PAYSTACK}?plan=beginner+bundle&tier=tier1&amount=8000`,
-    gradient: 'linear-gradient(135deg,rgba(37,99,235,0.15),rgba(30,41,59,0.95))', border: 'rgba(37,99,235,0.3)', accent: '#93c5fd', icon: 'logo',
+    gradient: 'linear-gradient(135deg,rgba(13,71,161,0.18),rgba(6,13,28,0.95))', border: 'rgba(13,71,161,0.45)', accent: '#93c5fd',
   },
   {
-    tier: 'tier-2', badge: '⚡ Intermediate Bundle', name: '7 Courses', price: '₦15,000',
-    period: 'one-time', desc: 'Beginner + Functions, OOP, Standard Library.', popular: true,
-    features: ['86 structured lessons', 'OOP, decorators, generators', 'Advanced Certificate eligibility', 'Save ₦9,000 vs individual'],
+    tier: 'tier-2', badge: '⚡ Intermediate Bundle', name: '7 Courses', price: '₦15,000', popular: true,
+    period: 'one-time', desc: 'Beginner + Functions, OOP, Standard Library.',
+    features: ['86 structured lessons','OOP, decorators, generators','Advanced Certificate eligibility','Save ₦9,000 vs individual'],
     cta: 'Buy Intermediate Bundle', link: `${PAYSTACK}?plan=intermediate+bundle&tier=tier2&amount=15000`,
-    gradient: 'linear-gradient(135deg,rgba(124,58,237,0.18),rgba(30,41,59,0.95))', border: 'rgba(124,58,237,0.4)', accent: '#c4b5fd', icon: '⚡',
+    gradient: 'linear-gradient(135deg,rgba(224,163,0,0.15),rgba(6,13,28,0.95))', border: 'rgba(224,163,0,0.4)', accent: '#E0A300',
   },
   {
     tier: 'tier-3', badge: '👑 Elite Bundle', name: 'ALL 16 Courses', price: '₦35,000',
     period: 'one-time', desc: 'Every course: ML, AI, DSA, Data Science.',
-    features: ['Machine Learning (30 lessons)', 'AI & Prompt Engineering', 'NumPy, Pandas, Data Science', 'Executive Masters Certificate', 'Save ₦55,000 vs individual'],
+    features: ['Machine Learning (30 lessons)','AI & Prompt Engineering','NumPy, Pandas, Data Science','Executive Masters Certificate','Save ₦55,000 vs individual'],
     cta: 'Buy Elite Bundle', link: `${PAYSTACK}?plan=elite+bundle&tier=tier3&amount=35000`,
-    gradient: 'linear-gradient(135deg,rgba(245,158,11,0.15),rgba(30,41,59,0.95))', border: 'rgba(245,158,11,0.35)', accent: '#fcd34d', icon: '👑',
+    gradient: 'linear-gradient(135deg,rgba(139,92,246,0.18),rgba(6,13,28,0.95))', border: 'rgba(139,92,246,0.4)', accent: '#c4b5fd',
   },
 ]
 
 const PROMPTS = [
-  { badge: 'Starter', name: '50 Prompts / Day', price: '₦2,000', period: '/month', desc: 'Perfect for regular learners.', link: `${PAYSTACK}?plan=prompt+starter&amount=2000`, accent: '#93c5fd', border: 'rgba(37,99,235,0.3)', bg: 'rgba(37,99,235,0.1)' },
-  { badge: 'Pro', name: '200 Prompts / Day', price: '₦5,000', period: '/month', desc: 'For serious learners.', popular: true, link: `${PAYSTACK}?plan=prompt+pro&amount=5000`, accent: '#c4b5fd', border: 'rgba(124,58,237,0.4)', bg: 'rgba(124,58,237,0.12)' },
-  { badge: 'Unlimited', name: 'No Daily Cap', price: '₦10,000', period: '/month', desc: '24/7 access, no restrictions.', link: `${PAYSTACK}?plan=prompt+unlimited&amount=10000`, accent: '#fcd34d', border: 'rgba(245,158,11,0.35)', bg: 'rgba(245,158,11,0.1)' },
+  { badge: 'Starter', name: '50 Prompts / Day', price: '₦2,000', period: '/month', desc: 'Perfect for regular learners.', link: `${PAYSTACK}?plan=prompt+starter&amount=2000`, accent: '#93c5fd', border: 'rgba(13,71,161,0.3)', bg: 'rgba(13,71,161,0.08)' },
+  { badge: 'Pro', name: '200 Prompts / Day', price: '₦5,000', period: '/month', desc: 'For serious learners.', popular: true, link: `${PAYSTACK}?plan=prompt+pro&amount=5000`, accent: '#E0A300', border: 'rgba(224,163,0,0.35)', bg: 'rgba(224,163,0,0.08)' },
+  { badge: 'Unlimited', name: 'No Daily Cap', price: '₦10,000', period: '/month', desc: '24/7 access, no restrictions.', link: `${PAYSTACK}?plan=prompt+unlimited&amount=10000`, accent: '#c4b5fd', border: 'rgba(139,92,246,0.35)', bg: 'rgba(139,92,246,0.08)' },
 ]
 
 type Tab = 'catalog' | 'bundles' | 'prompts'
 
 export default function PricingPanel() {
-  const [tab, setTab] = useState<Tab>('bundles')
+  const [tab, setTab]     = useState<Tab>('bundles')
   const [copied, setCopied] = useState(false)
 
   const copyAcct = () => {
     navigator.clipboard.writeText('1228732577')
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+    setCopied(true); setTimeout(() => setCopied(false), 2000)
   }
 
   return (
     <div className="flex-1 overflow-y-auto flex flex-col touch-scroll scrollbar-thin">
 
       {/* Tab bar */}
-      <div className="flex gap-1.5 p-3 border-b border-slate-800/60 sticky top-0 z-10"
-        style={{ background: 'rgba(15,23,42,0.95)', backdropFilter: 'blur(20px)' }}>
-        {([['catalog', '📚', 'Catalog'], ['bundles', '🎯', 'Bundles'], ['prompts', '🤖', 'AI Plans']] as [Tab, string, string][]).map(([t, icon, label]) => (
+      <div className="flex gap-1.5 p-3 sticky top-0 z-10"
+        style={{ background: 'rgba(6,13,28,0.97)', borderBottom: '1px solid rgba(13,71,161,0.15)', backdropFilter: 'blur(20px)' }}>
+        {([['catalog','📚','Catalog'],['bundles','🎯','Bundles'],['prompts','🤖','AI Plans']] as [Tab,string,string][]).map(([t, icon, label]) => (
           <button key={t} onClick={() => setTab(t)}
-            className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-all duration-150 ${
-              tab === t ? 'text-white' : 'text-slate-500 hover:text-slate-300'
-            }`}
-            style={tab === t ? { background: 'linear-gradient(135deg,#2563eb,#7c3aed)' } : { background: 'rgba(30,41,59,0.6)' }}>
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-xs font-semibold transition-all duration-150"
+            style={tab === t
+              ? { background: 'linear-gradient(135deg,#0D47A1,#E0A300)', color: '#fff' }
+              : { background: 'rgba(13,71,161,0.08)', color: '#4d6080' }}>
             {icon} {label}
           </button>
         ))}
       </div>
 
-      {/* Content */}
       <div className="p-4 flex flex-col gap-4">
 
         {tab === 'catalog' && <CoursesPanel />}
@@ -72,44 +70,36 @@ export default function PricingPanel() {
         {tab === 'bundles' && (
           <>
             <div className="text-center">
-              <h2 className="font-bold text-lg text-slate-100 mb-1" style={{ fontFamily: 'Sora' }}>Course Bundles</h2>
-              <p className="text-xs text-slate-500">One payment. Lifetime access. No subscriptions.</p>
+              <h2 className="font-bold text-lg text-white mb-1" style={{ fontFamily: 'Sora' }}>Course Bundles</h2>
+              <p className="text-xs" style={{ color: '#4d6080' }}>One payment. Lifetime access. No subscriptions.</p>
             </div>
 
             {BUNDLES.map((b, i) => (
               <motion.div key={b.tier} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.07 }}
                 className="rounded-3xl p-5 border relative overflow-hidden"
                 style={{ background: b.gradient, borderColor: b.border }}>
-
                 {b.popular && (
                   <div className="absolute top-0 right-6 text-[10px] font-bold uppercase tracking-wide px-3 py-1 rounded-b-xl text-white"
-                    style={{ background: 'linear-gradient(135deg,#7c3aed,#2563eb)' }}>Most Popular</div>
+                    style={{ background: 'linear-gradient(135deg,#0D47A1,#E0A300)' }}>Most Popular</div>
                 )}
-
-                <div className="absolute top-4 right-4 text-5xl opacity-10 pointer-events-none select-none">
-                  {b.icon === 'logo'
-                    ? <img src="/icons/mypytutor_logo.png" alt="" style={{ width: 48, height: 48, borderRadius: '50%', objectFit: 'cover' }} />
-                    : b.icon}
-                </div>
-
-                <span className="badge text-[10px] mb-3" style={{ background: `${b.accent}20`, color: b.accent, border: `1px solid ${b.border}` }}>
+                <span className="badge text-[10px] mb-3 inline-flex" style={{ background: `${b.accent}18`, color: b.accent, border: `1px solid ${b.border}` }}>
                   {b.badge}
                 </span>
-                <div className="font-bold text-base text-slate-100 mb-1" style={{ fontFamily: 'Sora' }}>{b.name}</div>
+                <div className="font-bold text-base text-white mb-1" style={{ fontFamily: 'Sora' }}>{b.name}</div>
                 <div className="text-2xl font-bold mb-1" style={{ color: b.accent, fontFamily: 'Sora' }}>
-                  {b.price} <span className="text-xs font-normal text-slate-500">{b.period}</span>
+                  {b.price} <span className="text-xs font-normal" style={{ color: '#4d6080' }}>{b.period}</span>
                 </div>
-                <p className="text-xs text-slate-500 mb-3">{b.desc}</p>
+                <p className="text-xs mb-3" style={{ color: '#4d6080' }}>{b.desc}</p>
                 <ul className="flex flex-col gap-1.5 mb-4">
                   {b.features.map(f => (
-                    <li key={f} className="flex items-start gap-2 text-xs text-slate-400">
-                      <Check size={12} className="text-green-400 shrink-0 mt-0.5" />{f}
+                    <li key={f} className="flex items-start gap-2 text-xs" style={{ color: '#94a3b8' }}>
+                      <Check size={12} style={{ color: '#86efac', flexShrink: 0, marginTop: 2 }} />{f}
                     </li>
                   ))}
                 </ul>
                 <a href={b.link} target="_blank" rel="noopener"
-                  className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl text-sm font-bold text-white transition-all duration-200 hover:opacity-90"
-                  style={{ background: 'linear-gradient(135deg,#2563eb,#7c3aed)' }}>
+                  className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl text-sm font-bold text-white transition-all hover:opacity-90"
+                  style={{ background: 'linear-gradient(135deg,#0D47A1,#1565E8)' }}>
                   <CreditCard size={14} /> {b.cta} — {b.price}
                 </a>
               </motion.div>
@@ -120,12 +110,12 @@ export default function PricingPanel() {
         {tab === 'prompts' && (
           <>
             <div className="text-center">
-              <h2 className="font-bold text-lg text-slate-100 mb-1" style={{ fontFamily: 'Sora' }}>AI Chat Plans</h2>
-              <p className="text-xs text-slate-500">Separate from course access. Upgrade your daily AI quota.</p>
+              <h2 className="font-bold text-lg text-white mb-1" style={{ fontFamily: 'Sora' }}>AI Chat Plans</h2>
+              <p className="text-xs" style={{ color: '#4d6080' }}>Upgrade your daily AI quota. Separate from course access.</p>
             </div>
 
-            <div className="rounded-2xl p-3 border border-green-500/25 flex items-center gap-2 text-xs text-green-400"
-              style={{ background: 'rgba(34,197,94,0.08)' }}>
+            <div className="rounded-2xl p-3 border flex items-center gap-2 text-xs"
+              style={{ background: 'rgba(34,197,94,0.06)', borderColor: 'rgba(34,197,94,0.25)', color: '#86efac' }}>
               <Zap size={13} />
               <span>Free plan includes <strong>10 AI prompts/day</strong> — resets at 5AM WAT.</span>
             </div>
@@ -136,54 +126,51 @@ export default function PricingPanel() {
                 style={{ background: p.bg, borderColor: p.border }}>
                 {p.popular && (
                   <div className="absolute top-0 right-6 text-[10px] font-bold uppercase tracking-wide px-3 py-1 rounded-b-xl text-white"
-                    style={{ background: 'linear-gradient(135deg,#7c3aed,#2563eb)' }}>Best Value</div>
+                    style={{ background: 'linear-gradient(135deg,#0D47A1,#E0A300)' }}>Best Value</div>
                 )}
-                <span className="badge text-[10px] mb-3" style={{ background: `${p.accent}15`, color: p.accent, border: `1px solid ${p.border}` }}>
+                <span className="badge text-[10px] mb-3 inline-flex" style={{ background: `${p.accent}15`, color: p.accent, border: `1px solid ${p.border}` }}>
                   {p.badge === 'Unlimited' ? <><Crown size={10} /> {p.badge}</> : <><Star size={10} /> {p.badge}</>}
                 </span>
-                <div className="font-bold text-base text-slate-100 mb-1" style={{ fontFamily: 'Sora' }}>{p.name}</div>
+                <div className="font-bold text-base text-white mb-1" style={{ fontFamily: 'Sora' }}>{p.name}</div>
                 <div className="text-2xl font-bold mb-1" style={{ color: p.accent, fontFamily: 'Sora' }}>
-                  {p.price}<span className="text-xs font-normal text-slate-500">{p.period}</span>
+                  {p.price}<span className="text-xs font-normal" style={{ color: '#4d6080' }}>{p.period}</span>
                 </div>
-                <p className="text-xs text-slate-500 mb-4">{p.desc}</p>
+                <p className="text-xs mb-4" style={{ color: '#4d6080' }}>{p.desc}</p>
                 <a href={p.link} target="_blank" rel="noopener"
-                  className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl text-sm font-bold text-white transition-all duration-200 hover:opacity-90"
-                  style={{ background: 'linear-gradient(135deg,#2563eb,#7c3aed)' }}>
+                  className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl text-sm font-bold text-white transition-all hover:opacity-90"
+                  style={{ background: 'linear-gradient(135deg,#0D47A1,#1565E8)' }}>
                   <CreditCard size={14} /> Subscribe — {p.price}{p.period}
                 </a>
               </motion.div>
             ))}
 
-            {/* Payment methods */}
+            {/* Bank transfer */}
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
               className="card flex flex-col gap-4">
               <div className="flex items-center gap-2">
-                <CreditCard size={16} className="text-blue-400" />
-                <span className="font-bold text-sm text-slate-100" style={{ fontFamily: 'Sora' }}>Payment Methods</span>
+                <CreditCard size={16} style={{ color: '#93c5fd' }} />
+                <span className="font-bold text-sm text-white" style={{ fontFamily: 'Sora' }}>Payment Methods</span>
               </div>
-
-              {/* Bank transfer */}
-              <div className="rounded-xl p-4 border border-slate-700/60" style={{ background: '#0f172a' }}>
+              <div className="rounded-xl p-4 border" style={{ background: '#030810', borderColor: 'rgba(13,71,161,0.2)' }}>
                 <div className="flex items-center gap-2 mb-2">
-                  <Building2 size={14} className="text-blue-400" />
-                  <span className="text-xs font-bold text-blue-400 uppercase tracking-wide">Bank Transfer</span>
+                  <Building2 size={14} style={{ color: '#93c5fd' }} />
+                  <span className="text-xs font-bold uppercase tracking-wide" style={{ color: '#93c5fd' }}>Bank Transfer</span>
                 </div>
-                <div className="text-sm text-slate-300 space-y-1">
-                  <div><span className="text-slate-500">Bank: </span><strong>Zenith Bank Plc</strong></div>
-                  <div><span className="text-slate-500">Name: </span><strong>Teamsamikoko Global Academy</strong></div>
+                <div className="text-sm space-y-1" style={{ color: '#94a3b8' }}>
+                  <div><span style={{ color: '#4d6080' }}>Bank: </span><strong className="text-white">Zenith Bank Plc</strong></div>
+                  <div><span style={{ color: '#4d6080' }}>Name: </span><strong className="text-white">Teamsamikoko Global Academy</strong></div>
                   <div className="flex items-center gap-2">
-                    <span className="text-slate-500">Account: </span>
-                    <strong className="text-blue-300 font-mono tracking-wider">1228732577</strong>
-                    <button onClick={copyAcct} className="flex items-center gap-1 text-xs text-slate-500 hover:text-slate-300 transition-colors">
-                      {copied ? <><Check size={10} className="text-green-400" /> Copied</> : <><Copy size={10} /> Copy</>}
+                    <span style={{ color: '#4d6080' }}>Account: </span>
+                    <strong className="font-mono tracking-wider" style={{ color: '#E0A300' }}>1228732577</strong>
+                    <button onClick={copyAcct} className="flex items-center gap-1 text-xs transition-colors" style={{ color: '#4d6080' }}>
+                      {copied ? <><Check size={10} style={{ color: '#86efac' }} /> Copied</> : <><Copy size={10} /> Copy</>}
                     </button>
                   </div>
                 </div>
               </div>
-
               <a href={PAYSTACK} target="_blank" rel="noopener"
                 className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl text-sm font-bold text-white"
-                style={{ background: 'linear-gradient(135deg,#06b6d4,#2563eb)' }}>
+                style={{ background: 'linear-gradient(135deg,#0D47A1,#E0A300)' }}>
                 ⚡ Pay Online via Paystack
               </a>
             </motion.div>

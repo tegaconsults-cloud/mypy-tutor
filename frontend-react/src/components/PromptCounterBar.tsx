@@ -30,29 +30,33 @@ export default function PromptCounterBar() {
   const isNearLimit = pct >= 80
   const isAtLimit   = used >= limit
 
+  const barColor = isAtLimit   ? '#ef4444' :
+                   isNearLimit ? '#E0A300' : '#0D47A1'
+  const textColor = isAtLimit   ? '#fca5a5' :
+                    isNearLimit ? '#E0A300' : '#4d6080'
+
   return (
     <div className="flex items-center gap-3 px-4 py-1 shrink-0"
-      style={{ background: 'rgba(15,23,42,0.7)', borderBottom: '1px solid #1e293b' }}>
+      style={{ background: 'rgba(6,13,28,0.85)', borderBottom: '1px solid rgba(13,71,161,0.1)' }}>
 
       <div className="flex items-center gap-1.5 shrink-0">
-        <Cpu size={11} className={isAtLimit ? 'text-red-400' : isNearLimit ? 'text-amber-400' : 'text-slate-500'} />
-        <span className={`text-[10px] font-semibold ${isAtLimit ? 'text-red-400' : isNearLimit ? 'text-amber-400' : 'text-slate-500'}`}>
+        <Cpu size={11} style={{ color: textColor }} />
+        <span className="text-[10px] font-semibold" style={{ color: textColor }}>
           {used}/{limit} prompts
         </span>
       </div>
 
-      <div className="flex-1 h-1 rounded-full overflow-hidden" style={{ background: '#1e293b' }}>
-        <motion.div
-          className="h-full rounded-full"
-          style={{ background: isAtLimit ? '#ef4444' : isNearLimit ? '#f59e0b' : '#22c55e' }}
+      <div className="flex-1 h-1 rounded-full overflow-hidden" style={{ background: 'rgba(13,71,161,0.15)' }}>
+        <motion.div className="h-full rounded-full"
+          style={{ background: barColor }}
           animate={{ width: `${pct}%` }}
-          transition={{ duration: 0.4 }}
-        />
+          transition={{ duration: 0.4 }} />
       </div>
 
       {isAtLimit && (
         <a href="https://paystack.shop/pay/vt_re4d3h52" target="_blank" rel="noopener noreferrer"
-          className="flex items-center gap-1 text-[10px] font-bold text-blue-400 hover:text-blue-300 shrink-0 transition-colors">
+          className="flex items-center gap-1 text-[10px] font-bold transition-colors shrink-0"
+          style={{ color: '#E0A300' }}>
           Upgrade <ArrowUpRight size={10} />
         </a>
       )}
