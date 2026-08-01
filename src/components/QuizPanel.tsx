@@ -7,30 +7,28 @@ import { useAuth } from '../context/AuthContext'
 import { useProgress } from '../context/ProgressContext'
 
 export default function QuizPanel() {
-  const { user }  = useAuth()
+  const { user }    = useAuth()
   const { refresh } = useProgress()
-  const [topics, setTopics]   = useState<string[]>([])
-  const [topic, setTopic]     = useState('')
+  const [topics, setTopics]     = useState<string[]>([])
+  const [topic, setTopic]       = useState('')
   const [question, setQuestion] = useState('')
-  const [options, setOptions] = useState<string[]>([])
-  const [result, setResult]   = useState<{ correct: boolean; explanation: string; xp_gained: number } | null>(null)
+  const [options, setOptions]   = useState<string[]>([])
+  const [result, setResult]     = useState<{ correct: boolean; explanation: string; xp_gained: number } | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [streak, setStreak]   = useState(0)
-  const level = localStorage.getItem('mypy_tutor_level') || 'beginner'
+  const [loading, setLoading]   = useState(false)
+  const [streak, setStreak]     = useState(0)
+
+  const level     = localStorage.getItem('mypy_tutor_level') || 'beginner'
   const learnerId = user?.learner_id || 'default'
 
-  useEffect(() => {
-    getTopics().then(d => setTopics(d.topics || []))
-  }, [])
+  useEffect(() => { getTopics().then(d => setTopics(d.topics || [])) }, [])
 
   const generate = async () => {
     if (!topic) return
     setLoading(true); setResult(null); setSelected(null); setQuestion(''); setOptions([])
     try {
       const data = await generateQuiz(learnerId, topic, level)
-      setQuestion(data.question)
-      setOptions(data.options)
+      setQuestion(data.question); setOptions(data.options)
     } catch { alert('Could not load quiz. Try again.') }
     finally { setLoading(false) }
   }
@@ -50,23 +48,24 @@ export default function QuizPanel() {
 
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
-        className="card" style={{ background: 'linear-gradient(135deg,rgba(124,58,237,0.15),rgba(30,41,59,0.9))', borderColor: 'rgba(124,58,237,0.3)' }}>
+        className="rounded-2xl p-4 border"
+        style={{ background: 'linear-gradient(135deg,rgba(13,71,161,0.15),rgba(6,13,28,0.9))', borderColor: 'rgba(13,71,161,0.4)' }}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl flex items-center justify-center"
-              style={{ background: 'rgba(124,58,237,0.2)' }}>
-              <Trophy size={20} className="text-purple-400" />
+              style={{ background: 'rgba(13,71,161,0.2)' }}>
+              <Trophy size={20} style={{ color: '#E0A300' }} />
             </div>
             <div>
-              <h2 className="font-bold text-slate-100 text-sm" style={{ fontFamily: 'Sora' }}>Test Your Knowledge</h2>
-              <p className="text-xs text-slate-500">AI-generated quiz · earn XP on each correct answer</p>
+              <h2 className="font-bold text-sm text-white" style={{ fontFamily: 'Sora' }}>Test Your Knowledge</h2>
+              <p className="text-xs" style={{ color: '#4d6080' }}>AI-generated · earn XP on correct answers</p>
             </div>
           </div>
           {streak > 0 && (
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full"
-              style={{ background: 'rgba(245,158,11,0.15)', border: '1px solid rgba(245,158,11,0.3)' }}>
+              style={{ background: 'rgba(224,163,0,0.15)', border: '1px solid rgba(224,163,0,0.3)' }}>
               <span className="text-base">🔥</span>
-              <span className="text-xs font-bold text-amber-400">{streak} streak</span>
+              <span className="text-xs font-bold" style={{ color: '#E0A300' }}>{streak} streak</span>
             </div>
           )}
         </div>
@@ -79,7 +78,9 @@ export default function QuizPanel() {
           {topics.map(t => <option key={t} value={t}>{t}</option>)}
         </select>
         <button onClick={generate} disabled={loading || !topic} className="btn btn-primary px-5 h-11">
-          {loading ? <div className="loading-dots scale-75"><span/><span/><span/></div> : <><Brain size={15} /> Generate</>}
+          {loading
+            ? <div className="loading-dots scale-75"><span/><span/><span/></div>
+            : <><Brain size={15} /> Generate</>}
         </button>
       </div>
 
@@ -91,8 +92,8 @@ export default function QuizPanel() {
 
             <div className="flex items-start gap-2">
               <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 mt-0.5"
-                style={{ background: 'rgba(124,58,237,0.2)', color: '#c4b5fd' }}>Q</div>
-              <p className="text-sm text-slate-200 leading-relaxed font-medium flex-1">{question}</p>
+                style={{ background: 'rgba(13,71,161,0.2)', color: '#93c5fd' }}>Q</div>
+              <p className="text-sm font-medium leading-relaxed text-white flex-1">{question}</p>
             </div>
 
             <div className="flex flex-col gap-2 mt-1">
@@ -106,16 +107,16 @@ export default function QuizPanel() {
                     disabled={!!selected}
                     className="flex items-center gap-3 p-3.5 rounded-xl text-sm text-left transition-all duration-200 border"
                     style={{
-                      background: isCorrect ? 'rgba(34,197,94,0.1)' : isWrong ? 'rgba(239,68,68,0.1)' : 'rgba(15,23,42,0.6)',
-                      borderColor: isCorrect ? '#22c55e' : isWrong ? '#ef4444' : '#334155',
+                      background: isCorrect ? 'rgba(34,197,94,0.1)' : isWrong ? 'rgba(239,68,68,0.1)' : 'rgba(6,13,28,0.6)',
+                      borderColor: isCorrect ? '#22c55e' : isWrong ? '#ef4444' : 'rgba(13,71,161,0.2)',
                       color: isCorrect ? '#86efac' : isWrong ? '#fca5a5' : '#e2e8f0',
                       cursor: selected ? 'default' : 'pointer',
                     }}>
                     <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0"
-                      style={{ background: 'rgba(100,116,139,0.2)', color: '#94a3b8' }}>
-                      {isCorrect ? <CheckCircle size={14} className="text-green-400" /> :
-                       isWrong   ? <XCircle size={14} className="text-red-400" /> :
-                       String.fromCharCode(65 + i)}
+                      style={{ background: 'rgba(255,255,255,0.06)', color: '#94a3b8' }}>
+                      {isCorrect ? <CheckCircle size={14} style={{ color: '#86efac' }} />
+                       : isWrong  ? <XCircle size={14} style={{ color: '#fca5a5' }} />
+                       : String.fromCharCode(65 + i)}
                     </span>
                     {opt}
                   </motion.button>
@@ -137,29 +138,28 @@ export default function QuizPanel() {
             }}>
 
             <div className="flex items-center gap-2 mb-2">
-              {result.correct ? (
-                <><CheckCircle size={16} className="text-green-400" /><span className="font-bold text-sm text-green-400">Correct! 🎉</span></>
-              ) : (
-                <><XCircle size={16} className="text-red-400" /><span className="font-bold text-sm text-red-400">Not quite</span></>
-              )}
+              {result.correct
+                ? <><CheckCircle size={16} style={{ color: '#86efac' }} /><span className="font-bold text-sm" style={{ color: '#86efac' }}>Correct! 🎉</span></>
+                : <><XCircle size={16} style={{ color: '#fca5a5' }} /><span className="font-bold text-sm" style={{ color: '#fca5a5' }}>Not quite</span></>}
               <span className="xp-pill ml-auto"><Zap size={9} />+{result.xp_gained} XP</span>
             </div>
 
-            <div className="text-xs text-slate-400 leading-relaxed prose prose-invert prose-xs max-w-none">
+            <div className="text-xs leading-relaxed prose prose-invert prose-xs max-w-none" style={{ color: '#94a3b8' }}>
               <ReactMarkdown>{result.explanation}</ReactMarkdown>
             </div>
 
             <div className="flex gap-2 mt-3">
-              <button onClick={generate} className="btn btn-sm flex items-center gap-1.5"
-                style={{ background: 'rgba(37,99,235,0.2)', color: '#93c5fd', border: '1px solid rgba(37,99,235,0.3)' }}>
+              <button onClick={generate}
+                className="btn btn-sm flex items-center gap-1.5"
+                style={{ background: 'rgba(13,71,161,0.2)', color: '#93c5fd', border: '1px solid rgba(13,71,161,0.3)' }}>
                 <RefreshCw size={12} /> Next Question
               </button>
               {!result.correct && (
                 <button onClick={() => {
-                  window.dispatchEvent(new CustomEvent('sidebar-ask', { detail: `I got a quiz on "${topic}" wrong. Explain this topic thoroughly with examples.` }))
+                  window.dispatchEvent(new CustomEvent('sidebar-ask', { detail: `I got a quiz on "${topic}" wrong. Explain this topic thoroughly.` }))
                   window.dispatchEvent(new CustomEvent('switch-panel', { detail: 'chat' }))
                 }} className="btn btn-sm flex items-center gap-1.5"
-                  style={{ background: 'rgba(124,58,237,0.15)', color: '#c4b5fd', border: '1px solid rgba(124,58,237,0.3)' }}>
+                  style={{ background: 'rgba(224,163,0,0.12)', color: '#E0A300', border: '1px solid rgba(224,163,0,0.3)' }}>
                   <ChevronRight size={12} /> Ask Sir. Tega
                 </button>
               )}
