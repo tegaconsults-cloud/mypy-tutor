@@ -230,6 +230,7 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
       <button class="nb" data-p="files">📁 Files</button>
       <button class="nb" data-p="coupons">🎟️ Coupons</button>
       <button class="nb" data-p="invoices">🧾 Invoices</button>
+      <button class="nb" data-p="withdrawals">💸 Withdrawals</button>
     </div>
     <main>
       <!-- DASHBOARD -->
@@ -524,6 +525,23 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
         </table></div></div>
       </div>
 
+      <!-- WITHDRAWALS -->
+      <div id="p-withdrawals" class="page">
+        <h2>💸 Referral Withdrawal Requests</h2>
+        <div class="cards">
+          <div class="card"><div class="v" id="wd-total">—</div><div class="l">Total Requests</div></div>
+          <div class="card r"><div class="v" id="wd-pending">—</div><div class="l">Pending</div></div>
+        </div>
+        <div class="sec"><div style="overflow-x:auto"><table>
+          <thead><tr>
+            <th>ID</th><th>Learner / Email</th><th>Amount (₦)</th>
+            <th>Bank</th><th>Account Name</th><th>Account No.</th>
+            <th>Status</th><th>Date</th><th>Actions</th>
+          </tr></thead>
+          <tbody id="withdrawals-body"><tr><td colspan="9" style="color:#4a5568">Loading…</td></tr></tbody>
+        </table></div></div>
+      </div>
+
     </main>
   </div>
 </div>
@@ -592,7 +610,7 @@ function nav(p){
     certificates:loadCerts,'access-codes':loadAccessCodes,referrals:loadReferrals,
     feedback:loadFeedback,announce:loadAnnounce,
     team:loadTeam,tasks:loadTasks,files:loadFiles,
-    coupons:loadCoupons,invoices:loadInvoices})[p]?.();
+    coupons:loadCoupons,invoices:loadInvoices,withdrawals:loadWithdrawals})[p]?.();
 }
 document.querySelectorAll('.nb').forEach(b=>b.addEventListener('click',()=>nav(b.dataset.p)));
 
@@ -1064,6 +1082,47 @@ async function adminConfirmEmail(){
     resEl.style.color='#fc8181';
     resEl.textContent='❌ Network error. Try again.';
   }
+}
+
+// ── Withdrawals ────────────────────────────────────────────────────────────
+async function loadWithdrawals(){
+  const r=await api('/admin/withdrawals'); const d=await r.json();
+  document.getElementById('wd-total').textContent=d.total||0;
+  document.getElementById('wd-pending').textContent=d.pending||0;
+  const sc={pending:'gy',approved:'bg',paid:'gg',rejected:'gr'};
+  document.getElementById('withdrawals-body').innerHTML=(d.withdrawals||[]).length
+    ? (d.withdrawals).map(w=>`<tr>
+        <td style="font-size:.72rem">#${w.id}</td>
+        <td style="font-size:.74rem">
+          <div style="color:#e2e8f0">${w.email}</div>
+          <div style="color:#4a5568;font-size:.66rem">${w.learner_id}</div>
+        </td>
+        <td style="color:#68d391;font-weight:700">₦${(w.amount||0).toLocaleString()}</td>
+        <td style="font-size:.78rem">${w.bank_name}</td>
+        <td style="font-size:.78rem">${w.account_name}</td>
+        <td style="font-family:monospace;font-size:.78rem;color:#93c5fd">${w.account_num}</td>
+        <td><span class="badge ${sc[w.status]||'grey'}">${w.status}</span></td>
+        <td style="font-size:.72rem;color:#4a5568">${w.created_at_fmt||''}</td>
+        <td style="display:flex;gap:4px;flex-wrap:wrap">
+          ${w.status==='pending'?`
+            <button class="bsm bg2" onclick="updateWithdrawal(${w.id},'approved')">✓ Approve</button>
+            <button class="bsm bg2" style="background:rgba(99,102,241,.12);color:#a5b4fc;border-color:rgba(99,102,241,.3)" onclick="updateWithdrawal(${w.id},'paid')">💳 Mark Paid</button>
+            <button class="bsm br" onclick="updateWithdrawal(${w.id},'rejected')">✕ Reject</button>
+          `:w.status==='approved'?`
+            <button class="bsm bg2" style="background:rgba(99,102,241,.12);color:#a5b4fc;border-color:rgba(99,102,241,.3)" onclick="updateWithdrawal(${w.id},'paid')">💳 Mark Paid</button>
+          `:'—'}
+        </td>
+      </tr>`)
+    .join('')
+    : '<tr><td colspan="9" style="color:#4a5568">No withdrawal requests yet.</td></tr>';
+}
+
+async function updateWithdrawal(id, status){
+  const notes = status==='rejected' ? (prompt('Reason for rejection (optional):') || '') : '';
+  const r=await api(`/admin/withdrawals/${id}/status`,{method:'POST',body:JSON.stringify({status,notes})});
+  const d=await r.json();
+  if(r.ok&&d.ok){toast(`Withdrawal #${id} marked as ${status}`);loadWithdrawals();}
+  else toast(d.detail||'Failed',false);
 }
 </script>
 </body>
