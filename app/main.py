@@ -2488,6 +2488,33 @@ async def admin_invoices(request: Request) -> dict:
     return {"invoices": invoices, "total": len(invoices), "total_revenue": total_revenue}
 
 
+@app.get("/admin/withdrawals")
+async def admin_withdrawals(request: Request) -> dict:
+    """Admin: all referral withdrawal requests."""
+    _require_admin(request)
+    from app.db import get_all_withdrawal_requests
+    rows = get_all_withdrawal_requests()
+    pending = sum(1 for r in rows if r["status"] == "pending")
+    return {"withdrawals": rows, "total": len(rows), "pending": pending}
+
+
+@app.post("/admin/withdrawals/{withdrawal_id}/status")
+async def admin_update_withdrawal(withdrawal_id: int, request: Request) -> dict:
+    """Admin: approve or reject a withdrawal request."""
+    _require_admin(request)
+    body   = await request.json()
+    status = body.get("status", "")
+    notes  = body.get("notes", "")
+    if status not in ("approved", "paid", "rejected"):
+        raise HTTPException(status_code=400, detail="Status must be 'approved', 'paid', or 'rejected'.")
+    from app.db import update_withdrawal_status
+    ok = update_withdrawal_status(withdrawal_id, status, notes)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Withdrawal request not found.")
+    log_activity("admin", "withdrawal:status-update", f"id={withdrawal_id} status={status}")
+    return {"ok": True, "withdrawal_id": withdrawal_id, "status": status}
+
+
 @app.get("/admin/history/{learner_id}")
 async def admin_learner_history(learner_id: str, request: Request) -> dict:
     _require_admin(request)
