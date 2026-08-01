@@ -19,17 +19,17 @@ interface Props {
 }
 
 const TABS: { id: Panel; icon: React.ReactNode; label: string }[] = [
-  { id: 'chat',         icon: <MessageSquare size={14} />, label: 'Chat' },
-  { id: 'courses',      icon: <BookOpen size={14} />,      label: 'Courses' },
-  { id: 'quiz',         icon: <Trophy size={14} />,        label: 'Quiz' },
-  { id: 'progress',     icon: <BarChart2 size={14} />,     label: 'Progress' },
-  { id: 'certificates', icon: <Award size={14} />,         label: 'Certs' },
-  { id: 'pricing',      icon: <CreditCard size={14} />,    label: 'Plans' },
+  { id: 'chat',         icon: <MessageSquare size={13} />, label: 'AI Tutor' },
+  { id: 'courses',      icon: <BookOpen size={13} />,      label: 'Courses' },
+  { id: 'quiz',         icon: <Trophy size={13} />,        label: 'Quiz' },
+  { id: 'progress',     icon: <BarChart2 size={13} />,     label: 'Progress' },
+  { id: 'certificates', icon: <Award size={13} />,         label: 'Certs' },
+  { id: 'pricing',      icon: <CreditCard size={13} />,    label: 'Plans' },
 ]
 
 const LEVELS = [
   { value: 'beginner',     label: '🟢 Beginner' },
-  { value: 'intermediate', label: '🟡 Mid' },
+  { value: 'intermediate', label: '🟡 Intermediate' },
   { value: 'advanced',     label: '🔴 Advanced' },
 ]
 
@@ -58,8 +58,7 @@ export default function Header({ panel, onPanelChange, onMenuClick, onAuthClick,
 
   const copyId = () => {
     navigator.clipboard.writeText(user?.learner_id || '')
-    setCopyMsg('Copied!')
-    setTimeout(() => setCopyMsg(''), 2000)
+    setCopyMsg('Copied!'); setTimeout(() => setCopyMsg(''), 2000)
   }
 
   const handleSignOut = () => {
@@ -73,27 +72,39 @@ export default function Header({ panel, onPanelChange, onMenuClick, onAuthClick,
     .split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
 
   return (
-    <header className="flex items-center justify-between px-4 py-2 gap-3 shrink-0 z-50"
-      style={{ background: 'rgba(15,23,42,0.95)', borderBottom: '1px solid #1e293b', backdropFilter: 'blur(20px)' }}>
+    <header
+      className="flex items-center justify-between px-4 py-2 gap-3 shrink-0 z-50"
+      style={{
+        background: 'rgba(6,13,28,0.97)',
+        borderBottom: '1px solid rgba(13,71,161,0.3)',
+        backdropFilter: 'blur(24px)',
+        boxShadow: '0 1px 0 rgba(13,71,161,0.15)',
+      }}>
 
-      {/* Left */}
-      <div className="flex items-center gap-2 min-w-0">
-        <button onClick={onMenuClick} className="btn btn-ghost btn-sm w-9 h-9 rounded-xl p-0" aria-label="Menu">
+      {/* Left — Logo + brand + nav */}
+      <div className="flex items-center gap-3 min-w-0">
+        <button onClick={onMenuClick}
+          className="btn btn-ghost btn-sm w-9 h-9 rounded-xl p-0 shrink-0"
+          aria-label="Menu">
           <Menu size={18} />
         </button>
 
-        <div className="flex items-center gap-2 shrink-0">
-          <Logo size={32} shape="circle" style={{ border: '2px solid rgba(37,99,235,0.4)' }} />
-          <span className="font-bold text-sm text-slate-100 hidden sm:block" style={{ fontFamily: 'Sora, sans-serif' }}>
-            MyPy Tutor
-          </span>
+        {/* Brand */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          <Logo size={34} shape="none" />
+          <div className="hidden sm:flex flex-col leading-none">
+            <span className="font-league text-sm font-black tracking-wide"
+              style={{ color: '#E0A300', letterSpacing: '0.04em' }}>MYPY</span>
+            <span className="font-league text-[10px] font-bold tracking-widest text-blue-300 uppercase">TUTOR</span>
+          </div>
         </div>
 
-        {/* Desktop tabs */}
-        <nav className="desktop-nav gap-1 ml-2">
+        {/* Desktop nav tabs */}
+        <nav className="desktop-nav gap-0.5 ml-1">
           {TABS.map(t => (
             <button key={t.id} onClick={() => onPanelChange(t.id)}
-              className={`nav-tab flex items-center gap-1.5 ${panel === t.id ? 'active' : ''}`}>
+              className={`nav-tab flex items-center gap-1.5 ${panel === t.id ? 'active' : ''}`}
+              style={{ fontSize: '0.75rem' }}>
               {t.icon}{t.label}
             </button>
           ))}
@@ -102,26 +113,36 @@ export default function Header({ panel, onPanelChange, onMenuClick, onAuthClick,
 
       {/* Right */}
       <div className="flex items-center gap-2 shrink-0">
+        {/* Level selector */}
         <select value={level} onChange={handleLevel}
-          className="text-xs rounded-xl h-9 px-2 border-slate-600 bg-slate-800/60 text-slate-300 cursor-pointer"
-          style={{ width: 'auto' }}>
+          className="text-xs rounded-xl h-9 px-2 cursor-pointer"
+          style={{
+            width: 'auto',
+            background: 'rgba(13,71,161,0.12)',
+            border: '1px solid rgba(13,71,161,0.3)',
+            color: '#93c5fd',
+          }}>
           {LEVELS.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
         </select>
 
         {user ? (
           <div className="relative" ref={dropRef}>
             <button onClick={() => setDropOpen(d => !d)}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-slate-700 bg-slate-800/60 hover:border-slate-500 transition-all duration-200">
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full transition-all duration-200"
+              style={{
+                border: '1px solid rgba(13,71,161,0.4)',
+                background: 'rgba(13,71,161,0.1)',
+              }}>
               {user.picture ? (
                 <img src={user.picture} alt="" className="w-7 h-7 rounded-full object-cover" />
               ) : (
                 <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white"
-                  style={{ background: 'linear-gradient(135deg,#2563eb,#7c3aed)' }}>{initials}</div>
+                  style={{ background: 'linear-gradient(135deg,#0D47A1,#1565E8)' }}>{initials}</div>
               )}
-              <span className="text-xs text-slate-200 font-medium max-w-[80px] truncate hidden sm:block">
+              <span className="text-xs font-semibold max-w-[72px] truncate hidden sm:block" style={{ color: '#bfdbfe' }}>
                 {user.name?.split(' ')[0] || 'Learner'}
               </span>
-              <ChevronDown size={12} className="text-slate-500" />
+              <ChevronDown size={11} className="text-blue-400" />
             </button>
 
             <AnimatePresence>
@@ -131,16 +152,25 @@ export default function Header({ panel, onPanelChange, onMenuClick, onAuthClick,
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: -8, scale: 0.96 }}
                   transition={{ duration: 0.15 }}
-                  className="absolute top-[calc(100%+8px)] right-0 w-60 z-50 py-1.5 rounded-2xl"
-                  style={{ background: '#1e293b', border: '1px solid #334155', boxShadow: '0 20px 60px rgba(0,0,0,0.6)' }}>
+                  className="absolute top-[calc(100%+8px)] right-0 w-64 z-50 py-2 rounded-2xl"
+                  style={{
+                    background: '#0f1a2e',
+                    border: '1px solid rgba(13,71,161,0.35)',
+                    boxShadow: '0 20px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(13,71,161,0.2)',
+                  }}>
 
                   {/* User info */}
-                  <div className="px-4 py-3 border-b border-slate-700/60 mb-1">
-                    <div className="font-semibold text-sm text-slate-100 truncate">{user.name}</div>
-                    <div className="text-xs text-slate-500 mt-0.5 truncate">{user.email}</div>
+                  <div className="px-4 py-3 mb-1"
+                    style={{ borderBottom: '1px solid rgba(13,71,161,0.2)' }}>
+                    <div className="font-semibold text-sm text-white truncate">{user.name}</div>
+                    <div className="text-xs mt-0.5 truncate" style={{ color: '#4d6080' }}>{user.email}</div>
+                    <div className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase"
+                      style={{ background: 'rgba(224,163,0,0.15)', color: '#E0A300', border: '1px solid rgba(224,163,0,0.3)' }}>
+                      <Zap size={9} /> Free Plan
+                    </div>
                   </div>
 
-                  {/* Navigation items */}
+                  {/* Menu items */}
                   {[
                     { icon: <User size={14} />,      label: 'Edit Profile',      action: () => nav('profile') },
                     { icon: <TrendingUp size={14} />, label: 'Progress & Badges', action: () => nav('progress') },
@@ -148,34 +178,48 @@ export default function Header({ panel, onPanelChange, onMenuClick, onAuthClick,
                     { icon: <Award size={14} />,      label: 'My Certificates',   action: () => nav('certificates') },
                   ].map(item => (
                     <button key={item.label} onClick={item.action}
-                      className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-slate-300 hover:bg-white/5 hover:text-slate-100 transition-colors duration-100">
-                      <span className="text-slate-500">{item.icon}</span>{item.label}
+                      className="flex items-center gap-3 w-full px-4 py-2.5 text-sm transition-colors duration-100"
+                      style={{ color: '#94a3b8' }}
+                      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(13,71,161,0.12)', e.currentTarget.style.color = '#bfdbfe')}
+                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent', e.currentTarget.style.color = '#94a3b8')}>
+                      <span style={{ color: '#4d6080' }}>{item.icon}</span>{item.label}
                     </button>
                   ))}
 
                   <div className="divider mx-3" />
 
-                  {/* Account actions */}
                   <button onClick={() => nav('profile')}
-                    className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-slate-300 hover:bg-white/5 hover:text-slate-100 transition-colors duration-100">
-                    <Lock size={14} className="text-slate-500" /> Change Password
+                    className="flex items-center gap-3 w-full px-4 py-2.5 text-sm transition-colors duration-100"
+                    style={{ color: '#94a3b8' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(13,71,161,0.12)', e.currentTarget.style.color = '#bfdbfe')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent', e.currentTarget.style.color = '#94a3b8')}>
+                    <Lock size={14} style={{ color: '#4d6080' }} /> Change Password
                   </button>
 
                   <button onClick={copyId}
-                    className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-slate-300 hover:bg-white/5 hover:text-slate-100 transition-colors duration-100">
-                    <Copy size={14} className="text-slate-500" /> {copyMsg || 'Copy Learner ID'}
+                    className="flex items-center gap-3 w-full px-4 py-2.5 text-sm transition-colors duration-100"
+                    style={{ color: '#94a3b8' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(13,71,161,0.12)', e.currentTarget.style.color = '#bfdbfe')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent', e.currentTarget.style.color = '#94a3b8')}>
+                    <Copy size={14} style={{ color: '#4d6080' }} /> {copyMsg || 'Copy Learner ID'}
                   </button>
 
                   <button onClick={() => { onReferralClick(); setDropOpen(false) }}
-                    className="flex items-center gap-3 w-full px-4 py-2.5 text-sm font-semibold text-emerald-400 hover:bg-emerald-500/5 transition-colors duration-100">
+                    className="flex items-center gap-3 w-full px-4 py-2.5 text-sm font-semibold transition-colors duration-100"
+                    style={{ color: '#E0A300' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(224,163,0,0.08)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                     <Link2 size={14} /> Referral &amp; Bonus
                   </button>
 
                   <div className="divider mx-3" />
 
-                  {/* Sign out — NO admin link here */}
+                  {/* Sign out — NO admin link for users */}
                   <button onClick={handleSignOut}
-                    className="flex items-center gap-3 w-full px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/5 transition-colors duration-100">
+                    className="flex items-center gap-3 w-full px-4 py-2.5 text-sm transition-colors duration-100"
+                    style={{ color: '#fca5a5' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.08)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                     <LogOut size={14} /> Sign Out
                   </button>
                 </motion.div>
