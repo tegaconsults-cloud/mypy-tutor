@@ -274,13 +274,19 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             "font-src 'self' "
             "https://cdnjs.cloudflare.com "
             "https://fonts.gstatic.com; "
-            # Images: self + data URIs + GA + GTM + Google profile pictures
+            # Images: self + data URIs + GA + GTM + Google profile pictures + render domain
             "img-src 'self' data: "
+            "https://mypytutor.onrender.com "
             "https://www.google-analytics.com "
             "https://www.googletagmanager.com "
-            "https://lh3.googleusercontent.com; "
-            # Fetch / XHR / WebSocket — CDN domains SW fetches during precache + OAuth
+            "https://lh3.googleusercontent.com "
+            "https://avatars.githubusercontent.com; "
+            # Fetch / XHR / WebSocket — must include the Render API explicitly
+            # so the React app served from Vercel (mypytutor.com.ng) can call it.
             "connect-src 'self' "
+            "https://mypytutor.onrender.com "
+            "https://mypytutor.com.ng "
+            "https://www.mypytutor.com.ng "
             "https://cdn.jsdelivr.net "
             "https://cdnjs.cloudflare.com "
             "https://accounts.google.com "
@@ -291,7 +297,9 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             "https://oauth2.googleapis.com "
             "https://fonts.googleapis.com "
             "https://fonts.gstatic.com "
-            "https://lh3.googleusercontent.com; "
+            "https://lh3.googleusercontent.com "
+            "https://avatars.githubusercontent.com "
+            "https://api.github.com; "
             # Frames: Google GSI sign-in iframe
             "frame-src https://accounts.google.com; "
             # Workers (service worker)

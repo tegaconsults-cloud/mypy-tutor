@@ -460,7 +460,7 @@ def confirm_email_token(token: str) -> tuple[bool, str]:
                 referral_code,
                 used_by_email=email,
                 used_by_id=user_data["learner_id"],
-                discount_pct=10,  # 10% discount to referee; referrer gets 5% bonus on payment
+                discount_pct=5,   # canonical: 5% discount to referee; referrer gets 15% on payment
                 payment_amount=0,
             )
             if applied:

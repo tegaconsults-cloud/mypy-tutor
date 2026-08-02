@@ -67,8 +67,8 @@ from app.certificates import generate_certificate_html, get_cert_id, CERT_CONFIG
 from app.admin import (
     verify_admin_login, create_admin_token, verify_admin_token,
     add_payment, confirm_payment, get_payments, get_revenue_summary,
-    invite_team_member, create_task, update_task_status, get_team, get_tasks,
-    log_certificate, get_certificates, log_activity,
+    invite_team_member, create_task, update_task_status,
+    log_certificate, get_certificates, log_activity, get_announcements,
 )
 from app.db import (
     init_db, upgrade_tier_db, get_all_confirmed_emails,
@@ -499,7 +499,7 @@ async def auth_signup(request: EmailSignUpWithCode) -> dict:
             # Auto-confirmed — record referral use directly
             try:
                 from app.db import use_referral_code as _urc
-                _urc(access_code, email_lower, learner_id, discount_pct=10, payment_amount=0)
+                _urc(access_code, email_lower, learner_id, discount_pct=5, payment_amount=0)
             except Exception as exc:
                 logger.warning("Direct referral record failed: %s", exc)
 
@@ -520,7 +520,7 @@ async def auth_signup(request: EmailSignUpWithCode) -> dict:
     elif code_type == "referral":
         response["code_accepted"] = True
         response["code_type"]     = "referral"
-        response["discount_pct"]  = 10
+        response["discount_pct"]  = 5
     return response
 
 
@@ -699,20 +699,27 @@ async def get_certificate(
     level: str,
     name: str = "Learner",
     learner_id: str = "default",
+    admin_view: bool = False,
+    request: Request = None,
 ) -> HTMLResponse:
     if level not in CERT_CONFIGS:
         raise HTTPException(status_code=400, detail="Invalid certificate level.")
 
+    # Admin preview: skip eligibility — admin token required
+    if admin_view and request:
+        try:
+            _require_admin(request)
+        except HTTPException:
+            admin_view = False   # invalid token — fall through to normal check
+
     profile = get_profile(learner_id)
 
     # Certificate eligibility: check EITHER tier bundle purchase OR relevant courses completed
-    # This allows users who bought individual courses to earn certificates too.
     CERT_TIER_REQUIRED = {
         "basic":     {"tier1", "tier2", "tier3"},
         "advanced":  {"tier2", "tier3"},
         "executive": {"tier3"},
     }
-    # Courses that count toward each certificate level
     CERT_COURSES_REQUIRED = {
         "basic":     {"python-fundamentals", "python-strings", "python-collections", "python-control-flow"},
         "advanced":  {"python-functions-advanced", "python-oop", "python-modules-stdlib"},
@@ -723,15 +730,12 @@ async def get_certificate(
     allowed_tiers      = CERT_TIER_REQUIRED.get(level, set())
     required_courses   = CERT_COURSES_REQUIRED.get(level, set())
     completed          = set(profile.completed_projects)
-    # Also check individual course purchases
     from app.db import has_course_purchase
-    purchased_courses = {c for c in required_courses if has_course_purchase(learner_id, c)}
-    courses_completed  = required_courses.issubset(completed | purchased_courses)
+    purchased_courses  = {c for c in required_courses if has_course_purchase(learner_id, c)}
+    courses_ok         = required_courses.issubset(completed | purchased_courses)
+    tier_ok            = profile.tier in allowed_tiers
 
-    tier_ok     = profile.tier in allowed_tiers
-    courses_ok  = courses_completed
-
-    if not tier_ok and not courses_ok:
+    if not admin_view and not tier_ok and not courses_ok:
         tier_names = {
             "basic":     "Beginner Bundle (₦8,000) or complete all 4 beginner courses",
             "advanced":  "Intermediate Bundle (₦15,000) or complete all 7 courses",
@@ -759,7 +763,6 @@ async def get_certificate(
     clean_name = _re.sub(r'[<>&"\']', '', name).strip()[:80] or "Learner"
     cert_id    = get_cert_id(learner_id, level)
     log_certificate(cert_id, learner_id, clean_name, level)
-    # Mirror certificate to Supabase
     sb_save_certificate(cert_id, learner_id, clean_name, level)
     html_doc   = generate_certificate_html(learner_name=clean_name, level=level, cert_id=cert_id)
     return HTMLResponse(content=html_doc)
@@ -1009,8 +1012,24 @@ async def next_course_step(learner_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 @app.post("/quiz/generate", response_model=QuizResponse)
-async def generate_quiz(request: QuizRequest) -> QuizResponse:
+async def generate_quiz(request: QuizRequest, req: Request) -> QuizResponse:
     validate_topic(request.topic)
+    # Enforce free-tier daily limit for quiz generation (counts the same as a chat prompt)
+    profile = get_profile(request.learner_id)
+    if profile.tier == "free":
+        ip = _get_ip(req)
+        allowed, used = check_free_prompt_limit(request.learner_id, ip)
+        if not allowed:
+            from app.security import FREE_DAILY_LIMIT
+            return JSONResponse(
+                status_code=402,
+                content={
+                    "error": "free_limit_reached",
+                    "message": f"You've used your {FREE_DAILY_LIMIT} free daily prompts. Upgrade to Premium!",
+                    "used": used, "limit": FREE_DAILY_LIMIT,
+                },
+            )
+        increment_free_prompt_count(request.learner_id, ip)
     system_prompt = build_system_prompt("quiz", topic=request.topic, level=request.level)
     messages = [{"role": "user", "content": f"Generate a quiz question about: {request.topic}"}]
     try:
@@ -1698,17 +1717,12 @@ async def admin_terminate_user(learner_id: str, request: Request) -> dict:
 
 @app.get("/admin/payments")
 async def admin_payments(request: Request) -> dict:
+    """Return all payments from SQLite (persistent across restarts)."""
     _require_admin(request)
-    payments = get_payments()
+    payments = get_payments()   # now returns list[dict] from SQLite
     return {
-        "payments": [
-            {"id": p.id, "user_email": p.user_email, "user_name": p.user_name,
-             "amount": p.amount, "currency": p.currency, "plan": p.plan,
-             "method": p.method, "status": p.status, "notes": p.notes,
-             "created_at": datetime.datetime.fromtimestamp(p.created_at).isoformat()}
-            for p in payments
-        ],
-        "summary": get_revenue_summary(),
+        "payments": payments,
+        "summary":  get_revenue_summary(),
     }
 
 
@@ -1731,34 +1745,20 @@ async def admin_confirm_payment(payment_id: str, request: Request) -> dict:
 
 @app.get("/admin/certificates")
 async def admin_certificates(request: Request) -> dict:
+    """Return certificates from SQLite with correct issue dates."""
     _require_admin(request)
-    # Prefer SQLite persistent store; fall back to in-memory
-    try:
-        certs_raw = get_certificates_db()
-        return {"certificates": certs_raw, "total": len(certs_raw)}
-    except Exception:
-        pass
-    certs = get_certificates()
-    return {
-        "certificates": [
-            {"cert_id": c.cert_id, "learner_id": c.learner_id,
-             "learner_name": c.learner_name, "level": c.level,
-             "issued_at": datetime.datetime.fromtimestamp(c.issued_at).isoformat()}
-            for c in certs
-        ],
-        "total": len(certs),
-    }
+    from app.admin import get_certificates as _get_certs
+    certs = _get_certs()   # always returns list[dict] with ISO issued_at
+    return {"certificates": certs, "total": len(certs)}
 
 @app.get("/admin/team")
 async def admin_team(request: Request) -> dict:
+    """Return team members and tasks — both from SQLite (persistent)."""
     _require_admin(request)
+    from app.admin import get_team as _get_team, get_tasks as _get_tasks
     return {
-        "members": [{"email": m.email, "name": m.name, "role": m.role, "status": m.status}
-                    for m in get_team()],
-        "tasks":   [{"id": t.id, "title": t.title, "assigned_to": t.assigned_to,
-                     "priority": t.priority, "status": t.status,
-                     "due_date": t.due_date, "description": t.description}
-                    for t in get_tasks()],
+        "members": _get_team(),   # list[dict] from SQLite
+        "tasks":   _get_tasks(),  # list[dict] from SQLite
     }
 
 
@@ -1898,10 +1898,11 @@ async def admin_announce(request: Request) -> dict:
 
 @app.get("/admin/announce/history")
 async def admin_announce_history(request: Request) -> dict:
-    """Return all sent announcements in reverse-chronological order."""
+    """Return all sent announcements from SQLite (persistent across restarts)."""
     _require_admin(request)
-    from app.admin import _announcements
-    return {"announcements": list(reversed(_announcements)), "total": len(_announcements)}
+    from app.admin import get_announcements
+    announcements = get_announcements()
+    return {"announcements": announcements, "total": len(announcements)}
 
 
 @app.get("/admin/files")

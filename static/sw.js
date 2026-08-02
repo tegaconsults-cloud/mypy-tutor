@@ -1,25 +1,23 @@
 /**
- * MyPy Tutor — Service Worker v7
+ * MyPy Tutor — Service Worker v10
  *
  * Cache strategy:
  *  - Same-origin static assets (HTML, CSS, icons, manifest) → Cache-first
  *  - Same-origin API calls → Network-first (POST = network-only)
  *  - Navigation requests → Network-first, cached shell offline fallback
  *  - Cross-origin requests (Google, CDN, analytics) → PASS THROUGH (never cache)
- *    Caching cross-origin URLs would violate CSP connect-src and cause console errors.
  */
 
-const CACHE_VERSION = 'mypy-tutor-v9';
+const CACHE_VERSION = 'mypy-tutor-v10';
 const OFFLINE_URL   = '/';
 
-// Only pre-cache same-origin assets we fully control
+// Only pre-cache files we KNOW exist in the build output.
+// logo-mpt.png, icon-192.png, icon-512.png, favicon.ico, premium.css
+// were all removed — using mypytutor_logo.jpg only.
+// cache.addAll() is atomic: one 404 fails the entire install.
 const PRECACHE_URLS = [
   '/',
   '/manifest.json',
-  '/premium.css',
-  '/icons/logo-mpt.png',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
 ];
 
 // Same-origin API path prefixes — always network-first

@@ -31,7 +31,7 @@ import QuizzesPage from './pages/PythonQuizzes'
 type Panel = 'chat' | 'courses' | 'quiz' | 'progress' | 'certificates' | 'pricing' | 'profile'
 
 export default function App() {
-  const { user, loading, setUser } = useAuth()
+  const { user, loading, setUser, pendingAuthAction } = useAuth()
   const { refresh }       = useProgress()
   const navigate          = useNavigate()
   const [panel, setPanel] = useState<Panel>('chat')
@@ -46,26 +46,31 @@ export default function App() {
   const nudgeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [searchParams] = useSearchParams()
 
+  // Open AuthModal automatically when password reset deep-link is detected
+  useEffect(() => {
+    if (pendingAuthAction === 'reset') {
+      setAuthOpen(true)
+      // Tab switching handled inside AuthModal via pendingAuthAction
+    }
+  }, [pendingAuthAction])
+
   useEffect(() => {
     const auth = searchParams.get('auth')
     if (!auth) return
-    if (auth === 'google_success') {
-      const userParam = searchParams.get('user')
-      if (userParam) {
-        try {
-          const parsed = JSON.parse(decodeURIComponent(userParam))
-          if (parsed.token && parsed.learner_id) { setUser(parsed); navigate('/', { replace: true }); return }
-        } catch {}
-      }
-      setOauthError('Google sign-in failed. Please try again.'); navigate('/', { replace: true })
+    if (auth === 'google_success' || auth === 'github_success') {
+      // Handled by AuthContext — setUser already called there
+      navigate('/', { replace: true })
     } else if (auth === 'confirmed') {
       setAuthOpen(true); setAuthTab('signin'); navigate('/', { replace: true })
+    } else if (auth === 'reset') {
+      // Handled by AuthContext — pendingAuthAction set there, picked up above
+      navigate('/', { replace: true })
     } else if (auth === 'error') {
       setOauthError(decodeURIComponent(searchParams.get('msg') || 'Authentication failed.')); navigate('/', { replace: true })
     }
     const p = searchParams.get('panel') as Panel | null
     if (p) setPanel(p)
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (user) {

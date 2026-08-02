@@ -41,7 +41,7 @@ export default function Sidebar({ open, onClose, onPanelChange, onAuthClick: _on
   const [, setTopics] = useState<string[]>([])
 
   useEffect(() => {
-    getTopics().then(d => setTopics(d.topics || []))
+    getTopics().then(d => setTopics((d && d.topics) ? d.topics : []))
   }, [])
 
   const sendAsk = (msg: string) => {
