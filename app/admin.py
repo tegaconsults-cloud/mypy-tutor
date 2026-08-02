@@ -464,18 +464,10 @@ def get_announcements() -> list[dict]:
 
 async def send_announcement(target: str, subject: str, body_text: str) -> int:
     """Send announcement email to all matching users. Returns count sent."""
-    import smtplib
-    from email.mime.multipart import MIMEMultipart
-    from email.mime.text import MIMEText
     from app.email_auth import _confirmed
     from app.progress import _store as ls
 
-    EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
-    EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
-    EMAIL_USER = os.getenv("EMAIL_USER", "")
-    EMAIL_PASS = os.getenv("EMAIL_PASS", "")
-    EMAIL_FROM = os.getenv("EMAIL_FROM", "MyPy Tutor <noreply@mypytutor.com>")
-
+    # Build recipient list
     recipients: list[tuple[str, str]] = []
     for email, u in _confirmed.items():
         lid     = u.get("learner_id", "")
@@ -484,31 +476,22 @@ async def send_announcement(target: str, subject: str, body_text: str) -> int:
         if _matches_target(target, tier):
             recipients.append((email, u.get("name", email)))
 
-    sent = 0
-    if EMAIL_USER and EMAIL_PASS and recipients:
-        try:
-            with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=15) as server:
-                server.ehlo(); server.starttls(); server.login(EMAIL_USER, EMAIL_PASS)
-                for email, name in recipients:
-                    try:
-                        html = f"""<div style="font-family:Arial;background:#0f1117;color:#e2e8f0;padding:32px;max-width:560px">
-                        <h2 style="color:#63b3ed">🐍 MyPy Tutor</h2>
-                        <p>Hi <strong>{name}</strong>,</p>
-                        <div style="margin-top:12px">{body_text}</div>
-                        <hr style="border:none;border-top:1px solid #2d3748;margin:20px 0"/>
-                        <p style="font-size:.75rem;color:#4a5568">MyPy Tutor · Teamsamikoko Global Academy</p></div>"""
-                        msg = MIMEMultipart("alternative")
-                        msg["Subject"] = subject
-                        msg["From"]    = EMAIL_FROM
-                        msg["To"]      = email
-                        msg.attach(MIMEText(body_text, "plain"))
-                        msg.attach(MIMEText(html, "html"))
-                        server.sendmail(EMAIL_USER, email, msg.as_string())
-                        sent += 1
-                    except Exception as e:
-                        logger.warning("Announcement email to %s failed: %s", email, e)
-        except Exception as e:
-            logger.error("Announcement SMTP error: %s", e)
+    if not recipients:
+        _save_announcement_db(subject, target, 0)
+        return 0
+
+    try:
+        from app.services.email_service import send_bulk_announcement
+        sent = send_bulk_announcement(
+            subject=subject,
+            body_html=f"<p style='color:#475569;line-height:1.7;white-space:pre-wrap;'>{body_text}</p>",
+            body_text=body_text,
+            recipients=recipients,
+            target_label=target,
+        )
+    except Exception as e:
+        logger.error("Announcement send failed: %s", e)
+        sent = 0
 
     record = {"subject": subject, "target": target, "sent_to": sent,
               "sent_at": datetime.now().isoformat()}
