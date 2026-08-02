@@ -378,8 +378,13 @@ def register_email(email: str, name: str, password_hash: str) -> tuple[bool, str
         f"— MyPy Tutor Team"
     )
 
-    # Send confirmation email in a background thread (non-blocking)
-    _send_email_async(email, "Confirm your MyPy Tutor account", html_body, text_body)
+    # Send confirmation email via email_service (Resend primary, SMTP fallback)
+    try:
+        from app.services.email_service import send_verification_email as _svc_verify
+        _svc_verify(name, email, token)
+    except Exception:
+        # Absolute fallback: use legacy SMTP directly
+        _send_email_async(email, "Confirm your MyPy Tutor account", html_body, text_body)
 
     email_user = _cfg("EMAIL_USER")
     email_pass = _cfg("EMAIL_PASS")
@@ -484,12 +489,16 @@ def confirm_email_token(token: str) -> tuple[bool, str]:
     except Exception as exc:
         logger.warning("Supabase email account sync failed: %s", exc)
 
-    # Send welcome email asynchronously (non-blocking)
-    _send_email_async(
-        user_data["email"],
-        f"Welcome to MyPy Tutor, {user_data['name'].split()[0]}! Your learning journey begins 🐍",
-        *_build_welcome_email(user_data["name"], user_data["email"])
-    )
+    # Send welcome email via email_service (Resend primary, SMTP fallback)
+    try:
+        from app.services.email_service import send_welcome_email as _svc_welcome
+        _svc_welcome(user_data["name"], user_data["email"])
+    except Exception:
+        _send_email_async(
+            user_data["email"],
+            f"Welcome to MyPy Tutor, {user_data['name'].split()[0]}! Your learning journey begins 🐍",
+            *_build_welcome_email(user_data["name"], user_data["email"])
+        )
 
     return True, f"Email confirmed! Welcome to MyPy Tutor, {user_data['name']} 🎉"
 
@@ -725,7 +734,12 @@ def request_password_reset(email: str) -> tuple[bool, str]:
             f"If you didn't request this, ignore this email.\n\n"
             f"— MyPy Tutor Team"
         )
-        _send_email_async(email, "Reset your MyPy Tutor password", html_body, text_body)
+        # Send reset email via email_service (Resend primary, SMTP fallback)
+        try:
+            from app.services.email_service import send_password_reset_email as _svc_reset
+            _svc_reset(user.get("name", "Learner"), email, reset_url)
+        except Exception:
+            _send_email_async(email, "Reset your MyPy Tutor password", html_body, text_body)
 
     # Always return success (prevents email enumeration attacks)
     return True, (

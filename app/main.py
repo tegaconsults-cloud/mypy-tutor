@@ -765,6 +765,26 @@ async def get_certificate(
     log_certificate(cert_id, learner_id, clean_name, level)
     sb_save_certificate(cert_id, learner_id, clean_name, level)
     html_doc   = generate_certificate_html(learner_name=clean_name, level=level, cert_id=cert_id)
+
+    # Send certificate email via email_service (non-blocking)
+    try:
+        from app.services.email_service import send_certificate_email as _svc_cert
+        _email_for_cert = profile.email or ""
+        if not _email_for_cert:
+            from app.auth import _users as _au
+            _eu = _au.get(learner_id)
+            if _eu:
+                _email_for_cert = _eu.email
+        if not _email_for_cert:
+            from app.email_auth import get_email_user_by_id as _geuid
+            _edu = _geuid(learner_id)
+            if _edu:
+                _email_for_cert = _edu.get("email", "")
+        if _email_for_cert:
+            _svc_cert(clean_name, _email_for_cert, level, cert_id)
+    except Exception as _cert_email_exc:
+        logger.warning("Certificate email dispatch failed (non-fatal): %s", _cert_email_exc)
+
     return HTMLResponse(content=html_doc)
 
 
@@ -1740,6 +1760,34 @@ async def admin_confirm_payment(payment_id: str, request: Request) -> dict:
     ok = confirm_payment(payment_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Payment not found.")
+    # Send payment receipt email via email_service (non-blocking)
+    try:
+        from app.db import get_db as _gdb
+        with _gdb() as _conn:
+            row = _conn.execute(
+                "SELECT user_email, user_name, amount, plan, currency, id FROM payments WHERE id=?",
+                (payment_id,)
+            ).fetchone()
+        if row:
+            from app.services.email_service import send_payment_receipt_email as _svc_pay
+            _svc_pay(
+                name=row["user_name"] or row["user_email"],
+                email=row["user_email"],
+                amount=float(row["amount"]),
+                plan=row["plan"],
+                payment_id=row["id"],
+                currency=row["currency"] or "NGN",
+            )
+            # Also notify admin
+            from app.services.email_service import send_admin_notification as _svc_adm
+            _svc_adm(
+                subject=f"Payment confirmed: ₦{float(row['amount']):,.0f} — {row['plan']}",
+                body=f"User: {row['user_name']} ({row['user_email']})\n"
+                     f"Amount: {row['currency']} {float(row['amount']):,.0f}\n"
+                     f"Plan: {row['plan']}\nPayment ID: {row['id']}",
+            )
+    except Exception as _pay_exc:
+        logger.warning("Payment receipt email failed (non-fatal): %s", _pay_exc)
     return {"ok": True}
 
 
@@ -1878,7 +1926,7 @@ async def admin_referrals(request: Request) -> dict:
         "referrals":               result,
         "total":                   len(result),
         "total_bonus_outstanding": round(total_bonus_outstanding, 2),
-        "split_info":              "10% discount to referee · 5% bonus to referrer",
+        "split_info":              "5% discount to referee · 15% bonus to referrer",
     }
 
 
@@ -1924,8 +1972,7 @@ async def admin_files_list(request: Request) -> dict:
 @app.post("/admin/email/test")
 async def admin_test_email(request: Request) -> dict:
     """
-    Send a test email to verify SMTP configuration is working.
-    Returns the EXACT SMTP error string so you can diagnose without reading Render logs.
+    Send a test email. Tests Resend first, then falls back to SMTP.
     POST body: { "to": "recipient@email.com" }
     """
     _require_admin(request)
@@ -1934,89 +1981,56 @@ async def admin_test_email(request: Request) -> dict:
     if not to or "@" not in to:
         raise HTTPException(status_code=400, detail="Provide a valid 'to' email address.")
 
+    resend_key = _os.getenv("RESEND_API_KEY", "")
     email_user = _os.getenv("EMAIL_USER", "")
     email_pass = _os.getenv("EMAIL_PASS", "")
     email_host = _os.getenv("EMAIL_HOST", "smtp.gmail.com")
     email_port = _os.getenv("EMAIL_PORT", "587")
     email_from = _os.getenv("EMAIL_FROM", "")
 
-    # Auto-fix EMAIL_FROM exactly as _send_email does
-    if not email_from or "<" not in email_from:
-        email_from_display = f"MyPy Tutor <{email_user}> (auto-fixed — set EMAIL_FROM properly)"
-    else:
-        email_from_display = email_from.strip().strip('"').strip("'")
-
     config_status = {
-        "EMAIL_HOST":  email_host,
-        "EMAIL_PORT":  email_port,
-        "EMAIL_USER":  email_user if email_user else "❌ NOT SET",
-        "EMAIL_PASS":  f"✅ set ({len(email_pass)} chars)" if email_pass else "❌ NOT SET",
-        "EMAIL_FROM":  email_from if email_from else "❌ NOT SET (will default to MyPy Tutor <EMAIL_USER>)",
-        "EMAIL_FROM_EFFECTIVE": email_from_display,
-        "APP_URL":     _os.getenv("APP_URL", "not set"),
+        "RESEND_API_KEY": f"✅ set ({len(resend_key)} chars)" if resend_key else "❌ NOT SET",
+        "EMAIL_USER":     email_user if email_user else "❌ NOT SET",
+        "EMAIL_PASS":     f"✅ set ({len(email_pass)} chars)" if email_pass else "❌ NOT SET",
+        "EMAIL_FROM":     email_from if email_from else "❌ NOT SET",
+        "EMAIL_HOST":     email_host,
+        "EMAIL_PORT":     email_port,
+        "APP_URL":        _os.getenv("APP_URL", "not set"),
+        "provider_chain": "Resend → SMTP fallback",
     }
 
-    if not email_user or not email_pass:
-        return {
-            "ok": False, "sent": False, "config": config_status,
-            "error": "EMAIL_USER or EMAIL_PASS not set in Render environment variables.",
-        }
-
-    # Run synchronously in a thread but capture the exact exception
-    import threading, queue as _q
+    # Use email_service for the test
+    import queue as _q, threading
     result_q: _q.Queue = _q.Queue()
 
     def _try_send():
-        import smtplib
-        from email.mime.multipart import MIMEMultipart
-        from email.mime.text import MIMEText
-        try:
-            ef = email_from.strip().strip('"').strip("'") if email_from and "<" in email_from \
-                 else f"MyPy Tutor <{email_user}>"
-            msg = MIMEMultipart("alternative")
-            msg["Subject"] = "MyPy Tutor — Email Test ✅"
-            msg["From"]    = ef
-            msg["To"]      = to
-            msg["Reply-To"] = email_user
-            html = (f'<div style="font-family:Arial;background:#0f1117;color:#e2e8f0;'
-                    f'padding:32px;border-radius:12px;">'
-                    f'<h2 style="color:#63b3ed;">🐍 MyPy Tutor — Email Test</h2>'
-                    f'<p style="color:#68d391;font-weight:700;">✅ Email delivery is working!</p>'
-                    f'<p style="font-size:.78rem;color:#4a5568;">From: {ef}<br/>'
-                    f'Host: {email_host}:{email_port}</p></div>')
-            txt  = f"MyPy Tutor email test — delivery working.\nFrom: {ef}"
-            msg.attach(MIMEText(txt, "plain", "utf-8"))
-            msg.attach(MIMEText(html, "html",  "utf-8"))
-            with smtplib.SMTP(email_host, int(email_port), timeout=20) as server:
-                server.ehlo()
-                server.starttls()
-                server.ehlo()
-                server.login(email_user, email_pass)
-                server.sendmail(email_user, [to], msg.as_string())
-            result_q.put((True, ""))
-        except smtplib.SMTPAuthenticationError as e:
-            result_q.put((False, f"AUTH FAILED: {e} — Your Gmail App Password is wrong or expired. "
-                                 f"Go to myaccount.google.com/apppasswords, delete old 'MyPy Tutor' entry, "
-                                 f"create a new 16-char App Password, and update EMAIL_PASS on Render."))
-        except smtplib.SMTPException as e:
-            result_q.put((False, f"SMTP ERROR: {e}"))
-        except Exception as e:
-            result_q.put((False, f"ERROR: {type(e).__name__}: {e}"))
+        from app.services.email_service import _dispatch, _wrap_template
+        html = _wrap_template(
+            f"""<h2 style="color:#0D47A1;">🧪 Email Delivery Test</h2>
+            <p style="color:#16A34A;font-weight:700;font-size:1.05rem;">✅ Email delivery is working!</p>
+            <p style="color:#475569;">
+              Provider: {'Resend' if resend_key else 'SMTP fallback'}<br/>
+              Sent to: {to}
+            </p>""",
+            preview_text="MyPy Tutor email test — delivery is working!"
+        )
+        txt = f"MyPy Tutor email test — delivery working.\nProvider: {'Resend' if resend_key else 'SMTP'}"
+        ok = _dispatch(to, "MyPy Tutor — Email Delivery Test ✅", html, txt, "test")
+        result_q.put(ok)
 
     t = threading.Thread(target=_try_send, daemon=False)
     t.start()
-    t.join(timeout=28)
+    t.join(timeout=30)
 
     if not result_q.empty():
-        ok, err = result_q.get()
+        ok = result_q.get()
         if ok:
             return {"ok": True, "sent": True, "to": to, "config": config_status}
-        return {"ok": False, "sent": False, "to": to, "config": config_status, "error": err}
+        return {"ok": False, "sent": False, "to": to, "config": config_status,
+                "error": "All providers failed. Check RESEND_API_KEY or EMAIL_USER/PASS in Render env vars."}
 
-    return {
-        "ok": False, "sent": False, "to": to, "config": config_status,
-        "error": "Timed out after 28s. SMTP server not responding — check EMAIL_HOST/PORT.",
-    }
+    return {"ok": False, "sent": False, "to": to, "config": config_status,
+            "error": "Timed out after 30s."}
 
 
 # ---------------------------------------------------------------------------
