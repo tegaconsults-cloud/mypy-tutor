@@ -1,15 +1,15 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Eye, EyeOff, Mail, Lock, User, KeyRound, ArrowLeft } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { signIn, signUp, forgotPassword, resendConfirmation, API_BASE } from '../api'
+import { signIn, signUp, forgotPassword, resendConfirmation, resetPassword, API_BASE } from '../api'
 import Logo from './Logo'
 
 interface Props { defaultTab?: 'signin' | 'signup'; onClose: () => void }
 
 export default function AuthModal({ defaultTab = 'signin', onClose }: Props) {
-  const { setUser } = useAuth()
-  const [tab, setTab]         = useState<'signin' | 'signup' | 'forgot'>(defaultTab)
+  const { setUser, pendingAuthAction, clearPendingAuthAction } = useAuth()
+  const [tab, setTab]         = useState<'signin' | 'signup' | 'forgot' | 'reset'>(defaultTab)
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
   const [success, setSuccess] = useState('')
@@ -25,6 +25,25 @@ export default function AuthModal({ defaultTab = 'signin', onClose }: Props) {
   const [suShow,  setSuShow]  = useState(false)
 
   const [fgEmail, setFgEmail] = useState('')
+
+  // Reset password tab state
+  const [rpPass,  setRpPass]  = useState('')
+  const [rpShow,  setRpShow]  = useState(false)
+  const [rpToken, setRpToken] = useState('')
+
+  // Open forgot/reset tab when auth=reset deep-link is detected
+  useEffect(() => {
+    if (pendingAuthAction === 'reset') {
+      const token = sessionStorage.getItem('mpt_reset_token') || ''
+      if (token) {
+        setRpToken(token)
+        setTab('reset')
+      } else {
+        setTab('forgot')
+      }
+      clearPendingAuthAction()
+    }
+  }, [pendingAuthAction, clearPendingAuthAction])
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault(); setError(''); setLoading(true)
@@ -47,8 +66,14 @@ export default function AuthModal({ defaultTab = 'signin', onClose }: Props) {
       const data = await signUp(suName, suEmail, suPass, suCode)
       const msg: string = data.message || ''
       const autoConfirmed = msg.toLowerCase().includes('welcome') || msg.toLowerCase().includes('confirmed')
-      if (autoConfirmed) { const ld = await signIn(suEmail, suPass); setUser(ld); onClose() }
-      else { setSuccess('✅ ' + msg + ' — check your email, then sign in.'); setTimeout(() => setTab('signin'), 4000) }
+      if (autoConfirmed) {
+        // Use suPass (signup password) — not siPass which belongs to the sign-in tab
+        const ld = await signIn(suEmail, suPass)
+        setUser(ld); onClose()
+      } else {
+        setSuccess('✅ ' + msg + ' — check your email, then sign in.')
+        setTimeout(() => setTab('signin'), 4000)
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Sign up failed')
     } finally { setLoading(false) }
@@ -56,25 +81,54 @@ export default function AuthModal({ defaultTab = 'signin', onClose }: Props) {
 
   const handleForgot = async (e: React.FormEvent) => {
     e.preventDefault(); setError(''); setLoading(true)
-    try { const data = await forgotPassword(fgEmail); setSuccess(data.message || 'Reset link sent!') }
-    catch { setError('Network error. Please try again.') }
-    finally { setLoading(false) }
+    try {
+      const data = await forgotPassword(fgEmail)
+      setSuccess(data.message || 'Reset link sent! Check your email.')
+    } catch {
+      setError('Network error. Please try again.')
+    } finally { setLoading(false) }
+  }
+
+  const handleReset = async (e: React.FormEvent) => {
+    e.preventDefault(); setError('')
+    if (rpPass.length < 8) { setError('Password must be at least 8 characters.'); return }
+    setLoading(true)
+    try {
+      await resetPassword(rpToken, rpPass)
+      setSuccess('✅ Password updated! You can now sign in.')
+      sessionStorage.removeItem('mpt_reset_token')
+      setTimeout(() => setTab('signin'), 2500)
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Reset failed. The link may have expired.')
+    } finally { setLoading(false) }
   }
 
   const handleResend = async () => {
+    // Use the email from whichever tab is active
     const email = tab === 'signin' ? siEmail : suEmail
     if (!email) { setError('Enter your email first.'); return }
     const data = await resendConfirmation(email)
     if (data.auto_confirmed) {
-      try { const ld = await signIn(email, siPass); setUser(ld); onClose() }
-      catch { setSuccess('✅ Confirmed! Sign in below.'); setTab('signin') }
-    } else { setSuccess(data.message || 'Resent!') }
+      try {
+        // Use the correct password for the active tab
+        const password = tab === 'signin' ? siPass : suPass
+        if (!password) { setSuccess('✅ Confirmed! Please sign in.'); setTab('signin'); return }
+        const ld = await signIn(email, password)
+        setUser(ld); onClose()
+      } catch {
+        setSuccess('✅ Confirmed! Sign in below.'); setTab('signin')
+      }
+    } else {
+      setSuccess(data.message || 'Resent!')
+    }
   }
 
   const inputStyle = {
     background: 'rgba(6,13,28,0.8)',
     borderColor: 'rgba(13,71,161,0.35)',
   }
+
+  const isAuthTab = tab === 'signin' || tab === 'signup'
 
   return (
     <AnimatePresence>
@@ -114,7 +168,7 @@ export default function AuthModal({ defaultTab = 'signin', onClose }: Props) {
           </div>
 
           {/* Tabs */}
-          {tab !== 'forgot' && (
+          {isAuthTab && (
             <div className="flex rounded-2xl p-1 gap-1" style={{ background: 'rgba(6,13,28,0.8)' }}>
               {(['signin', 'signup'] as const).map(t => (
                 <button key={t} onClick={() => { setTab(t); setError(''); setSuccess('') }}
@@ -222,6 +276,30 @@ export default function AuthModal({ defaultTab = 'signin', onClose }: Props) {
               </div>
               <button type="submit" disabled={loading} className="btn btn-primary w-full h-11">
                 {loading ? 'Sending…' : 'Send Reset Link'}
+              </button>
+              <button type="button" onClick={() => { setTab('signin'); setError(''); setSuccess('') }}
+                className="flex items-center justify-center gap-1.5 text-xs transition-colors" style={{ color: '#93c5fd' }}>
+                <ArrowLeft size={12} /> Back to Sign In
+              </button>
+            </form>
+          )}
+
+          {/* Reset Password — opened from ?auth=reset deep-link */}
+          {tab === 'reset' && (
+            <form onSubmit={handleReset} className="flex flex-col gap-3">
+              <p className="text-xs text-center" style={{ color: '#4d6080' }}>Enter your new password below.</p>
+              <div className="relative">
+                <Lock size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#4d6080' }} />
+                <input type={rpShow ? 'text' : 'password'} placeholder="New password (min 8 chars)"
+                  value={rpPass} onChange={e => setRpPass(e.target.value)}
+                  autoComplete="new-password" required className="pl-10 pr-10 h-11" style={inputStyle} />
+                <button type="button" onClick={() => setRpShow(s => !s)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 transition-colors" style={{ color: '#4d6080' }}>
+                  {rpShow ? <EyeOff size={15} /> : <Eye size={15} />}
+                </button>
+              </div>
+              <button type="submit" disabled={loading} className="btn btn-primary w-full h-11">
+                {loading ? 'Updating…' : 'Set New Password'}
               </button>
               <button type="button" onClick={() => { setTab('signin'); setError(''); setSuccess('') }}
                 className="flex items-center justify-center gap-1.5 text-xs transition-colors" style={{ color: '#93c5fd' }}>
