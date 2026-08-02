@@ -16,24 +16,36 @@ export interface Progress {
 
 interface ProgressCtx {
   progress: Progress | null
+  progressError: string | null
   refresh: (learnerId: string, force?: boolean) => Promise<void>
 }
 
 const ProgressContext = createContext<ProgressCtx>({} as ProgressCtx)
 
 export function ProgressProvider({ children }: { children: React.ReactNode }) {
-  const [progress, setProgress] = useState<Progress | null>(null)
-  const [lastFetch, setLastFetch] = useState(0)
+  const [progress, setProgress]         = useState<Progress | null>(null)
+  const [progressError, setProgressError] = useState<string | null>(null)
+  const [lastFetch, setLastFetch]       = useState(0)
 
   const refresh = useCallback(async (learnerId: string, force = false) => {
     const now = Date.now()
     if (!force && progress && now - lastFetch < 60_000) return
-    const p = await getProgress(learnerId)
-    if (p) { setProgress(p); setLastFetch(now) }
+    try {
+      const p = await getProgress(learnerId)
+      if (p) {
+        setProgress(p)
+        setProgressError(null)
+        setLastFetch(now)
+      } else {
+        setProgressError('Could not load progress. Check your connection.')
+      }
+    } catch (_) {
+      setProgressError('Could not load progress. Check your connection.')
+    }
   }, [progress, lastFetch])
 
   return (
-    <ProgressContext.Provider value={{ progress, refresh }}>
+    <ProgressContext.Provider value={{ progress, progressError, refresh }}>
       {children}
     </ProgressContext.Provider>
   )

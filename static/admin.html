@@ -798,7 +798,7 @@ async function loadCerts(){
   const r=await api('/admin/certificates'); const d=await r.json();
   document.getElementById('certs-body').innerHTML=(d.certificates||[]).map(c=>{
     const lc={executive:'gr',advanced:'gy',basic:'gg'}[c.level]||'gg';
-    const url=`/certificate/${c.level}?name=${encodeURIComponent(c.learner_name)}&learner_id=${c.learner_id}`;
+    const url=`/certificate/${c.level}?name=${encodeURIComponent(c.learner_name)}&learner_id=${c.learner_id}&admin_view=true`;
     return `<tr><td>${c.cert_id}</td><td>${c.learner_name}</td><td style="font-size:.72rem">${c.learner_id}</td>
       <td><span class="badge ${lc}">${c.level}</span></td>
       <td>${c.issued_at.split('T')[0]}</td>
@@ -838,7 +838,7 @@ async function loadAnnounce(){
             <strong style="color:#e2e8f0">${a.subject}</strong>
             <div style="color:#718096;font-size:.74rem;margin-top:2px">Target: <span class="badge bg">${a.target}</span> · Sent to <strong style="color:#68d391">${a.sent_to}</strong> users</div>
           </div>
-          <div style="color:#4a5568;font-size:.72rem;white-space:nowrap">${(a.sent_at||'').split('T')[0]}</div>
+          <div style="color:#4a5568;font-size:.72rem;white-space:nowrap">${(a.sent_at||'').toString().split('T')[0]}</div>
         </div>`)
       .join('')
     : '<span style="color:#4a5568;font-size:.82rem">No announcements sent yet.</span>';

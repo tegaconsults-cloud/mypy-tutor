@@ -1,7 +1,8 @@
 """
 Admin module for MyPy Tutor.
-In-memory admin store — tracks users, payments, tasks, team members.
-Protected by admin password hash.
+All persistent data (payments, team, tasks, announcements, certificates)
+is stored in SQLite so it survives Render restarts.
+In-memory fallbacks are kept for the rare case where SQLite is unavailable.
 """
 
 import os
@@ -26,7 +27,6 @@ def _get_admin_email() -> str:
     return os.getenv("ADMIN_EMAIL", "")
 
 def _get_admin_password() -> str:
-    # Never fall back to a hardcoded password — if env var not set, login will always fail
     return os.getenv("ADMIN_PASSWORD", "")
 
 def _get_admin_serializer() -> "URLSafeTimedSerializer":
@@ -41,17 +41,10 @@ def _hash(pw: str) -> str:
 
 
 def verify_admin_login(email: str, password: str) -> bool:
-    """
-    Check admin credentials.
-    ADMIN_PASSWORD in Render env can be EITHER:
-      - The raw password itself (e.g. "MySecret123")
-      - The SHA-256 hash of the password
-    Returns False if either env var is not configured.
-    """
     admin_email = _get_admin_email()
     stored_pw   = _get_admin_password()
     if not admin_email or not stored_pw:
-        return False   # env vars not configured — refuse all logins
+        return False
     email_ok = email.lower().strip() == admin_email.lower()
     pw_ok    = (stored_pw == _hash(password)) or (stored_pw == password)
     return email_ok and pw_ok
@@ -70,7 +63,7 @@ def verify_admin_token(token: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Payment records (manual entry since Paystack webhook not yet integrated)
+# Payment records — SQLite-backed, in-memory fallback
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -80,13 +73,14 @@ class PaymentRecord:
     user_name:   str
     amount:      float
     currency:    str = "NGN"
-    plan:        str = ""        # tier1/tier2/tier3/basic-cert/adv-cert/exec-cert
-    method:      str = "bank"    # bank | paystack
-    status:      str = "pending" # pending | confirmed | refunded
+    plan:        str = ""
+    method:      str = "bank"
+    status:      str = "pending"
     notes:       str = ""
     created_at:  float = field(default_factory=time.time)
 
 
+# In-memory fallback (used when SQLite unavailable)
 _payments: list[PaymentRecord] = []
 
 
@@ -101,11 +95,42 @@ def add_payment(user_email: str, user_name: str, amount: float,
         method=method,
         notes=notes,
     )
-    _payments.append(p)
+    # Persist to SQLite first
+    try:
+        from app.db import get_db as _gdb
+        with _gdb() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO payments "
+                "(id,user_email,user_name,amount,currency,plan,method,status,notes) "
+                "VALUES (?,?,?,?,?,?,?,?,?)",
+                (p.id, p.user_email, p.user_name, p.amount, p.currency,
+                 p.plan, p.method, p.status, p.notes)
+            )
+    except Exception as e:
+        logger.warning("add_payment SQLite write failed: %s", e)
+        _payments.append(p)  # fallback to memory only
+    else:
+        _payments.append(p)  # also keep in memory for this session
     return p
 
 
 def confirm_payment(payment_id: str) -> bool:
+    # Update SQLite
+    try:
+        from app.db import get_db as _gdb
+        with _gdb() as conn:
+            cur = conn.execute(
+                "UPDATE payments SET status='confirmed' WHERE id=?", (payment_id,)
+            )
+            if cur.rowcount > 0:
+                # Also update in-memory cache
+                for p in _payments:
+                    if p.id == payment_id:
+                        p.status = "confirmed"
+                return True
+    except Exception as e:
+        logger.warning("confirm_payment SQLite failed: %s", e)
+    # Fallback: update in memory only
     for p in _payments:
         if p.id == payment_id:
             p.status = "confirmed"
@@ -113,31 +138,85 @@ def confirm_payment(payment_id: str) -> bool:
     return False
 
 
-def get_payments() -> list[PaymentRecord]:
-    return sorted(_payments, key=lambda p: p.created_at, reverse=True)
+def get_payments() -> list[dict]:
+    """Return all payments from SQLite (persistent). Falls back to in-memory."""
+    try:
+        from app.db import get_db as _gdb
+        import datetime as _dt
+        with _gdb() as conn:
+            rows = conn.execute(
+                "SELECT * FROM payments ORDER BY created_at DESC"
+            ).fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            # Convert unix timestamp to ISO string for the frontend
+            try:
+                d["created_at"] = _dt.datetime.fromtimestamp(float(d["created_at"])).isoformat()
+            except Exception:
+                pass
+            result.append(d)
+        return result
+    except Exception as e:
+        logger.warning("get_payments SQLite failed, using memory: %s", e)
+        result = []
+        for p in sorted(_payments, key=lambda x: x.created_at, reverse=True):
+            result.append({
+                "id": p.id, "user_email": p.user_email, "user_name": p.user_name,
+                "amount": p.amount, "currency": p.currency, "plan": p.plan,
+                "method": p.method, "status": p.status, "notes": p.notes,
+                "created_at": datetime.fromtimestamp(p.created_at).isoformat(),
+            })
+        return result
 
 
 def get_revenue_summary() -> dict:
-    confirmed = [p for p in _payments if p.status == "confirmed"]
-    total     = sum(p.amount for p in confirmed)
-    today     = date.today().isoformat()
-    today_rev = sum(p.amount for p in confirmed
-                    if datetime.fromtimestamp(p.created_at).date().isoformat() == today)
-    by_plan: dict[str, float] = {}
-    for p in confirmed:
-        by_plan[p.plan] = by_plan.get(p.plan, 0) + p.amount
-    return {
-        "total_revenue":   total,
-        "today_revenue":   today_rev,
-        "total_payments":  len(_payments),
-        "confirmed":       len(confirmed),
-        "pending":         sum(1 for p in _payments if p.status == "pending"),
-        "by_plan":         by_plan,
-    }
+    """Compute revenue summary from SQLite payments table."""
+    try:
+        from app.db import get_db as _gdb
+        today = date.today().isoformat()
+        with _gdb() as conn:
+            row = conn.execute(
+                "SELECT COALESCE(SUM(amount),0), COUNT(*) FROM payments WHERE status='confirmed'"
+            ).fetchone()
+            total_rev   = float(row[0] or 0)
+            confirmed   = int(row[1] or 0)
+            pending     = conn.execute(
+                "SELECT COUNT(*) FROM payments WHERE status='pending'"
+            ).fetchone()[0]
+            total_pmts  = conn.execute("SELECT COUNT(*) FROM payments").fetchone()[0]
+            today_rev   = conn.execute(
+                "SELECT COALESCE(SUM(amount),0) FROM payments "
+                "WHERE status='confirmed' AND DATE(created_at,'unixepoch')=?", (today,)
+            ).fetchone()[0]
+            plan_rows = conn.execute(
+                "SELECT plan, SUM(amount) FROM payments WHERE status='confirmed' GROUP BY plan"
+            ).fetchall()
+            by_plan = {r[0]: float(r[1]) for r in plan_rows}
+        return {
+            "total_revenue": total_rev,
+            "today_revenue": float(today_rev or 0),
+            "total_payments": total_pmts,
+            "confirmed": confirmed,
+            "pending": pending,
+            "by_plan": by_plan,
+        }
+    except Exception as e:
+        logger.warning("get_revenue_summary SQLite failed: %s", e)
+        confirmed_list = [p for p in _payments if p.status == "confirmed"]
+        total = sum(p.amount for p in confirmed_list)
+        return {
+            "total_revenue": total,
+            "today_revenue": 0,
+            "total_payments": len(_payments),
+            "confirmed": len(confirmed_list),
+            "pending": sum(1 for p in _payments if p.status == "pending"),
+            "by_plan": {},
+        }
 
 
 # ---------------------------------------------------------------------------
-# Team members & tasks
+# Team members — SQLite-backed
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -146,33 +225,60 @@ class TeamMember:
     name:       str
     role:       str = "team"
     invited_at: float = field(default_factory=time.time)
-    status:     str = "invited"   # invited | active
+    status:     str = "invited"
 
 
-@dataclass
-class Task:
-    id:           str
-    title:        str
-    description:  str
-    assigned_to:  str   # email
-    priority:     str = "medium"   # low | medium | high | urgent
-    status:       str = "open"     # open | in_progress | done
-    due_date:     str = ""
-    created_at:   float = field(default_factory=time.time)
-
-
-_team:  list[TeamMember] = []
-_tasks: list[Task]        = []
+_team: list[TeamMember] = []
 
 
 def invite_team_member(email: str, name: str, role: str = "team") -> TeamMember:
-    # Check if already exists
+    try:
+        from app.db import get_db as _gdb
+        with _gdb() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO team_members (email,name,role) VALUES (?,?,?)",
+                (email.lower(), name, role)
+            )
+    except Exception as e:
+        logger.warning("invite_team_member SQLite failed: %s", e)
+    # Also update in-memory
     for m in _team:
         if m.email.lower() == email.lower():
             return m
     m = TeamMember(email=email.lower(), name=name, role=role)
     _team.append(m)
     return m
+
+
+def get_team() -> list[dict]:
+    """Return team members from SQLite."""
+    try:
+        from app.db import get_db as _gdb
+        with _gdb() as conn:
+            rows = conn.execute("SELECT * FROM team_members ORDER BY invited_at DESC").fetchall()
+        return [dict(r) for r in rows]
+    except Exception as e:
+        logger.warning("get_team SQLite failed: %s", e)
+        return [{"email": m.email, "name": m.name, "role": m.role, "status": m.status} for m in _team]
+
+
+# ---------------------------------------------------------------------------
+# Tasks — SQLite-backed
+# ---------------------------------------------------------------------------
+
+@dataclass
+class Task:
+    id:           str
+    title:        str
+    description:  str
+    assigned_to:  str
+    priority:     str = "medium"
+    status:       str = "open"
+    due_date:     str = ""
+    created_at:   float = field(default_factory=time.time)
+
+
+_tasks: list[Task] = []
 
 
 def create_task(title: str, description: str, assigned_to: str,
@@ -185,11 +291,34 @@ def create_task(title: str, description: str, assigned_to: str,
         priority=priority,
         due_date=due_date,
     )
+    try:
+        from app.db import get_db as _gdb
+        with _gdb() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO tasks (id,title,description,assigned_to,priority,status,due_date) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (t.id, t.title, t.description, t.assigned_to, t.priority, t.status, t.due_date)
+            )
+    except Exception as e:
+        logger.warning("create_task SQLite failed: %s", e)
     _tasks.append(t)
     return t
 
 
 def update_task_status(task_id: str, status: str) -> bool:
+    try:
+        from app.db import get_db as _gdb
+        with _gdb() as conn:
+            cur = conn.execute(
+                "UPDATE tasks SET status=? WHERE id=?", (status, task_id)
+            )
+            if cur.rowcount > 0:
+                for t in _tasks:
+                    if t.id == task_id:
+                        t.status = status
+                return True
+    except Exception as e:
+        logger.warning("update_task_status SQLite failed: %s", e)
     for t in _tasks:
         if t.id == task_id:
             t.status = status
@@ -197,25 +326,40 @@ def update_task_status(task_id: str, status: str) -> bool:
     return False
 
 
-def get_team() -> list[TeamMember]:
-    return _team
-
-
-def get_tasks() -> list[Task]:
-    return sorted(_tasks, key=lambda t: t.created_at, reverse=True)
+def get_tasks() -> list[dict]:
+    """Return tasks from SQLite."""
+    try:
+        from app.db import get_db as _gdb
+        import datetime as _dt
+        with _gdb() as conn:
+            rows = conn.execute("SELECT * FROM tasks ORDER BY created_at DESC").fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["created_at"] = _dt.datetime.fromtimestamp(float(d["created_at"])).isoformat()
+            except Exception:
+                pass
+            result.append(d)
+        return result
+    except Exception as e:
+        logger.warning("get_tasks SQLite failed: %s", e)
+        return [{"id": t.id, "title": t.title, "description": t.description,
+                 "assigned_to": t.assigned_to, "priority": t.priority,
+                 "status": t.status, "due_date": t.due_date} for t in _tasks]
 
 
 # ---------------------------------------------------------------------------
-# Certificate issued log
+# Certificate log — SQLite-backed (via db.py)
 # ---------------------------------------------------------------------------
 
 @dataclass
 class CertRecord:
-    cert_id:     str
-    learner_id:  str
-    learner_name:str
-    level:       str
-    issued_at:   float = field(default_factory=time.time)
+    cert_id:      str
+    learner_id:   str
+    learner_name: str
+    level:        str
+    issued_at:    float = field(default_factory=time.time)
 
 
 _certs: list[CertRecord] = []
@@ -227,48 +371,48 @@ def log_certificate(cert_id: str, learner_id: str, learner_name: str, level: str
     try:
         from app.db import save_certificate_db
         save_certificate_db(cert_id, learner_id, learner_name, level)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("log_certificate SQLite write failed: %s", e)
 
 
-def get_certificates() -> list[CertRecord]:
-    # Try SQLite first for persistence
+def get_certificates() -> list[dict]:
+    """Return certificates from SQLite with correct issue dates."""
     try:
         from app.db import get_certificates_db
         rows = get_certificates_db()
         if rows:
-            result = []
-            for r in rows:
-                result.append(CertRecord(
-                    cert_id=r["cert_id"],
-                    learner_id=r["learner_id"],
-                    learner_name=r["learner_name"],
-                    level=r["level"],
-                    issued_at=r.get("issued_at_ts", time.time()),
-                ))
-            return result
-    except Exception:
-        pass
-    return sorted(_certs, key=lambda c: c.issued_at, reverse=True)
+            return rows   # already formatted with issued_at as ISO string
+    except Exception as e:
+        logger.warning("get_certificates SQLite failed: %s", e)
+    # Fallback to in-memory
+    return [
+        {
+            "cert_id":      c.cert_id,
+            "learner_id":   c.learner_id,
+            "learner_name": c.learner_name,
+            "level":        c.level,
+            "issued_at":    datetime.fromtimestamp(c.issued_at).isoformat(),
+        }
+        for c in sorted(_certs, key=lambda x: x.issued_at, reverse=True)
+    ]
 
 
 # ---------------------------------------------------------------------------
-# Activity log — track what users do (populated by main.py hooks)
+# Activity log
 # ---------------------------------------------------------------------------
 
-_activity_log: list[dict] = []   # max 2000 entries
+_activity_log: list[dict] = []
 
 
 def log_activity(learner_id: str, action: str, detail: str = "") -> None:
     _activity_log.append({
-        "ts":          datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "learner_id":  learner_id,
-        "action":      action,
-        "detail":      detail[:200],
+        "ts":         datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "learner_id": learner_id,
+        "action":     action,
+        "detail":     detail[:200],
     })
     if len(_activity_log) > 2000:
         _activity_log.pop(0)
-    # Also persist to SQLite
     try:
         from app.db import log_activity_db
         log_activity_db(learner_id, action, detail)
@@ -277,44 +421,71 @@ def log_activity(learner_id: str, action: str, detail: str = "") -> None:
 
 
 # ---------------------------------------------------------------------------
-# Announcements
+# Announcements — SQLite-backed
 # ---------------------------------------------------------------------------
 
 _announcements: list[dict] = []
 
 
+def _save_announcement_db(subject: str, target: str, sent_to: int) -> None:
+    try:
+        from app.db import get_db as _gdb
+        with _gdb() as conn:
+            conn.execute(
+                "INSERT INTO announcements (subject,target,sent_to) VALUES (?,?,?)",
+                (subject, target, sent_to)
+            )
+    except Exception as e:
+        logger.warning("save_announcement_db failed: %s", e)
+
+
+def get_announcements() -> list[dict]:
+    """Return announcements from SQLite, falling back to in-memory."""
+    try:
+        from app.db import get_db as _gdb
+        import datetime as _dt
+        with _gdb() as conn:
+            rows = conn.execute(
+                "SELECT * FROM announcements ORDER BY id DESC LIMIT 100"
+            ).fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["sent_at"] = _dt.datetime.fromtimestamp(float(d["sent_at"])).isoformat()
+            except Exception:
+                pass
+            result.append(d)
+        return result
+    except Exception as e:
+        logger.warning("get_announcements SQLite failed: %s", e)
+        return list(reversed(_announcements))
+
+
 async def send_announcement(target: str, subject: str, body_text: str) -> int:
     """Send announcement email to all matching users. Returns count sent."""
-    import smtplib, os as _os
+    import smtplib
     from email.mime.multipart import MIMEMultipart
     from email.mime.text import MIMEText
     from app.email_auth import _confirmed
     from app.progress import _store as ls
 
-    EMAIL_HOST = _os.getenv("EMAIL_HOST", "smtp.gmail.com")
-    EMAIL_PORT = int(_os.getenv("EMAIL_PORT", "587"))
-    EMAIL_USER = _os.getenv("EMAIL_USER", "")
-    EMAIL_PASS = _os.getenv("EMAIL_PASS", "")
-    EMAIL_FROM = _os.getenv("EMAIL_FROM", "MyPy Tutor <noreply@mypytutor.com>")
+    EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
+    EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+    EMAIL_USER = os.getenv("EMAIL_USER", "")
+    EMAIL_PASS = os.getenv("EMAIL_PASS", "")
+    EMAIL_FROM = os.getenv("EMAIL_FROM", "MyPy Tutor <noreply@mypytutor.com>")
 
-    # Build recipient list
-    recipients: list[tuple[str, str]] = []  # (email, name)
-
-    # Email account users
+    recipients: list[tuple[str, str]] = []
     for email, u in _confirmed.items():
-        lid = u.get("learner_id", "")
+        lid     = u.get("learner_id", "")
         profile = ls.get(lid)
-        tier = profile.tier if profile else "free"
+        tier    = profile.tier if profile else "free"
         if _matches_target(target, tier):
             recipients.append((email, u.get("name", email)))
 
-    if not recipients:
-        _announcements.append({"subject": subject, "target": target, "sent_to": 0,
-                                "sent_at": datetime.now().isoformat()})
-        return 0
-
     sent = 0
-    if EMAIL_USER and EMAIL_PASS:
+    if EMAIL_USER and EMAIL_PASS and recipients:
         try:
             with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT, timeout=15) as server:
                 server.ehlo(); server.starttls(); server.login(EMAIL_USER, EMAIL_PASS)
@@ -339,16 +510,15 @@ async def send_announcement(target: str, subject: str, body_text: str) -> int:
         except Exception as e:
             logger.error("Announcement SMTP error: %s", e)
 
-    _announcements.append({"subject": subject, "target": target, "sent_to": sent,
-                            "sent_at": datetime.now().isoformat()})
+    record = {"subject": subject, "target": target, "sent_to": sent,
+              "sent_at": datetime.now().isoformat()}
+    _announcements.append(record)
+    _save_announcement_db(subject, target, sent)
     return sent
 
 
 def _matches_target(target: str, tier: str) -> bool:
-    if target == "all":        return True
-    if target == "free":       return tier == "free"
-    if target == "paid":       return tier in ("tier1","tier2","tier3")
-    if target == "tier1":      return tier == "tier1"
-    if target == "tier2":      return tier == "tier2"
-    if target == "tier3":      return tier == "tier3"
-    return True
+    if target == "all":   return True
+    if target == "free":  return tier == "free"
+    if target == "paid":  return tier in ("tier1", "tier2", "tier3")
+    return target == tier
