@@ -1388,46 +1388,194 @@ async def admin_login(body: _AdminLogin) -> dict:
 @app.get("/admin/dashboard")
 async def admin_dashboard(request: Request) -> dict:
     _require_admin(request)
-    from app.progress import _store as learner_store
-    from app.security import _daily_prompt_store
 
-    today        = datetime.date.today().isoformat()
-    active_today = sum(1 for k, (d, c) in _daily_prompt_store.items() if d == today and c > 0)
+    # ── Pull everything directly from SQLite for real-time accuracy ──────────
+    # Never rely on in-memory stores (_store, _payments, etc.) since Render
+    # free tier wipes memory on restart. SQLite is the canonical source.
+    import datetime as _dt
 
-    # Merge memory store with SQLite confirmed emails for accurate user count
+    today_str    = _dt.date.today().isoformat()
+    wat_today    = _dt.date.today().isoformat()   # already computed above
+
     try:
-        db_emails = get_all_confirmed_emails()
-        email_count = len(db_emails)
-    except Exception:
-        email_count = 0
+        from app.db import get_db as _gdb, get_all_confirmed_emails, get_certificates_db
 
-    total_users = max(len(learner_store), email_count)
+        with _gdb() as _conn:
+            # Total unique users: union of email_accounts + learner_profiles
+            email_count    = _conn.execute("SELECT COUNT(*) FROM email_accounts WHERE confirmed=1").fetchone()[0]
+            profile_count  = _conn.execute("SELECT COUNT(*) FROM learner_profiles").fetchone()[0]
+            total_users    = max(email_count, profile_count)
+
+            # Active today — prompt counter from persistent table
+            from app.security import _wat_date_key
+            wat_date = _wat_date_key()
+            active_today = _conn.execute(
+                "SELECT COUNT(DISTINCT key) FROM daily_prompt_counts WHERE date_str=? AND count>0",
+                (wat_date,)
+            ).fetchone()[0]
+
+            # Users by tier — from SQLite
+            tier_counts: dict = {}
+            for tier in ["free", "tier1", "tier2", "tier3"]:
+                n = _conn.execute(
+                    "SELECT COUNT(*) FROM learner_profiles WHERE tier=?", (tier,)
+                ).fetchone()[0]
+                tier_counts[tier] = n
+
+            # Revenue from SQLite payments table
+            rev_rows = _conn.execute(
+                "SELECT SUM(amount), COUNT(*) FROM payments WHERE status='confirmed'"
+            ).fetchone()
+            total_revenue  = float(rev_rows[0] or 0)
+            confirmed_pmts = int(rev_rows[1] or 0)
+            pending_pmts   = _conn.execute(
+                "SELECT COUNT(*) FROM payments WHERE status='pending'"
+            ).fetchone()[0]
+            total_pmts = _conn.execute("SELECT COUNT(*) FROM payments").fetchone()[0]
+
+            # Revenue by plan
+            plan_rows = _conn.execute(
+                "SELECT plan, SUM(amount) FROM payments WHERE status='confirmed' GROUP BY plan"
+            ).fetchall()
+            by_plan = {r[0]: float(r[1]) for r in plan_rows}
+
+            # Revenue today
+            today_rev = _conn.execute(
+                "SELECT COALESCE(SUM(amount),0) FROM payments WHERE status='confirmed' AND DATE(created_at,'unixepoch')=?",
+                (today_str,)
+            ).fetchone()[0]
+
+            # Certificates
+            cert_count = _conn.execute("SELECT COUNT(*) FROM certificates").fetchone()[0]
+
+            # Tasks
+            task_total = _conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
+            task_open  = _conn.execute("SELECT COUNT(*) FROM tasks WHERE status='open'").fetchone()[0]
+            task_inprog= _conn.execute("SELECT COUNT(*) FROM tasks WHERE status='in_progress'").fetchone()[0]
+            task_done  = _conn.execute("SELECT COUNT(*) FROM tasks WHERE status='done'").fetchone()[0]
+
+            # Team size
+            team_size = _conn.execute("SELECT COUNT(*) FROM team_members").fetchone()[0]
+
+            # Withdrawal requests
+            wd_pending = _conn.execute(
+                "SELECT COUNT(*) FROM referral_withdrawals WHERE status='pending'"
+            ).fetchone()[0]
+
+            # New users in last 24h
+            import time as _time
+            cutoff_24h = _time.time() - 86400
+            new_users_24h = _conn.execute(
+                "SELECT COUNT(*) FROM email_accounts WHERE confirmed=1 AND created_at>=?",
+                (cutoff_24h,)
+            ).fetchone()[0]
+
+    except Exception as e:
+        logger.error("admin_dashboard SQLite error: %s", e)
+        # Fallback to memory
+        from app.progress import _store as _ls
+        total_users   = len(_ls)
+        active_today  = 0
+        tier_counts   = {t: sum(1 for p in _ls.values() if p.tier == t) for t in ["free","tier1","tier2","tier3"]}
+        total_revenue = 0; confirmed_pmts = 0; pending_pmts = 0; total_pmts = 0
+        by_plan = {}; today_rev = 0; cert_count = 0
+        task_total = task_open = task_inprog = task_done = team_size = wd_pending = new_users_24h = 0
+
+    # Feedback (always in-memory, refreshed per chat)
+    feedback_data = get_summary().model_dump()
 
     return {
-        "users": {"total": total_users, "active_today": active_today},
-        "users_by_tier": {
-            t: sum(1 for p in learner_store.values() if p.tier == t)
-            for t in ["free", "tier1", "tier2", "tier3"]
+        "users": {
+            "total":       total_users,
+            "active_today":active_today,
+            "new_24h":     new_users_24h,
         },
-        "revenue":      get_revenue_summary(),
-        "payments":     len(get_payments()),
-        "certificates": len(get_certificates()),
+        "users_by_tier": tier_counts,
+        "revenue": {
+            "total_revenue": total_revenue,
+            "today_revenue": float(today_rev or 0),
+            "total_payments": total_pmts,
+            "confirmed":     confirmed_pmts,
+            "pending":       pending_pmts,
+            "by_plan":       by_plan,
+        },
+        "payments":        total_pmts,
+        "certificates":    cert_count,
         "tasks": {
-            "total":       len(get_tasks()),
-            "open":        sum(1 for t in get_tasks() if t.status == "open"),
-            "in_progress": sum(1 for t in get_tasks() if t.status == "in_progress"),
-            "done":        sum(1 for t in get_tasks() if t.status == "done"),
+            "total": task_total, "open": task_open,
+            "in_progress": task_inprog, "done": task_done,
         },
-        "feedback":  get_summary().model_dump(),
-        "team_size": len(get_team()),
+        "feedback":        feedback_data,
+        "team_size":       team_size,
+        "withdrawals_pending": wd_pending,
     }
 
 @app.get("/admin/users")
 async def admin_list_users(request: Request) -> dict:
+    """
+    Return all users sourced primarily from SQLite (persistent, survives restarts).
+    Merges data from:
+      - learner_profiles table (all users who ever chatted / upgraded)
+      - email_accounts table (all email sign-ups, including those who never chatted)
+      - in-memory _store (live XP / course data that hasn't been flushed yet)
+      - auth._users (Google sign-in users)
+    """
     _require_admin(request)
+    from app.db import get_db as _gdb
     from app.progress import _store as ls
+    from app.auth import _users as _auth_users
 
-    # Pull all confirmed email accounts from SQLite (persistent across restarts)
+    users_map: dict = {}   # learner_id → user dict
+
+    # 1. Seed from SQLite learner_profiles (canonical persistent store)
+    try:
+        with _gdb() as _conn:
+            rows = _conn.execute(
+                "SELECT learner_id, email, display_name, tier, level, xp, "
+                "       topics_seen, completed_projects, badges, current_course "
+                "FROM learner_profiles"
+            ).fetchall()
+            for r in rows:
+                lid = r["learner_id"]
+                try:
+                    topics  = len(__import__("json").loads(r["topics_seen"] or "[]"))
+                    courses = len(__import__("json").loads(r["completed_projects"] or "[]"))
+                    badges  = len(__import__("json").loads(r["badges"] or "[]"))
+                except Exception:
+                    topics = courses = badges = 0
+                users_map[lid] = {
+                    "learner_id":    lid,
+                    "email":         r["email"] or "",
+                    "name":          r["display_name"] or "",
+                    "tier":          r["tier"] or "free",
+                    "level":         r["level"] or "beginner",
+                    "xp":            int(r["xp"] or 0),
+                    "topics_seen":   topics,
+                    "courses_done":  courses,
+                    "badges":        badges,
+                    "current_course": r["current_course"],
+                }
+    except Exception as _e:
+        logger.warning("admin_list_users SQLite learner_profiles error: %s", _e)
+
+    # 2. Overlay live in-memory data (fresher XP/tier if not yet flushed)
+    for lid, profile in ls.items():
+        auth_info = _auth_users.get(lid)
+        existing  = users_map.get(lid, {})
+        users_map[lid] = {
+            "learner_id":    lid,
+            "email":         existing.get("email") or profile.email or (auth_info.email if auth_info else "") or "",
+            "name":          existing.get("name")  or profile.display_name or (auth_info.name  if auth_info else "") or "",
+            "tier":          profile.tier,
+            "level":         profile.level,
+            "xp":            profile.xp,
+            "topics_seen":   len(profile.topics_seen),
+            "courses_done":  len(profile.completed_projects),
+            "badges":        len(profile.badges),
+            "current_course": profile.current_course,
+        }
+
+    # 3. Add email-account-only users (signed up but never chatted, not yet in learner_profiles)
     try:
         db_emails = get_all_confirmed_emails()
     except Exception:
@@ -1437,53 +1585,36 @@ async def admin_list_users(request: Request) -> dict:
             for e, u in _confirmed.items()
         ]
 
-    # Build a learner_id → email/name lookup for enriching profiles
-    id_to_email = {r["learner_id"]: r for r in db_emails}
-
-    users = []
-    for lid, profile in ls.items():
-        info = id_to_email.get(lid, {})
-        # For Google users, get email/name from the auth store
-        from app.auth import _users as _auth_users
-        auth_info = _auth_users.get(lid)
-        email = info.get("email") or (auth_info.email if auth_info else "") or profile.email or ""
-        name  = info.get("name")  or (auth_info.name  if auth_info else "") or profile.display_name or ""
-        users.append({
-            "learner_id":    lid,
-            "email":         email,
-            "name":          name,
-            "tier":          profile.tier,
-            "level":         profile.level,
-            "xp":            profile.xp,
-            "topics_seen":   len(profile.topics_seen),
-            "courses_done":  len(profile.completed_projects),
-            "badges":        len(profile.badges),
-            "current_course": profile.current_course,
-        })
-
-    # Include email accounts not yet in memory (signed up but not chatted)
-    seen_ids = {u["learner_id"] for u in users}
     for r in db_emails:
-        if r["learner_id"] not in seen_ids:
-            users.append({
-                "learner_id": r["learner_id"],
-                "email":      r["email"],
-                "name":       r["name"],
-                "tier":       "free",
-                "level":      "beginner",
-                "xp":         0,
-                "topics_seen": 0,
-                "courses_done": 0,
-                "badges":      0,
+        lid = r["learner_id"]
+        if lid not in users_map:
+            users_map[lid] = {
+                "learner_id":    lid,
+                "email":         r["email"],
+                "name":          r["name"],
+                "tier":          "free",
+                "level":         "beginner",
+                "xp":            0,
+                "topics_seen":   0,
+                "courses_done":  0,
+                "badges":        0,
                 "current_course": None,
-            })
+            }
+        else:
+            # Fill in missing email/name from email_accounts
+            if not users_map[lid]["email"]:
+                users_map[lid]["email"] = r["email"]
+            if not users_map[lid]["name"]:
+                users_map[lid]["name"] = r["name"]
+
+    users = sorted(users_map.values(), key=lambda u: u["xp"], reverse=True)
 
     return {
         "learner_profiles": users,
         "email_accounts":   [{"email": r["email"], "name": r["name"],
                                "learner_id": r["learner_id"], "type": "email"}
                               for r in db_emails],
-        "total":        len(users),
+        "total":         len(users),
         "email_signups": len(db_emails),
     }
 

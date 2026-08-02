@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>MyPy Tutor — Admin</title>
-<!-- Use correct mypytutor logo as favicon with cache-busting -->
-<link rel="icon" type="image/png" sizes="32x32" href="https://mypytutor.onrender.com/static/icons/mypytutor_logo.png?v=3" />
-<link rel="shortcut icon" href="https://mypytutor.onrender.com/static/icons/mypytutor_logo.png?v=3" />
-<link rel="apple-touch-icon" href="https://mypytutor.onrender.com/static/icons/mypytutor_logo.png?v=3" />
+<!-- Favicon — real brand logo, .jpg with cache-busting -->
+<link rel="icon" type="image/jpeg" href="https://mypytutor.onrender.com/static/icons/mypytutor_logo.jpg?v=5" />
+<link rel="shortcut icon" href="https://mypytutor.onrender.com/static/icons/mypytutor_logo.jpg?v=5" />
+<link rel="apple-touch-icon" href="https://mypytutor.onrender.com/static/icons/mypytutor_logo.jpg?v=5" />
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');</style>
 <style>
@@ -184,7 +184,9 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
 <div id="login">
   <div class="lbox">
     <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:4px">
-      <img src="https://mypytutor.onrender.com/static/icons/mypytutor_logo.png" alt="MyPy Tutor" style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:3px solid rgba(37,99,235,0.4);box-shadow:0 0 20px rgba(37,99,235,0.3);" />
+      <div style="width:64px;height:64px;border-radius:50%;overflow:hidden;border:3px solid rgba(13,71,161,0.6);box-shadow:0 0 24px rgba(13,71,161,0.4);flex-shrink:0;">
+        <img src="https://mypytutor.onrender.com/static/icons/mypytutor_logo.jpg" alt="MyPy Tutor" style="width:100%;height:100%;object-fit:cover;" onerror="this.src='https://mypytutor.onrender.com/static/icons/mypytutor_logo.png'" />
+      </div>
       <h2>MyPy Tutor Admin</h2>
     </div>
     <p>Sign in with your admin credentials</p>
@@ -208,8 +210,10 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
 <!-- App -->
 <div id="app">
   <div class="topbar">
-    <span class="logo" style="display:flex;align-items:center;gap:8px">
-      <img src="https://mypytutor.onrender.com/static/icons/mypytutor_logo.png" alt="MyPy Tutor" style="width:28px;height:28px;border-radius:50%;object-fit:cover;border:2px solid rgba(37,99,235,0.4);" />
+    <span class="logo" style="display:flex;align-items:center;gap:10px">
+      <div style="width:32px;height:32px;border-radius:50%;overflow:hidden;border:2px solid rgba(13,71,161,0.5);box-shadow:0 0 12px rgba(13,71,161,0.3);flex-shrink:0;">
+        <img src="https://mypytutor.onrender.com/static/icons/mypytutor_logo.jpg" alt="MyPy Tutor" style="width:100%;height:100%;object-fit:cover;" onerror="this.src='https://mypytutor.onrender.com/static/icons/mypytutor_logo.png'" />
+      </div>
       MyPy Tutor Admin
     </span>
     <div class="right"><span id="admin-email-lbl"></span><button class="bsm" onclick="doLogout()">Sign Out</button></div>
@@ -239,12 +243,14 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
         <div class="cards">
           <div class="card"><div class="v" id="d-users">—</div><div class="l">Total Users</div></div>
           <div class="card g"><div class="v" id="d-active">—</div><div class="l">Active Today</div></div>
+          <div class="card g"><div class="v" id="d-new24h">—</div><div class="l">New (24h)</div></div>
           <div class="card gold"><div class="v" id="d-rev">—</div><div class="l">Revenue (₦)</div></div>
           <div class="card"><div class="v" id="d-pmts">—</div><div class="l">Payments</div></div>
           <div class="card"><div class="v" id="d-certs">—</div><div class="l">Certificates</div></div>
           <div class="card"><div class="v" id="d-tasks">—</div><div class="l">Open Tasks</div></div>
           <div class="card g"><div class="v" id="d-sat">—</div><div class="l">Satisfaction</div></div>
           <div class="card"><div class="v" id="d-team">—</div><div class="l">Team</div></div>
+          <div class="card r"><div class="v" id="d-withdrawals">—</div><div class="l">Withdrawals Pending</div></div>
         </div>
         <div class="g2">
           <div class="sec"><h3>User Tiers</h3><div id="d-tiers">Loading…</div></div>
@@ -594,23 +600,39 @@ function showApp(){
   document.getElementById('app').style.display='flex';
   document.getElementById('admin-email-lbl').textContent=localStorage.getItem('mpt_admin_email')||'';
   loadDashboard();
-  // Auto-refresh users and dashboard every 30 seconds
+  // Lazy-load users in background after dashboard (avoids blocking dashboard render)
+  setTimeout(()=>{ /* users loaded on tab click */ }, 500);
+  // Auto-refresh active tab every 30 seconds
   setInterval(()=>{
     const activePage = document.querySelector('.page.active');
-    if(activePage && activePage.id==='p-users') loadUsers();
-    if(activePage && activePage.id==='p-dashboard') loadDashboard();
-    if(activePage && activePage.id==='p-activity') loadActivity();
+    if(!activePage) return;
+    const id = activePage.id.replace('p-','');
+    if(id==='dashboard') loadDashboard();
+    else if(id==='users') loadUsers();
+    else if(id==='activity') loadActivity();
   }, 30000);
 }
+
+// ── Lazy load tracker ─────────────────────────────────────────────────────
+const _loaded = new Set();
 
 function nav(p){
   document.querySelectorAll('.nb').forEach(b=>b.classList.toggle('active',b.dataset.p===p));
   document.querySelectorAll('.page').forEach(pg=>pg.classList.toggle('active',pg.id==='p-'+p));
-  ({dashboard:loadDashboard,users:loadUsers,activity:loadActivity,payments:loadPayments,
-    certificates:loadCerts,'access-codes':loadAccessCodes,referrals:loadReferrals,
-    feedback:loadFeedback,announce:loadAnnounce,
-    team:loadTeam,tasks:loadTasks,files:loadFiles,
-    coupons:loadCoupons,invoices:loadInvoices,withdrawals:loadWithdrawals})[p]?.();
+  const loaders = {
+    dashboard:loadDashboard, users:loadUsers, activity:loadActivity,
+    payments:loadPayments, certificates:loadCerts, 'access-codes':loadAccessCodes,
+    referrals:loadReferrals, feedback:loadFeedback, announce:loadAnnounce,
+    team:loadTeam, tasks:loadTasks, files:loadFiles,
+    coupons:loadCoupons, invoices:loadInvoices, withdrawals:loadWithdrawals
+  };
+  // Always reload dashboard/users/activity for real-time; lazy-load the rest
+  if(['dashboard','users','activity'].includes(p)){
+    loaders[p]?.();
+  } else if(!_loaded.has(p)){
+    _loaded.add(p);
+    loaders[p]?.();
+  }
 }
 document.querySelectorAll('.nb').forEach(b=>b.addEventListener('click',()=>nav(b.dataset.p)));
 
@@ -620,49 +642,77 @@ function closeModal(){document.getElementById('modal-overlay').classList.remove(
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
 async function loadDashboard(){
-  const r=await api('/admin/dashboard');
-  if(r.status===403){doLogout();return;}
-  const d=await r.json();
-  document.getElementById('d-users').textContent=d.users.total;
-  document.getElementById('d-active').textContent=d.users.active_today;
-  document.getElementById('d-rev').textContent='₦'+(d.revenue.total_revenue||0).toLocaleString();
-  document.getElementById('d-pmts').textContent=d.payments;
-  document.getElementById('d-certs').textContent=d.certificates;
-  document.getElementById('d-tasks').textContent=d.tasks.open;
-  document.getElementById('d-sat').textContent=(d.feedback.satisfaction_pct||0)+'%';
-  document.getElementById('d-team').textContent=d.team_size;
-  const tiers=Object.entries(d.users_by_tier||{});
-  document.getElementById('d-tiers').innerHTML=tiers.length?tiers.map(([t,c])=>
-    `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #2d3748;font-size:.83rem">
-    <span class="badge ${t==='free'?'grey':t==='tier1'?'bg':t==='tier2'?'gy':'gr'}">${t}</span>
-    <strong>${c} users</strong></div>`).join(''):'<span style="color:#4a5568">No users yet.</span>';
-  const plans=Object.entries(d.revenue.by_plan||{});
-  document.getElementById('d-plans').innerHTML=plans.length?plans.map(([p,v])=>
-    `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #2d3748;font-size:.83rem">
-    <span>${p}</span><strong style="color:#68d391">₦${v.toLocaleString()}</strong></div>`).join(''):'<span style="color:#4a5568">No payments yet.</span>';
+  // Show skeletons while loading
+  ['d-users','d-active','d-new24h','d-rev','d-pmts','d-certs','d-tasks','d-sat','d-team','d-withdrawals'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el&&el.textContent==='—')el.innerHTML='<span style="opacity:.3;font-size:.9rem">…</span>';
+  });
+  try {
+    const r=await api('/admin/dashboard');
+    if(r.status===403){doLogout();return;}
+    const d=await r.json();
+    document.getElementById('d-users').textContent=d.users.total;
+    document.getElementById('d-active').textContent=d.users.active_today;
+    document.getElementById('d-new24h').textContent=d.users.new_24h||0;
+    document.getElementById('d-rev').textContent='₦'+(d.revenue.total_revenue||0).toLocaleString();
+    document.getElementById('d-pmts').textContent=d.payments;
+    document.getElementById('d-certs').textContent=d.certificates;
+    document.getElementById('d-tasks').textContent=d.tasks.open;
+    document.getElementById('d-sat').textContent=(d.feedback.satisfaction_pct||0)+'%';
+    document.getElementById('d-team').textContent=d.team_size;
+    document.getElementById('d-withdrawals').textContent=d.withdrawals_pending||0;
+    const tiers=Object.entries(d.users_by_tier||{});
+    document.getElementById('d-tiers').innerHTML=tiers.length?tiers.map(([t,c])=>
+      `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #2d3748;font-size:.83rem">
+      <span class="badge ${t==='free'?'grey':t==='tier1'?'bg':t==='tier2'?'gy':'gr'}">${t}</span>
+      <strong>${c} users</strong></div>`).join(''):'<span style="color:#4a5568">No users yet.</span>';
+    const plans=Object.entries(d.revenue.by_plan||{});
+    document.getElementById('d-plans').innerHTML=plans.length?plans.map(([p,v])=>
+      `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #2d3748;font-size:.83rem">
+      <span>${p}</span><strong style="color:#68d391">₦${v.toLocaleString()}</strong></div>`).join(''):'<span style="color:#4a5568">No payments yet.</span>';
+  } catch(e) {
+    console.error('Dashboard load error:',e);
+  }
 }
 
 // ── Users ──────────────────────────────────────────────────────────────────
 async function loadUsers(){
-  const r=await api('/admin/users'); const d=await r.json();
-  document.getElementById('users-body').innerHTML=d.learner_profiles.map(u=>{
-    const tc={free:'grey',tier1:'bg',tier2:'gy',tier3:'gr'}[u.tier]||'grey';
-    const email = u.email || '—';
-    const name  = u.name  || u.learner_id.substring(0,14)+'…';
-    return `<tr>
-      <td>
-        <div style="font-weight:600;font-size:.82rem;color:#e2e8f0">${name}</div>
-        <div style="font-size:.7rem;color:#4a5568">${email}</div>
-        <div style="font-size:.65rem;color:#2d3748;margin-top:1px">${u.learner_id}</div>
-      </td>
-      <td><span class="badge ${tc}">${u.tier}</span></td>
-      <td>${u.level}</td><td>${u.xp}</td><td>${u.topics_seen}</td><td>${u.courses_done}</td>
-      <td>
-        <button class="bsm" onclick="viewUser('${u.learner_id}')">View</button>
-        <button class="bsm bg2" onclick="setTier('${u.learner_id}')">Set Tier</button>
-        <button class="bsm br" onclick="terminateUser('${u.learner_id}')">Terminate</button>
-      </td></tr>`;
-  }).join('')||'<tr><td colspan="7" style="color:#4a5568">No users yet.</td></tr>';
+  // Show skeleton
+  document.getElementById('users-body').innerHTML=
+    '<tr><td colspan="7"><span style="color:#4a5568;font-size:.8rem">Loading users…</span></td></tr>';
+  try {
+    const r=await api('/admin/users');
+    if(r.status===403){doLogout();return;}
+    const d=await r.json();
+    document.getElementById('users-body').innerHTML=(d.learner_profiles||[]).map(u=>{
+      const tc={free:'grey',tier1:'bg',tier2:'gy',tier3:'gr'}[u.tier]||'grey';
+      const email = u.email || '—';
+      const name  = u.name  || u.learner_id.substring(0,14)+'…';
+      const avatar = u.picture
+        ? `<img src="${u.picture}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;border:2px solid rgba(37,99,235,0.3);margin-right:6px;vertical-align:middle;" onerror="this.style.display='none'" />`
+        : `<span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:rgba(37,99,235,0.2);color:#93c5fd;font-size:.65rem;font-weight:700;margin-right:6px;vertical-align:middle;flex-shrink:0">${(name[0]||'?').toUpperCase()}</span>`;
+      return `<tr>
+        <td>
+          <div style="display:flex;align-items:center;gap:0">
+            ${avatar}
+            <div>
+              <div style="font-weight:600;font-size:.82rem;color:#e2e8f0">${name}</div>
+              <div style="font-size:.7rem;color:#4a5568">${email}</div>
+              <div style="font-size:.65rem;color:#2d3748;margin-top:1px">${u.learner_id}</div>
+            </div>
+          </div>
+        </td>
+        <td><span class="badge ${tc}">${u.tier}</span></td>
+        <td>${u.level}</td><td>${u.xp}</td><td>${u.topics_seen}</td><td>${u.courses_done}</td>
+        <td>
+          <button class="bsm" onclick="viewUser('${u.learner_id}')">View</button>
+          <button class="bsm bg2" onclick="setTier('${u.learner_id}')">Set Tier</button>
+          <button class="bsm br" onclick="terminateUser('${u.learner_id}')">Terminate</button>
+        </td></tr>`;
+    }).join('')||'<tr><td colspan="7" style="color:#4a5568">No users yet.</td></tr>';
+  } catch(e) {
+    document.getElementById('users-body').innerHTML='<tr><td colspan="7" style="color:#ef4444">Error loading users. Check network.</td></tr>';
+  }
 }
 
 async function viewUser(lid){

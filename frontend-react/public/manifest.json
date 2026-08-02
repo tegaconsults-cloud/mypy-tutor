@@ -14,16 +14,22 @@
   "prefer_related_applications": false,
   "icons": [
     {
-      "src": "/icons/mypytutor_logo.png",
+      "src": "/icons/mypytutor_logo.jpg",
       "sizes": "any",
-      "type": "image/png",
+      "type": "image/jpeg",
       "purpose": "any"
+    },
+    {
+      "src": "/icons/mypytutor_logo.jpg",
+      "sizes": "any",
+      "type": "image/jpeg",
+      "purpose": "maskable"
     },
     {
       "src": "/icons/mypytutor_logo.png",
       "sizes": "any",
       "type": "image/png",
-      "purpose": "maskable"
+      "purpose": "any"
     },
     {
       "src": "/icons/icon-192.png",
