@@ -1,9 +1,7 @@
 {
-  "framework": "vite",
-  "rootDirectory": "frontend-react",
-  "buildCommand": "npm run build",
+  "buildCommand": "cd frontend-react && npm install && npm run build",
   "outputDirectory": "frontend-react/dist",
-  "installCommand": "npm install",
+  "framework": null,
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ],
