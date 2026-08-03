@@ -29,7 +29,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [pendingAuthAction, setPendingAuthAction] = useState<'reset' | null>(null)
 
   useEffect(() => {
-    ping() // warm up Render backend
+    ping() // warm up Render backend on initial load
+
+    // ── Keepalive: ping every 8 minutes to prevent Render free-tier cold starts ──
+    // Render free tier spins down after 15min idle. A periodic ping keeps the
+    // server warm so users never experience 30-60s cold-start delays.
+    const _keepalive = setInterval(() => {
+      ping().catch(() => {}) // silent — non-fatal if it fails
+    }, 8 * 60 * 1000) // 8 minutes
 
     // ── Handle OAuth/auth redirect params in the URL ──────────────────────
     const params = new URLSearchParams(window.location.search)
@@ -110,6 +117,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       })
       .catch(() => localStorage.removeItem(SESSION_KEY))
       .finally(() => setLoading(false))
+
+    return () => clearInterval(_keepalive) // cleanup keepalive on unmount
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**

@@ -162,8 +162,8 @@ export default function ChatPanel({ onAuthClick }: Props) {
                 Hi, I'm Sir. Tega 👋
               </h2>
               <p className="text-sm leading-relaxed max-w-sm" style={{ color: '#94a3b8' }}>
-                Africa's most advanced <strong className="text-white">AI Python & ML Tutor</strong>.<br />
-                Ask me anything about Python.
+                Africa's Best <strong className="text-white">AI, Python &amp; Machine Learning Tutor</strong>.<br />
+                Ask me anything about Python, ML or AI.
               </p>
               <div className="inline-flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-full text-xs font-bold"
                 style={{ background: 'rgba(224,163,0,0.15)', color: '#E0A300', border: '1px solid rgba(224,163,0,0.3)' }}>
