@@ -4,15 +4,15 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Send, Code2, Copy, Check, RefreshCw, Sparkles, Zap, ArrowUpRight } from 'lucide-react'
-import { sendChat } from '../api'
+import { sendChat, getPromptCount } from '../api'
 import { useAuth } from '../context/AuthContext'
 import { useProgress } from '../context/ProgressContext'
-import Logo from './Logo'
 
 interface Message { role: 'user' | 'assistant' | 'error'; content: string; intent?: string; xp?: number }
 
 const STORAGE_KEY = 'mypy_tutor_history_v2'
-const FREE_LIMIT = 10
+// Server-side default — overwritten by /prompts/count response on mount
+const DEFAULT_FREE_LIMIT = 10
 
 const SUGGESTED = [
   'Explain Python variables and types',
@@ -33,11 +33,22 @@ export default function ChatPanel({ onAuthClick }: Props) {
   const [loading, setLoading]   = useState(false)
   const [copiedIdx, setCopiedIdx]   = useState<number | null>(null)
   const [copiedMsg, setCopiedMsg]   = useState<number | null>(null)
+  // Daily limit fetched live from server so it stays in sync with backend config
+  const [freeLimit, setFreeLimit] = useState(DEFAULT_FREE_LIMIT)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef  = useRef<HTMLTextAreaElement>(null)
 
   const learnerId = user?.learner_id || 'default'
   const level     = localStorage.getItem('mypy_tutor_level') || 'beginner'
+
+  // Fetch the real daily limit from the server once on mount / user change
+  useEffect(() => {
+    getPromptCount(learnerId).then(data => {
+      if (data?.limit && typeof data.limit === 'number') {
+        setFreeLimit(data.limit)
+      }
+    }).catch(() => { /* non-fatal — keep default */ })
+  }, [learnerId])
 
   useEffect(() => {
     try { const s = localStorage.getItem(STORAGE_KEY); if (s) setMessages(JSON.parse(s)) } catch {}
@@ -82,7 +93,9 @@ export default function ChatPanel({ onAuthClick }: Props) {
 
     try {
       const data = await sendChat({
-        message: text, history: history.slice(-10),
+        message: text,
+        // Send up to 20 messages — matches backend MAX_HISTORY_ITEMS
+        history: history.slice(-20),
         learner_id: learnerId, level,
         conversation_id: localStorage.getItem('mpt_conv_id') || null,
       })
@@ -91,12 +104,13 @@ export default function ChatPanel({ onAuthClick }: Props) {
       const updated = [...newMsgs, reply]
       setMessages(updated); saveHistory(updated)
       window.dispatchEvent(new Event('prompt-used'))
-      if (user) refresh(user.learner_id)
+      // force=true so XP bar and tier badge update immediately after each message
+      if (user) refresh(user.learner_id, true)
     } catch (err: unknown) {
       if (err instanceof Error) {
         const e = err as Error & { status?: number; data?: { limit?: number; error?: string } }
         if (e.status === 402 || e.data?.error === 'free_limit_reached') {
-          const limit = e.data?.limit || FREE_LIMIT
+          const limit = e.data?.limit ?? freeLimit
           const msg = `⏰ **You've used all ${limit} free prompts for today.**\n\nYour quota resets at **5:00 AM WAT** each morning.\n\n### Upgrade for more daily prompts:\n| Plan | Prompts | Price |\n|------|---------|-------|\n| Starter | 50/day | ₦2,000/mo |\n| Pro | 200/day | ₦5,000/mo |\n| Unlimited | ∞ | ₦10,000/mo |\n\n[💳 Upgrade Now →](https://paystack.shop/pay/vt_re4d3h52)`
           setMessages(m => [...m.slice(0, -1), { role: 'assistant', content: msg }])
         } else {
@@ -153,7 +167,7 @@ export default function ChatPanel({ onAuthClick }: Props) {
               </p>
               <div className="inline-flex items-center gap-1.5 mt-3 px-3 py-1.5 rounded-full text-xs font-bold"
                 style={{ background: 'rgba(224,163,0,0.15)', color: '#E0A300', border: '1px solid rgba(224,163,0,0.3)' }}>
-                <Zap size={11} /> {FREE_LIMIT} Free Prompts / Day
+                <Zap size={11} /> {freeLimit} Free Prompts / Day
               </div>
             </div>
 
