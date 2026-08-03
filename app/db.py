@@ -816,16 +816,24 @@ def get_learner_referral_code(owner_id: str) -> dict | None:
 
 
 def get_referral_bonus_balance(owner_id: str) -> dict:
-    """Return the referrer's bonus balance and use history."""
+    """Return the referrer's bonus balance and use history.
+    Uses the authoritative bonus_balance column from the referrals table
+    (written atomically by the webhook), not a potentially stale sum.
+    """
     code_rec = get_learner_referral_code(owner_id)
     if not code_rec:
         return {"balance": 0.0, "uses": 0, "code": None, "history": []}
-    code  = code_rec["code"]
-    uses  = get_referral_uses(code)
-    total = sum(u.get("referrer_bonus", 0) for u in uses)
+    code    = code_rec["code"]
+    uses    = get_referral_uses(code)
+    # Use the pre-computed bonus_balance on the referral row (updated by webhook)
+    # Fall back to summing referral_uses.referrer_bonus if column is missing/zero
+    stored_balance = float(code_rec.get("bonus_balance") or 0)
+    computed_total = sum(float(u.get("referrer_bonus", 0)) for u in uses)
+    # Use whichever is higher (guards against schema migration timing)
+    balance = max(stored_balance, computed_total)
     return {
         "code":    code,
-        "balance": round(total, 2),
+        "balance": round(balance, 2),
         "uses":    code_rec.get("uses", 0),
         "history": uses[:20],
     }

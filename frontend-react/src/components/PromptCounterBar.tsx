@@ -10,21 +10,29 @@ export default function PromptCounterBar() {
   const { user } = useAuth()
   const [used, setUsed] = useState(0)
   const [limit, setLimit] = useState(FREE_LIMIT)
+  const [isPaid, setIsPaid] = useState(false)
 
+  // Re-fetch from server whenever user changes (login/logout/tier-change).
+  // This ensures the counter shows the real SQLite-persisted count,
+  // not a stale in-memory value from before logout.
   useEffect(() => {
     const lid = user?.learner_id || 'default'
     getPromptCount(lid).then(d => {
       if (!d) return
       setUsed(d.used ?? 0)
       setLimit(d.limit ?? FREE_LIMIT)
+      setIsPaid(!d.is_limited)
     }).catch(() => {})
-  }, [user])
+  }, [user?.learner_id]) // keyed on learner_id so it re-runs on login AND logout
 
   useEffect(() => {
     const handler = () => setUsed(u => Math.min(u + 1, limit))
     window.addEventListener('prompt-used', handler)
     return () => window.removeEventListener('prompt-used', handler)
   }, [limit])
+
+  // Hide bar entirely for paid users (no limit to show)
+  if (isPaid) return null
 
   const pct = Math.min((used / limit) * 100, 100)
   const isNearLimit = pct >= 80

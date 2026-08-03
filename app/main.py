@@ -1383,23 +1383,28 @@ def _parse_quiz(raw: str) -> tuple[str, list[str]]:
 
 # Map Paystack plan name (lowercase) → internal tier
 _PAYSTACK_PLAN_TIER: dict[str, str] = {
-    # Tier bundles (new naming — matches URL params)
+    # New 4-tier bundle names
     "beginner bundle":      "tier1",
     "intermediate bundle":  "tier2",
-    "elite bundle":         "tier3",
+    "advanced bundle":      "tier3",
+    "premium bundle":       "tier4",
     # Legacy names kept for backwards compatibility
+    "elite bundle":         "tier4",
+    "elite":                "tier4",
     "pro learner":          "tier1",
+    "career builder":       "tier2",
     "tier1":                "tier1",
     "tier 1":               "tier1",
-    "career builder":       "tier2",
     "tier2":                "tier2",
     "tier 2":               "tier2",
-    "elite":                "tier3",
     "tier3":                "tier3",
     "tier 3":               "tier3",
+    "tier4":                "tier4",
+    "tier 4":               "tier4",
     "plan_tier1":           "tier1",
     "plan_tier2":           "tier2",
     "plan_tier3":           "tier3",
+    "plan_tier4":           "tier4",
 }
 
 # Prompt plan names → prompt tier key
@@ -1497,14 +1502,15 @@ async def paystack_webhook(request: Request) -> dict:
 
             if not tier:
                 # Infer tier from amount using canonical bundle prices:
-                # Elite ₦45,000 | Intermediate ₦20,000 | Beginner ₦10,000
-                # Certificate fees are handled above (basic-cert/adv-cert/exec-cert)
-                if amount_ngn >= 40000:
-                    tier = "tier3"   # Elite Bundle ₦45,000
-                elif amount_ngn >= 17000:
-                    tier = "tier2"   # Intermediate Bundle ₦20,000
-                elif amount_ngn >= 8000:
-                    tier = "tier1"   # Beginner Bundle ₦10,000
+                # Premium ₦50,000 | Advanced ₦30,000 | Intermediate ₦15,000 | Beginner ₦5,000
+                if amount_ngn >= 45000:
+                    tier = "tier4"   # Premium Bundle ₦50,000
+                elif amount_ngn >= 22000:
+                    tier = "tier3"   # Advanced Bundle ₦30,000
+                elif amount_ngn >= 10000:
+                    tier = "tier2"   # Intermediate Bundle ₦15,000
+                elif amount_ngn >= 3000:
+                    tier = "tier1"   # Beginner Bundle ₦5,000
 
             # ── TYPE 3: Prompt plan (parallel check) ─────────────────────
             prompt_plan = _PAYSTACK_PROMPT_PLAN.get(plan_meta)
@@ -1532,9 +1538,10 @@ async def paystack_webhook(request: Request) -> dict:
                 apply_tier_upgrade(learner_id, tier)     # in-memory cache sync
 
                 tier_labels = {
-                    "tier1": "Beginner Bundle (₦10,000 — 4 courses)",
-                    "tier2": "Intermediate Bundle (₦20,000 — 7 courses)",
-                    "tier3": "Elite Bundle (₦45,000 — all 16 courses)",
+                    "tier1": "Beginner Bundle (₦5,000 — 4 courses)",
+                    "tier2": "Intermediate Bundle (₦15,000 — 7 courses)",
+                    "tier3": "Advanced Bundle (₦30,000 — 14 courses)",
+                    "tier4": "Premium Bundle (₦50,000 — all 16 courses)",
                 }
                 plan_label = tier_labels.get(tier, tier)
                 import secrets as _sec
@@ -1987,8 +1994,8 @@ async def admin_set_tier(learner_id: str, request: Request) -> dict:
     validate_learner_id(learner_id)
     body = await request.json()
     tier = body.get("tier", "free")
-    if tier not in ("free", "tier1", "tier2", "tier3"):
-        raise HTTPException(status_code=400, detail="Invalid tier.")
+    if tier not in ("free", "tier1", "tier2", "tier3", "tier4"):
+        raise HTTPException(status_code=400, detail="Invalid tier. Must be free, tier1, tier2, tier3, or tier4.")
 
     from app.progress import apply_tier_upgrade
     apply_tier_upgrade(learner_id, tier)   # updates _store + SQLite atomically
