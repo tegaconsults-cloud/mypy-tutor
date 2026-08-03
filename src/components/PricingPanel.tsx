@@ -168,7 +168,7 @@ export default function PricingPanel() {
                   {p.price}<span className="text-xs font-normal" style={{ color: '#4d6080' }}>{p.period}</span>
                 </div>
                 <p className="text-xs mb-4" style={{ color: '#4d6080' }}>{p.desc}</p>
-                <a href={p.link} target="_blank" rel="noopener"
+                <a href={paystackUrl(p.plan, p.amount, userEmail)} target="_blank" rel="noopener"
                   className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl text-sm font-bold text-white transition-all hover:opacity-90"
                   style={{ background: 'linear-gradient(135deg,#0D47A1,#1565E8)' }}>
                   <CreditCard size={14} /> Subscribe — {p.price}{p.period}

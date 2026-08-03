@@ -31,8 +31,11 @@ import QuizzesPage from './pages/PythonQuizzes'
 
 type Panel = 'chat' | 'courses' | 'quiz' | 'progress' | 'certificates' | 'pricing' | 'profile'
 
+/** Panels that require the user to be signed in. */
+const PROTECTED_PANELS: Panel[] = ['courses', 'quiz', 'progress', 'certificates', 'profile']
+
 export default function App() {
-  const { user, loading, setUser, pendingAuthAction } = useAuth()
+  const { user, loading, pendingAuthAction } = useAuth()
   const { refresh }       = useProgress()
   const navigate          = useNavigate()
   const [panel, setPanel] = useState<Panel>('chat')
@@ -47,6 +50,26 @@ export default function App() {
   const [oauthError, setOauthError]         = useState('')
   const nudgeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [searchParams] = useSearchParams()
+  // Use a ref so gotoPanel/openAuth can be called from useEffect closures
+  // without stale-closure issues
+  const userRef = useRef(user)
+  useEffect(() => { userRef.current = user }, [user])
+
+  const openAuth = (tab: 'signin' | 'signup' = 'signin') => {
+    setAuthTab(tab); setAuthOpen(true); setNudgeVisible(false); setOauthError('')
+  }
+
+  /**
+   * Navigate to a panel — intercepts protected panels for guests and opens
+   * the AuthModal instead. Chat and Pricing are always accessible.
+   */
+  const gotoPanel = (p: Panel) => {
+    if (!userRef.current && PROTECTED_PANELS.includes(p)) {
+      openAuth('signin')
+      return
+    }
+    setPanel(p)
+  }
 
   // Open AuthModal automatically when password reset deep-link is detected
   useEffect(() => {
@@ -71,7 +94,7 @@ export default function App() {
       setOauthError(decodeURIComponent(searchParams.get('msg') || 'Authentication failed.')); navigate('/', { replace: true })
     }
     const p = searchParams.get('panel') as Panel | null
-    if (p) setPanel(p)
+    if (p) gotoPanel(p)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -82,10 +105,10 @@ export default function App() {
   }, [user])
 
   useEffect(() => {
-    const handler = (e: Event) => setPanel((e as CustomEvent<Panel>).detail)
+    const handler = (e: Event) => gotoPanel((e as CustomEvent<Panel>).detail)
     window.addEventListener('switch-panel', handler)
     return () => window.removeEventListener('switch-panel', handler)
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!loading && !user) {
@@ -105,10 +128,6 @@ export default function App() {
     window.addEventListener('open-enquiry', h)
     return () => window.removeEventListener('open-enquiry', h)
   }, [])
-
-  const openAuth = (tab: 'signin' | 'signup' = 'signin') => {
-    setAuthTab(tab); setAuthOpen(true); setNudgeVisible(false); setOauthError('')
-  }
 
   const handleOnboardingDone = (firstMsg: string) => {
     setOnboardingOpen(false); setPanel('chat')
@@ -139,14 +158,14 @@ export default function App() {
 
       <Route path="*" element={
         <div className="flex flex-col h-full overflow-hidden" style={{ background: '#060d1c' }}>
-          <Header panel={panel} onPanelChange={setPanel} onMenuClick={() => setSidebarOpen(true)}
+          <Header panel={panel} onPanelChange={gotoPanel} onMenuClick={() => setSidebarOpen(true)}
             onAuthClick={openAuth} onReferralClick={() => setReferralOpen(true)} />
           <XPBar />
           <PromptCounterBar />
 
           <div className="flex-1 flex overflow-hidden relative">
             <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)}
-              onPanelChange={setPanel} onAuthClick={openAuth} />
+              onPanelChange={gotoPanel} onAuthClick={openAuth} />
 
             <AnimatePresence mode="wait">
               <motion.div key={panel} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -164,7 +183,7 @@ export default function App() {
           </div>
 
           <BottomNav panel={panel as 'chat'|'courses'|'quiz'|'progress'|'certificates'|'pricing'}
-            onPanelChange={p => setPanel(p)} />
+            onPanelChange={p => gotoPanel(p)} />
 
           {/* Modals */}
           {authOpen      && <AuthModal defaultTab={authTab} onClose={() => setAuthOpen(false)} />}
