@@ -2694,19 +2694,29 @@ async def get_my_referral(learner_id: str) -> dict:
     validate_learner_id(learner_id)
     existing = get_learner_referral_code(learner_id)
     if existing:
-        uses     = get_referral_uses(existing["code"])
-        # Separate paid (payment_amount > 0 so bonus was earned) vs unpaid (signup only)
-        paid_uses   = [u for u in uses if u.get("referrer_bonus", 0) > 0]
-        unpaid_uses = [u for u in uses if u.get("referrer_bonus", 0) == 0]
+        uses = get_referral_uses(existing["code"])
+        # Use the authoritative `uses` counter from the referrals table.
+        # It is incremented atomically by use_referral_code() on every signup.
+        # len(uses) from referral_uses rows can be lower if rows weren't written.
+        authoritative_total = existing.get("uses", 0)
+        paid_uses   = [u for u in uses if (u.get("referrer_bonus") or 0) > 0]
+        unpaid_uses = [u for u in uses if (u.get("referrer_bonus") or 0) == 0]
+        # Reconcile: if SQLite rows > authoritative counter, the counter needs updating
+        if len(uses) > authoritative_total:
+            authoritative_total = len(uses)
+        paid_count   = len(paid_uses)
+        unpaid_count = authoritative_total - paid_count
+        if unpaid_count < 0:
+            unpaid_count = 0
         return {
-            "code":          existing["code"],
-            "uses":          existing["uses"],
-            "max_uses":      existing["max_uses"],
-            "bonus_balance": round(existing.get("bonus_balance", 0), 2),
-            "paid_referrals":   len(paid_uses),
-            "unpaid_referrals": len(unpaid_uses),
-            "total_referrals":  len(uses),
-            "recent_uses":   uses[:20],
+            "code":             existing["code"],
+            "uses":             authoritative_total,
+            "max_uses":         existing["max_uses"],
+            "bonus_balance":    round(existing.get("bonus_balance", 0), 2),
+            "paid_referrals":   paid_count,
+            "unpaid_referrals": unpaid_count,
+            "total_referrals":  authoritative_total,
+            "recent_uses":      uses[:20],
         }
     import secrets as _sec
     code    = _sec.token_hex(4).upper()

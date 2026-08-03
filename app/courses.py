@@ -486,26 +486,26 @@ PROJECT_PATHS: dict[str, list[str]] = {
 # ---------------------------------------------------------------------------
 
 COURSE_CATALOG: dict[str, dict] = {
-    # ── Beginner tier (tier1) — ₦5,000 each
-    "python-fundamentals":       {"price_ngn": 5000,  "tier_unlocks": ["tier1","tier2","tier3"], "category": "Python Basics",        "badge": "🐍"},
-    "python-strings":            {"price_ngn": 5000,  "tier_unlocks": ["tier1","tier2","tier3"], "category": "Python Basics",        "badge": "🔤"},
-    "python-collections":        {"price_ngn": 5000,  "tier_unlocks": ["tier1","tier2","tier3"], "category": "Python Basics",        "badge": "📦"},
-    "python-control-flow":       {"price_ngn": 5000,  "tier_unlocks": ["tier1","tier2","tier3"], "category": "Python Basics",        "badge": "🔀"},
-    # ── Intermediate tier (tier2) — ₦5,000 each
-    "python-functions-advanced": {"price_ngn": 5000,  "tier_unlocks": ["tier2","tier3"],         "category": "Intermediate Python",  "badge": "⚙️"},
-    "python-oop":                {"price_ngn": 5000,  "tier_unlocks": ["tier2","tier3"],         "category": "Intermediate Python",  "badge": "🏗️"},
-    "python-modules-stdlib":     {"price_ngn": 5000,  "tier_unlocks": ["tier2","tier3"],         "category": "Intermediate Python",  "badge": "📚"},
-    # ── Advanced tier (tier3) — ₦5,000 each
-    "python-dsa":                {"price_ngn": 5000,  "tier_unlocks": ["tier3"],                 "category": "Advanced Python",      "badge": "🧮"},
-    "numpy-mastery":             {"price_ngn": 5000,  "tier_unlocks": ["tier3"],                 "category": "Data Science",         "badge": "🔢"},
-    "pandas-mastery":            {"price_ngn": 5000,  "tier_unlocks": ["tier3"],                 "category": "Data Science",         "badge": "🐼"},
-    "data-science-python":       {"price_ngn": 5000,  "tier_unlocks": ["tier3"],                 "category": "Data Science",         "badge": "📊"},
-    "python-databases":          {"price_ngn": 5000,  "tier_unlocks": ["tier3"],                 "category": "Advanced Python",      "badge": "🗄️"},
-    "web-apis":                  {"price_ngn": 5000,  "tier_unlocks": ["tier3"],                 "category": "Advanced Python",      "badge": "🌐"},
-    "prompt-engineering":        {"price_ngn": 5000,  "tier_unlocks": ["tier3"],                 "category": "AI & Prompting",       "badge": "🤖"},
-    # ── Premium tier (tier4) — flagship
-    "ai-prompt-engineering":     {"price_ngn": 10000, "tier_unlocks": ["tier3"],                 "category": "AI & Prompting",       "badge": "🧠💬"},
-    "machine-learning":          {"price_ngn": 10000, "tier_unlocks": ["tier3"],                 "category": "Machine Learning",     "badge": "🧠"},
+    # ── Beginner (tier1) — ₦5,000 per course
+    "python-fundamentals":       {"price_ngn": 5000,  "tier_unlocks": ["tier1","tier2","tier3","tier4"], "category": "Python Basics",        "badge": "📝"},
+    "python-strings":            {"price_ngn": 5000,  "tier_unlocks": ["tier1","tier2","tier3","tier4"], "category": "Python Basics",        "badge": "🔤"},
+    "python-collections":        {"price_ngn": 5000,  "tier_unlocks": ["tier1","tier2","tier3","tier4"], "category": "Python Basics",        "badge": "📦"},
+    "python-control-flow":       {"price_ngn": 5000,  "tier_unlocks": ["tier1","tier2","tier3","tier4"], "category": "Python Basics",        "badge": "🔀"},
+    # ── Intermediate (tier2) — ₦15,000 per course
+    "python-functions-advanced": {"price_ngn": 15000, "tier_unlocks": ["tier2","tier3","tier4"],         "category": "Intermediate Python",  "badge": "⚙️"},
+    "python-oop":                {"price_ngn": 15000, "tier_unlocks": ["tier2","tier3","tier4"],         "category": "Intermediate Python",  "badge": "🏗️"},
+    "python-modules-stdlib":     {"price_ngn": 15000, "tier_unlocks": ["tier2","tier3","tier4"],         "category": "Intermediate Python",  "badge": "📚"},
+    # ── Advanced (tier3) — ₦30,000 per course
+    "python-dsa":                {"price_ngn": 30000, "tier_unlocks": ["tier3","tier4"],                 "category": "Advanced Python",      "badge": "🧮"},
+    "numpy-mastery":             {"price_ngn": 30000, "tier_unlocks": ["tier3","tier4"],                 "category": "Data Science",         "badge": "🔢"},
+    "pandas-mastery":            {"price_ngn": 30000, "tier_unlocks": ["tier3","tier4"],                 "category": "Data Science",         "badge": "🐼"},
+    "data-science-python":       {"price_ngn": 30000, "tier_unlocks": ["tier3","tier4"],                 "category": "Data Science",         "badge": "📊"},
+    "python-databases":          {"price_ngn": 30000, "tier_unlocks": ["tier3","tier4"],                 "category": "Advanced Python",      "badge": "🗄️"},
+    "web-apis":                  {"price_ngn": 30000, "tier_unlocks": ["tier3","tier4"],                 "category": "Advanced Python",      "badge": "🌐"},
+    "prompt-engineering":        {"price_ngn": 30000, "tier_unlocks": ["tier3","tier4"],                 "category": "AI & Prompting",       "badge": "🤖"},
+    # ── Premium (tier4) — ₦50,000 per course
+    "ai-prompt-engineering":     {"price_ngn": 50000, "tier_unlocks": ["tier4"],                         "category": "AI & Prompting",       "badge": "🧠💬"},
+    "machine-learning":          {"price_ngn": 50000, "tier_unlocks": ["tier4"],                         "category": "Machine Learning",     "badge": "🧠"},
 }
 
 # ---------------------------------------------------------------------------
@@ -542,10 +542,10 @@ PROMPT_PLANS: dict[str, dict] = {
 # ---------------------------------------------------------------------------
 
 TIER_PLANS: dict[str, dict] = {
-    # Bundle prices = Certificate examination fees for alignment
+    # Bundle prices = Certificate examination fees (perfectly aligned)
     "tier1": {
         "name":         "Beginner Bundle",
-        "price_ngn":    5000,
+        "price_ngn":    30000,   # = Basic Python Certificate (₦30,000)
         "description":  "Unlock ALL 4 Beginner courses: Fundamentals, Strings, Collections, Control Flow.",
         "eligible_courses": ["python-fundamentals","python-strings","python-collections","python-control-flow"],
         "unlocks_count": 4,
@@ -553,7 +553,7 @@ TIER_PLANS: dict[str, dict] = {
     },
     "tier2": {
         "name":         "Intermediate Bundle",
-        "price_ngn":    15000,
+        "price_ngn":    60000,   # = Advanced Python Certificate (₦60,000)
         "description":  "Unlock ALL 7 Beginner + Intermediate courses.",
         "eligible_courses": ["python-fundamentals","python-strings","python-collections","python-control-flow",
                              "python-functions-advanced","python-oop","python-modules-stdlib"],
@@ -562,8 +562,8 @@ TIER_PLANS: dict[str, dict] = {
     },
     "tier3": {
         "name":         "Advanced Bundle",
-        "price_ngn":    30000,
-        "description":  "Unlock ALL beginner + intermediate + advanced courses (14 total).",
+        "price_ngn":    100000,  # = Executive Masters Certificate (₦100,000)
+        "description":  "Unlock ALL 14 courses — Beginner through Advanced including DSA, Data Science, Web APIs.",
         "eligible_courses": [k for k in list(COURSE_CATALOG.keys())
                              if COURSE_CATALOG[k]["category"] not in ("AI & Prompting","Machine Learning")
                              or k in ("prompt-engineering",)],
@@ -572,7 +572,7 @@ TIER_PLANS: dict[str, dict] = {
     },
     "tier4": {
         "name":         "Premium Bundle",
-        "price_ngn":    50000,
+        "price_ngn":    100000,  # = Executive Masters Certificate (₦100,000) — all 16 courses
         "description":  "Unlock ALL 16 courses including Machine Learning and AI Engineering.",
         "eligible_courses": list(COURSE_CATALOG.keys()),
         "unlocks_count": 16,
