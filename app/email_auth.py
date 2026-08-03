@@ -422,11 +422,8 @@ def confirm_email_token(token: str) -> tuple[bool, str]:
     if not user_data:
         return False, "No pending registration found for this email."
 
-    _confirmed[email]               = user_data
-    _by_id[user_data["learner_id"]]  = user_data
-    del _pending[email]
-
-    # Persist to SQLite
+    # Persist to SQLite FIRST — before touching in-memory state.
+    # This ensures no data loss if the process crashes mid-confirmation.
     try:
         from app.db import save_email_account
         save_email_account(
@@ -439,6 +436,11 @@ def confirm_email_token(token: str) -> tuple[bool, str]:
         )
     except Exception as exc:
         logger.warning("SQLite save failed for confirmed user: %s", exc)
+
+    # Now promote to confirmed in memory
+    _confirmed[email]               = user_data
+    _by_id[user_data["learner_id"]]  = user_data
+    del _pending[email]
 
     # Apply access code tier AFTER confirmation — prevents pre-confirmation abuse
     access_code = user_data.get("access_code", "")

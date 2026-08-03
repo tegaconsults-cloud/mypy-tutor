@@ -146,7 +146,7 @@ def _backfill_sqlite(learner_id: str, profile: LearnerProfile) -> None:
 
 
 def save_profile(profile: LearnerProfile) -> None:
-    """Save to memory cache + SQLite (sync). Supabase sync is a background fire-and-forget."""
+    """Save to memory cache + SQLite (sync). Supabase sync is debounced fire-and-forget."""
     _store[profile.learner_id] = profile
     tp_dict = {
         k: v.model_dump() for k, v in profile.topic_progress.items()
@@ -167,16 +167,37 @@ def save_profile(profile: LearnerProfile) -> None:
         "display_name":       profile.display_name,
     }
     save_profile_db(profile.learner_id, profile_data)
-    # Supabase sync — non-daemon thread so it finishes before process exits on SIGTERM
+    # Supabase sync — debounced: cancel any pending sync for this learner and
+    # schedule a fresh one. This collapses rapid successive saves (e.g. many
+    # chat messages in quick succession) into a single Supabase write, preventing
+    # concurrent upsert races and reducing Supabase API traffic.
     try:
         from app.supabase_client import sb_sync_progress
         import threading
-        threading.Thread(
-            target=sb_sync_progress,
-            args=(profile.learner_id, profile_data),
-            daemon=False,   # non-daemon: process waits for this on shutdown
-            name=f"sb-sync-{profile.learner_id[:12]}",
-        ).start()
+
+        _pending_syncs: dict = getattr(save_profile, "_pending_syncs", {})
+        if not hasattr(save_profile, "_pending_syncs"):
+            save_profile._pending_syncs = _pending_syncs  # type: ignore[attr-defined]
+
+        lid = profile.learner_id
+        # Cancel previous pending timer if still waiting
+        existing = _pending_syncs.get(lid)
+        if existing and existing.is_alive():
+            existing.cancel()
+
+        def _do_sync(lid: str, data: dict) -> None:
+            _pending_syncs.pop(lid, None)
+            sb_sync_progress(lid, data)
+
+        t = threading.Timer(
+            2.0,  # wait 2 s before actually syncing — collapses burst writes
+            _do_sync,
+            args=(lid, profile_data),
+        )
+        t.daemon = False  # non-daemon: survives idle — finishes before SIGTERM
+        t.name = f"sb-sync-{lid[:12]}"
+        t.start()
+        _pending_syncs[lid] = t
     except Exception:
         pass
 

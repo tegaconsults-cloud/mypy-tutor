@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { X, Eye, EyeOff, Mail, Lock, User, KeyRound, ArrowLeft } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { signIn, signUp, forgotPassword, resendConfirmation, resetPassword, API_BASE } from '../api'
-import Logo from './Logo'
 
 interface Props { defaultTab?: 'signin' | 'signup'; onClose: () => void }
 
@@ -23,6 +22,20 @@ export default function AuthModal({ defaultTab = 'signin', onClose }: Props) {
   const [suPass,  setSuPass]  = useState('')
   const [suCode,  setSuCode]  = useState('')
   const [suShow,  setSuShow]  = useState(false)
+
+  // Auto-fill referral/access code if user arrived via a referral deep-link
+  useEffect(() => {
+    const stored = localStorage.getItem('mpt_referral_code')
+    if (stored && !suCode) {
+      setSuCode(stored)
+      // Switch to signup tab so the user sees the filled code immediately
+      if (tab === 'signin') setTab('signup')
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Clear stored referral code once the user actually submits signup
+  // so it doesn't re-fill on future signups
+  const clearReferralCode = () => localStorage.removeItem('mpt_referral_code')
 
   const [fgEmail, setFgEmail] = useState('')
 
@@ -64,6 +77,8 @@ export default function AuthModal({ defaultTab = 'signin', onClose }: Props) {
     setLoading(true)
     try {
       const data = await signUp(suName, suEmail, suPass, suCode)
+      // Referral code was consumed — clear it so it doesn't re-fill on future signups
+      clearReferralCode()
       const msg: string = data.message || ''
       const autoConfirmed = msg.toLowerCase().includes('welcome') || msg.toLowerCase().includes('confirmed')
       if (autoConfirmed) {
@@ -104,19 +119,27 @@ export default function AuthModal({ defaultTab = 'signin', onClose }: Props) {
   }
 
   const handleResend = async () => {
-    // Use the email from whichever tab is active
-    const email = tab === 'signin' ? siEmail : suEmail
+    // Pick the email from whichever tab is active
+    const email    = tab === 'signin' ? siEmail : suEmail
+    // Pick the matching password — we only auto-sign-in if the user already
+    // has their password typed in the active tab's field.
+    const password = tab === 'signin' ? siPass : suPass
+
     if (!email) { setError('Enter your email first.'); return }
     const data = await resendConfirmation(email)
     if (data.auto_confirmed) {
+      if (!password) {
+        // No password in the current field — just tell them to sign in manually
+        setSuccess('✅ Email confirmed! Please sign in below.')
+        setTab('signin')
+        return
+      }
       try {
-        // Use the correct password for the active tab
-        const password = tab === 'signin' ? siPass : suPass
-        if (!password) { setSuccess('✅ Confirmed! Please sign in.'); setTab('signin'); return }
         const ld = await signIn(email, password)
         setUser(ld); onClose()
       } catch {
-        setSuccess('✅ Confirmed! Sign in below.'); setTab('signin')
+        setSuccess('✅ Confirmed! Sign in below.')
+        setTab('signin')
       }
     } else {
       setSuccess(data.message || 'Resent!')

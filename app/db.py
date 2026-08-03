@@ -266,6 +266,29 @@ def init_db() -> None:
             PRIMARY KEY (key, date_str)
         );
 
+        -- Feedback ratings (thumbs up/down per message)
+        CREATE TABLE IF NOT EXISTS feedback_ratings (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            learner_id TEXT NOT NULL,
+            rating     TEXT NOT NULL,
+            intent     TEXT DEFAULT '',
+            topic      TEXT DEFAULT '',
+            comment    TEXT DEFAULT '',
+            ts         REAL DEFAULT (unixepoch())
+        );
+
+        -- Full survey responses
+        CREATE TABLE IF NOT EXISTS feedback_surveys (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            learner_id      TEXT NOT NULL,
+            overall         INTEGER NOT NULL,
+            clarity         INTEGER NOT NULL,
+            helpfulness     INTEGER NOT NULL,
+            suggestion      TEXT DEFAULT '',
+            would_recommend INTEGER DEFAULT 1,
+            ts              REAL DEFAULT (unixepoch())
+        );
+
         -- Referral withdrawal requests
         CREATE TABLE IF NOT EXISTS referral_withdrawals (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -305,6 +328,10 @@ def init_db() -> None:
             ON course_purchases (learner_id);
         CREATE INDEX IF NOT EXISTS idx_daily_prompts_key
             ON daily_prompt_counts (key, date_str);
+        CREATE INDEX IF NOT EXISTS idx_feedback_ratings_learner
+            ON feedback_ratings (learner_id, ts);
+        CREATE INDEX IF NOT EXISTS idx_feedback_surveys_learner
+            ON feedback_surveys (learner_id, ts);
         """)
 
         # ── Schema migrations — add new columns to existing tables ──────────
