@@ -1227,19 +1227,15 @@ async def paystack_webhook(request: Request) -> dict:
             tier = _PAYSTACK_PLAN_TIER.get(plan_meta)
 
             if not tier:
-                # Infer tier from amount using new bundle prices
+                # Infer tier from amount using canonical bundle prices:
+                # Elite ₦35,000 | Intermediate ₦15,000 | Beginner ₦8,000
+                # Certificate fees are handled above (basic-cert/adv-cert/exec-cert)
                 if amount_ngn >= 30000:
-                    tier = "tier3"
-                elif amount_ngn >= 13000:
-                    tier = "tier2"
-                elif amount_ngn >= 7000:
-                    tier = "tier1"
-                elif amount_ngn >= 18000:  # legacy threshold
-                    tier = "tier3"
-                elif amount_ngn >= 8000:
-                    tier = "tier2"
-                elif amount_ngn >= 4000:
-                    tier = "tier1"
+                    tier = "tier3"   # Elite Bundle ₦35,000
+                elif amount_ngn >= 12000:
+                    tier = "tier2"   # Intermediate Bundle ₦15,000
+                elif amount_ngn >= 6000:
+                    tier = "tier1"   # Beginner Bundle ₦8,000
 
             # ── TYPE 3: Prompt plan (parallel check) ─────────────────────
             prompt_plan = _PAYSTACK_PROMPT_PLAN.get(plan_meta)
@@ -1267,9 +1263,9 @@ async def paystack_webhook(request: Request) -> dict:
                 apply_tier_upgrade(learner_id, tier)     # in-memory cache sync
 
                 tier_labels = {
-                    "tier1": "Beginner Bundle (₦8,000)",
-                    "tier2": "Intermediate Bundle (₦15,000)",
-                    "tier3": "Elite Bundle (₦35,000)",
+                    "tier1": "Beginner Bundle (₦8,000 — 4 courses)",
+                    "tier2": "Intermediate Bundle (₦15,000 — 7 courses)",
+                    "tier3": "Elite Bundle (₦35,000 — all 16 courses)",
                 }
                 plan_label = tier_labels.get(tier, tier)
                 import secrets as _sec
@@ -1972,7 +1968,8 @@ async def admin_files_list(request: Request) -> dict:
 @app.post("/admin/email/test")
 async def admin_test_email(request: Request) -> dict:
     """
-    Send a test email. Tests Resend first, then falls back to SMTP.
+    Test email delivery. Tries Resend then SMTP, each with a hard 12s timeout.
+    Returns per-provider results so you can see exactly which one failed and why.
     POST body: { "to": "recipient@email.com" }
     """
     _require_admin(request)
@@ -1984,53 +1981,172 @@ async def admin_test_email(request: Request) -> dict:
     resend_key = _os.getenv("RESEND_API_KEY", "")
     email_user = _os.getenv("EMAIL_USER", "")
     email_pass = _os.getenv("EMAIL_PASS", "")
+    email_from = _os.getenv("EMAIL_FROM", "")
     email_host = _os.getenv("EMAIL_HOST", "smtp.gmail.com")
     email_port = _os.getenv("EMAIL_PORT", "587")
-    email_from = _os.getenv("EMAIL_FROM", "")
+    app_url    = _os.getenv("APP_URL", "not set")
+
+    # ── Email_FROM diagnostic ───────────────────────────────────────────────
+    # Common misconfiguration: EMAIL_FROM="MyPy Tutor" (no angle-bracket address)
+    from_has_address = "<" in email_from and "@" in email_from
+    from_warning = "" if from_has_address else (
+        "EMAIL_FROM is missing the email address. "
+        "Set it to: MyPy Tutor <noreply@mypytutor.com.ng>"
+    )
 
     config_status = {
         "RESEND_API_KEY": f"✅ set ({len(resend_key)} chars)" if resend_key else "❌ NOT SET",
+        "EMAIL_FROM":     email_from if email_from else "❌ NOT SET",
+        "EMAIL_FROM_OK":  "✅ valid format" if from_has_address else "⚠️ " + from_warning,
         "EMAIL_USER":     email_user if email_user else "❌ NOT SET",
         "EMAIL_PASS":     f"✅ set ({len(email_pass)} chars)" if email_pass else "❌ NOT SET",
-        "EMAIL_FROM":     email_from if email_from else "❌ NOT SET",
         "EMAIL_HOST":     email_host,
         "EMAIL_PORT":     email_port,
-        "APP_URL":        _os.getenv("APP_URL", "not set"),
+        "APP_URL":        app_url,
         "provider_chain": "Resend → SMTP fallback",
     }
 
-    # Use email_service for the test
-    import queue as _q, threading
-    result_q: _q.Queue = _q.Queue()
+    import queue as _q, threading as _thr
 
-    def _try_send():
-        from app.services.email_service import _dispatch, _wrap_template
-        html = _wrap_template(
-            f"""<h2 style="color:#0D47A1;">🧪 Email Delivery Test</h2>
-            <p style="color:#16A34A;font-weight:700;font-size:1.05rem;">✅ Email delivery is working!</p>
-            <p style="color:#475569;">
-              Provider: {'Resend' if resend_key else 'SMTP fallback'}<br/>
-              Sent to: {to}
-            </p>""",
-            preview_text="MyPy Tutor email test — delivery is working!"
-        )
-        txt = f"MyPy Tutor email test — delivery working.\nProvider: {'Resend' if resend_key else 'SMTP'}"
-        ok = _dispatch(to, "MyPy Tutor — Email Delivery Test ✅", html, txt, "test")
-        result_q.put(ok)
+    # Build test email HTML/text once
+    test_html = (
+        "<h2 style='color:#0D47A1;margin:0 0 12px;'>&#129514; Email Delivery Test</h2>"
+        "<p style='color:#16A34A;font-weight:700;font-size:1.05rem;'>&#9989; Email delivery is working!</p>"
+        "<p style='color:#475569;margin-top:8px;'>Sent to: " + to + "</p>"
+    )
+    try:
+        from app.services.email_service import _shell
+        test_html_full = _shell(test_html, "MyPy Tutor - email delivery is working!")
+    except Exception:
+        test_html_full = "<html><body>" + test_html + "</body></html>"
+    test_txt = "MyPy Tutor email delivery test - sent to: " + to
 
-    t = threading.Thread(target=_try_send, daemon=False)
-    t.start()
-    t.join(timeout=30)
+    results = {}
 
-    if not result_q.empty():
-        ok = result_q.get()
-        if ok:
-            return {"ok": True, "sent": True, "to": to, "config": config_status}
-        return {"ok": False, "sent": False, "to": to, "config": config_status,
-                "error": "All providers failed. Check RESEND_API_KEY or EMAIL_USER/PASS in Render env vars."}
+    # ── 1. Test Resend (12s hard timeout, NO retry) ─────────────────────────
+    if resend_key:
+        resend_q: _q.Queue = _q.Queue()
+        def _try_resend():
+            try:
+                import httpx
+                r = httpx.post(
+                    "https://api.resend.com/emails",
+                    headers={"Authorization": "Bearer " + resend_key,
+                             "Content-Type": "application/json"},
+                    json={
+                        "from":     email_from if from_has_address else "MyPy Tutor <onboarding@resend.dev>",
+                        "to":       [to],
+                        "subject":  "MyPy Tutor — Email Delivery Test",
+                        "html":     test_html_full,
+                        "text":     test_txt,
+                    },
+                    timeout=10,
+                )
+                if r.status_code in (200, 201):
+                    resend_q.put((True, ""))
+                else:
+                    resend_q.put((False, f"HTTP {r.status_code}: {r.text[:300]}"))
+            except Exception as exc:
+                resend_q.put((False, str(exc)[:300]))
 
-    return {"ok": False, "sent": False, "to": to, "config": config_status,
-            "error": "Timed out after 30s."}
+        rt = _thr.Thread(target=_try_resend, daemon=True)
+        rt.start()
+        rt.join(timeout=12)
+        if not resend_q.empty():
+            ok_r, err_r = resend_q.get()
+            results["resend"] = {"ok": ok_r, "error": err_r if not ok_r else ""}
+        else:
+            results["resend"] = {"ok": False, "error": "Timed out after 12s"}
+    else:
+        results["resend"] = {"ok": False, "error": "RESEND_API_KEY not set"}
+
+    # If Resend succeeded, return immediately — no need to test SMTP
+    if results["resend"]["ok"]:
+        return {
+            "ok": True, "sent": True, "provider_used": "resend",
+            "to": to, "config": config_status, "results": results,
+        }
+
+    # ── 2. Test SMTP fallback (12s hard timeout) ────────────────────────────
+    smtp_q: _q.Queue = _q.Queue()
+    def _try_smtp():
+        if not email_user or not email_pass:
+            smtp_q.put((False, "EMAIL_USER or EMAIL_PASS not set"))
+            return
+        import smtplib
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+        # Auto-repair EMAIL_FROM if malformed
+        ef = email_from.strip()
+        if not from_has_address:
+            ef = f"MyPy Tutor <{email_user}>"
+        try:
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = "MyPy Tutor — Email Delivery Test"
+            msg["From"]    = ef
+            msg["To"]      = to
+            msg["Reply-To"] = email_user
+            msg.attach(MIMEText(test_txt, "plain", "utf-8"))
+            msg.attach(MIMEText(test_html_full, "html", "utf-8"))
+            with smtplib.SMTP(email_host, int(email_port), timeout=10) as server:
+                server.ehlo(); server.starttls(); server.ehlo()
+                server.login(email_user, email_pass)
+                server.sendmail(email_user, [to], msg.as_string())
+            smtp_q.put((True, ""))
+        except smtplib.SMTPAuthenticationError as exc:
+            smtp_q.put((False,
+                f"AUTH FAILED: {exc} — "
+                "EMAIL_PASS must be a Gmail App Password (16 chars). "
+                "Create at myaccount.google.com/apppasswords"))
+        except smtplib.SMTPException as exc:
+            smtp_q.put((False, f"SMTP error: {exc}"))
+        except Exception as exc:
+            smtp_q.put((False, f"{type(exc).__name__}: {exc}"))
+
+    st = _thr.Thread(target=_try_smtp, daemon=True)
+    st.start()
+    st.join(timeout=12)
+    if not smtp_q.empty():
+        ok_s, err_s = smtp_q.get()
+        results["smtp"] = {"ok": ok_s, "error": err_s if not ok_s else ""}
+    else:
+        results["smtp"] = {"ok": False, "error": "Timed out after 12s — check EMAIL_HOST/PORT"}
+
+    if results["smtp"]["ok"]:
+        return {
+            "ok": True, "sent": True, "provider_used": "smtp",
+            "to": to, "config": config_status, "results": results,
+        }
+
+    # ── Both failed — return detailed per-provider errors ───────────────────
+    # Build a human-readable diagnosis
+    resend_err = results["resend"]["error"]
+    smtp_err   = results["smtp"]["error"]
+
+    diagnosis = []
+    if "domain" in resend_err.lower() or "not verified" in resend_err.lower():
+        diagnosis.append("Resend: your sending domain is not verified. "
+                         "Go to resend.com/domains and add mypytutor.com.ng")
+    elif "api" in resend_err.lower() or "401" in resend_err or "403" in resend_err:
+        diagnosis.append("Resend: API key is invalid or revoked. "
+                         "Re-copy it from resend.com/api-keys")
+    elif resend_err:
+        diagnosis.append("Resend: " + resend_err)
+
+    if "auth failed" in smtp_err.lower():
+        diagnosis.append("SMTP: Gmail App Password is wrong — re-create at "
+                         "myaccount.google.com/apppasswords")
+    elif smtp_err:
+        diagnosis.append("SMTP: " + smtp_err)
+
+    if not diagnosis:
+        diagnosis = ["Both providers failed. Check Render logs for more detail."]
+
+    return {
+        "ok": False, "sent": False,
+        "to": to, "config": config_status, "results": results,
+        "error": " | ".join(diagnosis),
+    }
 
 
 # ---------------------------------------------------------------------------

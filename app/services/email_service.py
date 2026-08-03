@@ -344,12 +344,21 @@ def send_payment_receipt_email(name: str, email: str, amount: float,
     from datetime import datetime as _dt
     date_str = _dt.utcnow().strftime("%d %B %Y")
     plan_labels = {
-        "tier1": "Pro Learner - NGN 5,000/month",
-        "tier2": "Career Builder - NGN 10,000/month",
-        "tier3": "Elite - NGN 20,000/month",
-        "basic-cert": "Basic Certificate - NGN 30,000",
-        "adv-cert":   "Advanced Certificate - NGN 60,000",
-        "exec-cert":  "Executive Certificate - NGN 100,000",
+        # Course bundles — one-time purchases
+        "tier1":              "Beginner Bundle (4 courses) — NGN 8,000",
+        "tier2":              "Intermediate Bundle (7 courses) — NGN 15,000",
+        "tier3":              "Elite Bundle (all 16 courses) — NGN 35,000",
+        "beginner bundle":    "Beginner Bundle (4 courses) — NGN 8,000",
+        "intermediate bundle":"Intermediate Bundle (7 courses) — NGN 15,000",
+        "elite bundle":       "Elite Bundle (all 16 courses) — NGN 35,000",
+        # Certificate fees — standalone exam/assessment
+        "basic-cert":         "Basic Python Certificate — NGN 30,000",
+        "adv-cert":           "Advanced Python Certificate — NGN 60,000",
+        "exec-cert":          "Executive Masters Certificate — NGN 100,000",
+        # Prompt plans — monthly AI access
+        "prompt-starter":     "Prompt Starter (50/day) — NGN 2,000/month",
+        "prompt-pro":         "Prompt Pro (200/day) — NGN 5,000/month",
+        "prompt-unlimited":   "Prompt Unlimited (no cap) — NGN 10,000/month",
     }
     plan_label = plan_labels.get(plan, plan)
     receipt = (
