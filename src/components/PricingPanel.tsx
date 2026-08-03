@@ -1,43 +1,67 @@
 import React, { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Check, Zap, Crown, Star, CreditCard, Building2, Copy } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
 import CoursesPanel from './CoursesPanel'
 
 const PAYSTACK = 'https://paystack.shop/pay/vt_re4d3h52'
 
+/**
+ * Build a Paystack payment URL with metadata so the payment page shows
+ * what the user is paying for. Paystack's payment page reads `amount`,
+ * `email`, and custom fields from the URL query string.
+ */
+function paystackUrl(plan: string, amount: number, email = ''): string {
+  const params = new URLSearchParams({
+    plan,
+    amount: String(amount * 100),  // Paystack expects kobo (amount × 100)
+    ...(email ? { email } : {}),
+  })
+  return `${PAYSTACK}?${params.toString()}`
+}
+
 const BUNDLES = [
   {
-    tier: 'tier-1', badge: '🟢 Beginner Bundle', name: 'Python Foundation', price: '₦10,000',
-    period: 'one-time', desc: 'All 4 beginner courses bundled.',
-    features: ['43 structured lessons + exercises','Per-lesson quizzes & XP','Basic Certificate eligibility','Save ₦10,000 vs individual (₦5,000 each)'],
-    cta: 'Buy Beginner Bundle', link: `${PAYSTACK}?plan=beginner+bundle&tier=tier1&amount=10000`,
+    tier: 'tier1', badge: '🟢 Beginner', name: 'Beginner Bundle', price: '₦5,000', amount: 5000,
+    period: 'one-time', desc: 'All 4 Beginner courses — Fundamentals, Strings, Collections, Control Flow.',
+    features: ['4 structured courses','43 lessons + exercises','Quizzes & XP','Basic Certificate eligibility'],
+    cta: 'Buy Beginner Bundle', plan: 'beginner bundle',
     gradient: 'linear-gradient(135deg,rgba(13,71,161,0.18),rgba(6,13,28,0.95))', border: 'rgba(13,71,161,0.45)', accent: '#93c5fd',
   },
   {
-    tier: 'tier-2', badge: '⚡ Intermediate Bundle', name: '7 Courses', price: '₦20,000', popular: true,
-    period: 'one-time', desc: 'Beginner + Functions, OOP, Standard Library.',
-    features: ['86 structured lessons','OOP, decorators, generators','Advanced Certificate eligibility','Save ₦18,000 vs individual'],
-    cta: 'Buy Intermediate Bundle', link: `${PAYSTACK}?plan=intermediate+bundle&tier=tier2&amount=20000`,
+    tier: 'tier2', badge: '⚡ Intermediate', name: 'Intermediate Bundle', price: '₦15,000', amount: 15000, popular: true,
+    period: 'one-time', desc: 'All 7 Beginner + Intermediate courses.',
+    features: ['7 courses','86 structured lessons','OOP, decorators, generators','Advanced Certificate eligibility'],
+    cta: 'Buy Intermediate Bundle', plan: 'intermediate bundle',
     gradient: 'linear-gradient(135deg,rgba(224,163,0,0.15),rgba(6,13,28,0.95))', border: 'rgba(224,163,0,0.4)', accent: '#E0A300',
   },
   {
-    tier: 'tier-3', badge: '👑 Elite Bundle', name: 'ALL 16 Courses', price: '₦45,000',
-    period: 'one-time', desc: 'Every course: ML, AI, DSA, Data Science.',
-    features: ['Machine Learning (30 lessons)','AI & Prompt Engineering','NumPy, Pandas, Data Science','Executive Masters Certificate','Save ₦62,000 vs individual'],
-    cta: 'Buy Elite Bundle', link: `${PAYSTACK}?plan=elite+bundle&tier=tier3&amount=45000`,
+    tier: 'tier3', badge: '🚀 Advanced', name: 'Advanced Bundle', price: '₦30,000', amount: 30000,
+    period: 'one-time', desc: '14 courses — every course up to AI Prompt Engineering.',
+    features: ['14 courses','DSA, NumPy, Pandas, Data Science','Web APIs, Databases','Executive Masters eligibility'],
+    cta: 'Buy Advanced Bundle', plan: 'advanced bundle',
+    gradient: 'linear-gradient(135deg,rgba(16,185,129,0.15),rgba(6,13,28,0.95))', border: 'rgba(16,185,129,0.4)', accent: '#34d399',
+  },
+  {
+    tier: 'tier4', badge: '👑 Premium', name: 'Premium Bundle', price: '₦50,000', amount: 50000,
+    period: 'one-time', desc: 'ALL 16 courses including Machine Learning and AI Engineering.',
+    features: ['ALL 16 courses','Machine Learning (30 lessons)','AI & Prompt Engineering (44 lessons)','Executive Masters Certificate'],
+    cta: 'Buy Premium Bundle', plan: 'premium bundle',
     gradient: 'linear-gradient(135deg,rgba(139,92,246,0.18),rgba(6,13,28,0.95))', border: 'rgba(139,92,246,0.4)', accent: '#c4b5fd',
   },
 ]
 
 const PROMPTS = [
-  { badge: 'Starter', name: '50 Prompts / Day', price: '₦2,000', period: '/month', desc: 'Perfect for regular learners.', link: `${PAYSTACK}?plan=prompt+starter&amount=2000`, accent: '#93c5fd', border: 'rgba(13,71,161,0.3)', bg: 'rgba(13,71,161,0.08)' },
-  { badge: 'Pro', name: '200 Prompts / Day', price: '₦5,000', period: '/month', desc: 'For serious learners.', popular: true, link: `${PAYSTACK}?plan=prompt+pro&amount=5000`, accent: '#E0A300', border: 'rgba(224,163,0,0.35)', bg: 'rgba(224,163,0,0.08)' },
-  { badge: 'Unlimited', name: 'No Daily Cap', price: '₦10,000', period: '/month', desc: '24/7 access, no restrictions.', link: `${PAYSTACK}?plan=prompt+unlimited&amount=10000`, accent: '#c4b5fd', border: 'rgba(139,92,246,0.35)', bg: 'rgba(139,92,246,0.08)' },
+  { badge: 'Starter', name: '50 Prompts / Day', price: '₦2,000', amount: 2000, period: '/month', desc: 'Perfect for regular learners.', plan: 'prompt starter', accent: '#93c5fd', border: 'rgba(13,71,161,0.3)', bg: 'rgba(13,71,161,0.08)' },
+  { badge: 'Pro', name: '200 Prompts / Day', price: '₦5,000', amount: 5000, period: '/month', desc: 'For serious learners.', popular: true, plan: 'prompt pro', accent: '#E0A300', border: 'rgba(224,163,0,0.35)', bg: 'rgba(224,163,0,0.08)' },
+  { badge: 'Unlimited', name: 'No Daily Cap', price: '₦10,000', amount: 10000, period: '/month', desc: '24/7 access, no restrictions.', plan: 'prompt unlimited', accent: '#c4b5fd', border: 'rgba(139,92,246,0.35)', bg: 'rgba(139,92,246,0.08)' },
 ]
 
 type Tab = 'catalog' | 'bundles' | 'prompts'
 
 export default function PricingPanel() {
+  const { user } = useAuth()
+  const userEmail = user?.email || ''
   const [tab, setTab]     = useState<Tab>('bundles')
   const [copied, setCopied] = useState(false)
 
@@ -97,7 +121,7 @@ export default function PricingPanel() {
                     </li>
                   ))}
                 </ul>
-                <a href={b.link} target="_blank" rel="noopener"
+                <a href={paystackUrl(b.plan, b.amount, userEmail)} target="_blank" rel="noopener"
                   className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl text-sm font-bold text-white transition-all hover:opacity-90"
                   style={{ background: 'linear-gradient(135deg,#0D47A1,#1565E8)' }}>
                   <CreditCard size={14} /> {b.cta} — {b.price}
