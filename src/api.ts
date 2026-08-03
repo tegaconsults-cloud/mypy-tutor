@@ -242,3 +242,23 @@ export async function newConversation(learnerId: string) {
 export async function ping() {
   try { await fetch(url('/health')) } catch (_) {}
 }
+
+// ── Enquiry / Support ─────────────────────────────────────────────────────
+
+export async function submitEnquiry(payload: {
+  name: string
+  email: string
+  category: string
+  subject: string
+  message: string
+  learner_id: string
+}) {
+  const r = await fetch(url('/enquiry'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  const data = await r.json()
+  if (!r.ok) throw new Error(data.detail || data.error || 'Failed to send enquiry')
+  return data
+}
