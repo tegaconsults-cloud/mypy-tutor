@@ -132,7 +132,7 @@ def _shell(body_html: str, preview: str = "") -> str:
         "<span style='font-size:1.4rem;font-weight:900;color:#fff;'> TUTOR</span>"
         "</span></div></td></tr></table>"
         "<p style='color:rgba(255,255,255,0.65);font-size:0.72rem;margin:8px 0 0;"
-        "letter-spacing:0.1em;text-transform:uppercase;'>Learn Python. Build the Future.</p>"
+        "letter-spacing:0.1em;text-transform:uppercase;'>Africa&#39;s Best AI, Python &amp; Machine Learning Tutor</p>"
         "</td></tr>"
         # body
         "<tr><td style='background:#fff;padding:36px 40px;"
@@ -147,7 +147,7 @@ def _shell(body_html: str, preview: str = "") -> str:
         "<p style='color:rgba(255,255,255,0.65);font-size:0.72rem;margin:0 0 4px;'>"
         "Teamsamikoko Global Academy &middot; Reg No: 3508656</p>"
         "<p style='color:rgba(255,255,255,0.5);font-size:0.68rem;font-style:italic;margin:0 0 8px;'>"
-        "&ldquo;Learn Smarter. Code Better. Build the Future.&rdquo;</p>"
+        "&ldquo;Africa's Best AI, Python &amp; Machine Learning Tutor&rdquo;</p>"
         "<a href='" + app + "' style='color:#90c4ff;font-size:0.72rem;text-decoration:none;'>"
         "mypytutor.com.ng</a> &middot; "
         "<a href='mailto:" + supp + "' style='color:#90c4ff;font-size:0.72rem;text-decoration:none;'>"

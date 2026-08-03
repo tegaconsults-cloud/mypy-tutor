@@ -1502,15 +1502,14 @@ async def paystack_webhook(request: Request) -> dict:
 
             if not tier:
                 # Infer tier from amount using canonical bundle prices:
-                # Premium ₦50,000 | Advanced ₦30,000 | Intermediate ₦15,000 | Beginner ₦5,000
-                if amount_ngn >= 45000:
-                    tier = "tier4"   # Premium Bundle ₦50,000
-                elif amount_ngn >= 22000:
-                    tier = "tier3"   # Advanced Bundle ₦30,000
-                elif amount_ngn >= 10000:
-                    tier = "tier2"   # Intermediate Bundle ₦15,000
-                elif amount_ngn >= 3000:
-                    tier = "tier1"   # Beginner Bundle ₦5,000
+                # Premium/Advanced ₦100,000 | Intermediate ₦60,000 | Beginner ₦30,000
+                # Certificate fees: exec-cert ₦100k | adv-cert ₦60k | basic-cert ₦30k
+                if amount_ngn >= 90000:
+                    tier = "tier4"   # Premium Bundle ₦100,000 (also Executive Masters cert)
+                elif amount_ngn >= 50000:
+                    tier = "tier2"   # Intermediate Bundle ₦60,000 (also Advanced cert)
+                elif amount_ngn >= 25000:
+                    tier = "tier1"   # Beginner Bundle ₦30,000 (also Basic cert)
 
             # ── TYPE 3: Prompt plan (parallel check) ─────────────────────
             prompt_plan = _PAYSTACK_PROMPT_PLAN.get(plan_meta)

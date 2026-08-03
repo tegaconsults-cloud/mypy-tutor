@@ -63,7 +63,7 @@ export default function ReferralModal({ onClose }: Props) {
   const code     = data?.code || '...'
   // Build a deep-link that auto-fills the referral code at signup
   const referralLink = `${appUrl}/?ref=${code}`
-  const shareMsg = `Join MyPy Tutor — Africa's best AI Python Tutor! 🐍\nUse my referral link to get 5% off your first payment.\n👉 ${referralLink}`
+  const shareMsg = `Join MyPy Tutor - Africa's Best AI, Python and Machine Learning Tutor!\nUse my referral link to get 5% off your first payment.\n👉 ${referralLink}`
 
   const copyMsg = () => {
     navigator.clipboard.writeText(shareMsg)
