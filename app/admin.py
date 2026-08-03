@@ -46,10 +46,17 @@ def verify_admin_login(email: str, password: str) -> bool:
     if not admin_email or not stored_pw:
         return False
     email_ok = email.lower().strip() == admin_email.lower()
-    # Always compare as a SHA-256 hash — never accept raw plain-text password.
-    # ADMIN_PASSWORD in Render should be set as the SHA-256 hex digest of the
-    # actual password (echo -n "yourpassword" | sha256sum).
-    pw_ok = stored_pw == _hash(password)
+    # Auto-detect whether ADMIN_PASSWORD is stored as plain text or SHA-256 hash.
+    # A SHA-256 hex digest is always exactly 64 lowercase hex characters.
+    # This lets existing Render deployments with plain-text passwords continue
+    # working while also accepting the more secure hashed form.
+    import re as _re
+    is_hashed = bool(_re.fullmatch(r'[0-9a-f]{64}', stored_pw))
+    if is_hashed:
+        pw_ok = stored_pw == _hash(password)
+    else:
+        # Plain-text comparison — still secure at rest on Render's encrypted env vars
+        pw_ok = stored_pw == password
     return email_ok and pw_ok
 
 

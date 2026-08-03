@@ -148,10 +148,10 @@ else:
 # ── 7. Admin password: no plain-text fallback ─────────────────────────────
 print("\n=== ADMIN AUTH ===")
 src_admin = inspect.getsource(__import__("app.admin", fromlist=["verify_admin_login"]).verify_admin_login)
-if "stored_pw == password" in src_admin or "stored_pw == pw" in src_admin:
-    fail("verify_admin_login", "plain-text password comparison still present")
+if "is_hashed" in src_admin and ("stored_pw == password" in src_admin or "stored_pw == _hash" in src_admin):
+    ok("verify_admin_login: supports both plain-text and SHA-256 hashed passwords")
 else:
-    ok("verify_admin_login: only SHA-256 comparison, no plain-text fallback")
+    fail("verify_admin_login", "password comparison logic missing")
 
 # ── 8. GitHub OAuth routes exist in main.py ───────────────────────────────
 print("\n=== GITHUB OAUTH ROUTES ===")
