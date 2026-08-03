@@ -38,8 +38,8 @@ c1 = "/admin/announce" in main_src and "send_announcement" in main_src
 ok("POST /admin/announce route exists") if c1 else fail("POST /admin/announce route", "not found in main.py")
 
 # send_announcement includes OAuth users (not just email-auth users)
-c2 = "_store as ls" in admin_src and "profile.email" in admin_src
-ok("send_announcement includes OAuth users via _store") if c2 else fail("send_announcement OAuth coverage", "only _confirmed users sent to")
+c2 = "SELECT learner_id, email, display_name, tier FROM learner_profiles" in admin_src
+ok("send_announcement reads from SQLite (all users, not just in-memory)") if c2 else fail("send_announcement OAuth coverage", "only _confirmed users sent to")
 
 # History route exists
 c3 = "/admin/announce/history" in main_src
