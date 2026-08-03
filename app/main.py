@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi import Depends
-from pydantic import BaseModel as _BM
+from pydantic import BaseModel as _BM, Field as _Field
 
 from app.classifier import classify_intent
 from app.formatter import format_response
@@ -871,12 +871,12 @@ async def feedback_summary() -> FeedbackSummary:
 # ---------------------------------------------------------------------------
 
 class _EnquiryRequest(_BM):
-    name:       str = Field(..., min_length=1, max_length=80)
-    email:      str = Field(..., min_length=5, max_length=254)
-    category:   str = Field(..., min_length=1, max_length=60)
-    subject:    str = Field(..., min_length=1, max_length=200)
-    message:    str = Field(..., min_length=10, max_length=4000)
-    learner_id: str = Field(default="guest", max_length=64)
+    name:       str = _Field(..., min_length=1, max_length=80)
+    email:      str = _Field(..., min_length=5, max_length=254)
+    category:   str = _Field(..., min_length=1, max_length=60)
+    subject:    str = _Field(..., min_length=1, max_length=200)
+    message:    str = _Field(..., min_length=10, max_length=4000)
+    learner_id: str = _Field(default="guest", max_length=64)
 
 
 @app.post("/enquiry")
