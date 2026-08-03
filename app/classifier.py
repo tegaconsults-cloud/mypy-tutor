@@ -105,6 +105,17 @@ INTENT_KEYWORDS: dict[str, list[str]] = {
         "project idea", "project for", "coding challenge",
         "assess", "check my understanding",
     ],
+    "course": [
+        # Explicit course navigation — all multi-word so they score cleanly
+        "start course", "begin course", "next lesson", "next step",
+        "continue course", "resume course", "go to next", "next topic",
+        "course on", "enroll in", "take the course", "start the course",
+        "lesson on", "module on", "teach me the course",
+        "continue learning", "start learning", "begin learning",
+        "what's next in", "whats next in", "next in my course",
+        "course progress", "my course", "my current course",
+        "next in course", "go to next step", "advance in course",
+    ],
 }
 
 # ---------------------------------------------------------------------------
@@ -168,7 +179,10 @@ def classify_intent(message: str) -> str:
     for intent, keywords in INTENT_KEYWORDS.items():
         for keyword in keywords:
             if keyword in lowered:
-                scores[intent] += 1
+                # Multi-word phrases are more specific — give them extra weight
+                # so they beat incidental single-word matches in other intents
+                word_count = len(keyword.split())
+                scores[intent] += word_count  # 1 point per word (single=1, "next lesson"=2)
 
     # ── Pattern bonus ────────────────────────────────────────────────────────
     for pat in _CONCEPT_PATTERNS:

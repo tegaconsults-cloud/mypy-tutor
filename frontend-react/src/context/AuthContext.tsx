@@ -35,6 +35,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const params = new URLSearchParams(window.location.search)
     const authType = params.get('auth')
 
+    // ── Referral deep-link: ?ref=CODE ─────────────────────────────────────
+    // When a new user lands via a referral link, persist the code so the
+    // signup form can auto-fill it — even if they don't sign up immediately.
+    const refCode = params.get('ref')
+    if (refCode && refCode.length >= 4) {
+      localStorage.setItem('mpt_referral_code', refCode.toUpperCase())
+      // Clean the ?ref= param from the URL without a full reload
+      const clean = new URLSearchParams(window.location.search)
+      clean.delete('ref')
+      const newSearch = clean.toString()
+      window.history.replaceState(
+        {},
+        '',
+        window.location.pathname + (newSearch ? `?${newSearch}` : '')
+      )
+    }
+
     if (authType === 'google_success' || authType === 'github_success') {
       // Both Google and GitHub OAuth redirects send user data the same way
       const raw = params.get('user')

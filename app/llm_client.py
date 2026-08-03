@@ -24,6 +24,12 @@ _SMART_MODEL = "llama-3.3-70b-versatile"
 # Intents that need deep reasoning — use SMART model
 _SMART_INTENTS = {"concept", "debug", "codegen", "general", "course"}
 
+# Token caps per model — generous enough for deep multi-example explanations
+_MAX_TOKENS: dict[str, int] = {
+    _SMART_MODEL: 4096,   # concept/debug/codegen responses can be long
+    _FAST_MODEL:  2048,   # quiz/exercise are shorter
+}
+
 
 def get_completion(
     system_prompt: str,
@@ -34,15 +40,17 @@ def get_completion(
 ) -> str:
     """
     Calls Groq Chat Completions and returns the assistant message content.
-    Auto-selects model based on intent when model="" (default).
+    Auto-selects model and max_tokens based on intent when model="" (default).
     """
     if not model:
         model = _SMART_MODEL if intent in _SMART_INTENTS else _FAST_MODEL
 
+    max_tokens = _MAX_TOKENS.get(model, 2048)
+
     response = _client.chat.completions.create(
         model=model,
         temperature=temperature,
-        max_tokens=2048,      # cap tokens — prevents runaway long responses
+        max_tokens=max_tokens,
         messages=[{"role": "system", "content": system_prompt}, *messages],
     )
     return response.choices[0].message.content

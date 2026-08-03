@@ -276,7 +276,13 @@ def get_user_by_id(learner_id: str) -> Optional[UserAccount]:
                 email=profile.email or "",
                 name=profile.display_name or profile.email.split("@")[0] if profile.email else learner_id,
                 picture=picture,
-                google_sub=learner_id[2:] if learner_id.startswith("g_") else "",
+                # g_ prefix = Google (sub starts after 2 chars)
+                # gh_ prefix = GitHub (sub starts after 3 chars)
+                google_sub=(
+                    learner_id[3:] if learner_id.startswith("gh_") else
+                    learner_id[2:] if learner_id.startswith("g_") else
+                    ""
+                ),
             )
             _users[learner_id] = user  # cache it
             return user

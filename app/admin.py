@@ -46,7 +46,10 @@ def verify_admin_login(email: str, password: str) -> bool:
     if not admin_email or not stored_pw:
         return False
     email_ok = email.lower().strip() == admin_email.lower()
-    pw_ok    = (stored_pw == _hash(password)) or (stored_pw == password)
+    # Always compare as a SHA-256 hash — never accept raw plain-text password.
+    # ADMIN_PASSWORD in Render should be set as the SHA-256 hex digest of the
+    # actual password (echo -n "yourpassword" | sha256sum).
+    pw_ok = stored_pw == _hash(password)
     return email_ok and pw_ok
 
 
@@ -467,14 +470,30 @@ async def send_announcement(target: str, subject: str, body_text: str) -> int:
     from app.email_auth import _confirmed
     from app.progress import _store as ls
 
-    # Build recipient list
+    # Build recipient list from all sources:
+    # 1. Email-auth confirmed users (in _confirmed dict)
+    # 2. Google/GitHub OAuth users (in _store but may not be in _confirmed)
+    seen_emails: set[str] = set()
     recipients: list[tuple[str, str]] = []
+
+    # Source 1: email-auth users
     for email, u in _confirmed.items():
         lid     = u.get("learner_id", "")
         profile = ls.get(lid)
         tier    = profile.tier if profile else "free"
         if _matches_target(target, tier):
+            seen_emails.add(email.lower())
             recipients.append((email, u.get("name", email)))
+
+    # Source 2: OAuth users (Google/GitHub) whose email is stored in their LearnerProfile
+    for lid, profile in ls.items():
+        email = (profile.email or "").lower().strip()
+        if not email or email in seen_emails:
+            continue
+        tier = profile.tier
+        if _matches_target(target, tier):
+            seen_emails.add(email)
+            recipients.append((email, profile.display_name or email.split("@")[0]))
 
     if not recipients:
         _save_announcement_db(subject, target, 0)

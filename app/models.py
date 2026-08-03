@@ -203,6 +203,7 @@ class ProgressResponse(BaseModel):
     current_course_step:  int
     completed_projects:   list[str]
     topic_progress:       dict[str, TopicProgress]
+    updated_at:           float     = 0.0      # Unix epoch — used by frontend to detect admin changes
 
 
 # ---------------------------------------------------------------------------

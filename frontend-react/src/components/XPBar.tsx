@@ -1,6 +1,6 @@
 import React from 'react'
 import { motion } from 'framer-motion'
-import { Zap, Star, Flame } from 'lucide-react'
+import { Zap, Star } from 'lucide-react'
 import { useProgress } from '../context/ProgressContext'
 
 const THRESHOLDS: Record<string, number> = { beginner: 200, intermediate: 500, advanced: 9999 }
