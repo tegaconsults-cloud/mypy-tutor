@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useProgress } from '../context/ProgressContext'
+import { getProfile } from '../api'
 import Logo from './Logo'
 
 type Panel = 'chat' | 'courses' | 'quiz' | 'progress' | 'certificates' | 'pricing' | 'profile'
@@ -48,12 +49,24 @@ export default function Header({ panel, onPanelChange, onMenuClick, onAuthClick,
   const [dropOpen, setDropOpen] = useState(false)
   const [level, setLevel] = useState(localStorage.getItem('mypy_tutor_level') || 'beginner')
   const [copyMsg, setCopyMsg] = useState('')
+  const [profilePic, setProfilePic] = useState('')
   const dropRef = useRef<HTMLDivElement>(null)
 
   // Fetch progress whenever the user is available so the tier badge is live
   useEffect(() => {
     if (user) refresh(user.learner_id)
   }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Resolve profile picture: auth context (Google/GitHub) → profile API (email users) → initials
+  useEffect(() => {
+    if (!user) { setProfilePic(''); return }
+    // 1. Use picture from auth context if present (Google/GitHub users)
+    if (user.picture) { setProfilePic(user.picture); return }
+    // 2. Fetch from profile API — email-auth users who uploaded a photo
+    getProfile(user.learner_id).then(d => {
+      if (d?.photo_url) setProfilePic(d.photo_url)
+    }).catch(() => {})
+  }, [user?.learner_id, user?.picture]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -110,7 +123,12 @@ export default function Header({ panel, onPanelChange, onMenuClick, onAuthClick,
 
         {/* Brand */}
         <div className="flex items-center gap-2.5 shrink-0">
-          <Logo size={34} shape="none" />
+          <Logo size={34} shape="circle"
+            style={{
+              border: '2px solid rgba(224,163,0,0.6)',
+              boxShadow: '0 0 10px rgba(224,163,0,0.25)',
+            }}
+          />
           <div className="hidden sm:flex flex-col leading-none">
             <span className="font-league text-sm font-black tracking-wide"
               style={{ color: '#E0A300', letterSpacing: '0.04em' }}>MYPY</span>
@@ -152,8 +170,9 @@ export default function Header({ panel, onPanelChange, onMenuClick, onAuthClick,
                 border: '1px solid rgba(13,71,161,0.4)',
                 background: 'rgba(13,71,161,0.1)',
               }}>
-              {user.picture ? (
-                <img src={user.picture} alt="" className="w-7 h-7 rounded-full object-cover" />
+              {profilePic ? (
+                <img src={profilePic} alt="" className="w-7 h-7 rounded-full object-cover"
+                  onError={() => setProfilePic('')} />
               ) : (
                 <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white"
                   style={{ background: 'linear-gradient(135deg,#0D47A1,#1565E8)' }}>{initials}</div>
