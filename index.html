@@ -27,9 +27,17 @@
     <script type="application/ld+json">
     {"@context":"https://schema.org","@type":"WebSite","name":"MyPy Tutor","url":"https://mypytutor.com.ng"}
     </script>
-    <!-- Google Analytics -->
+    <!-- Google Analytics — using beacon transport to avoid deprecated PerformanceObserver warnings -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-6NDGZ4LNQD"></script>
-    <script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-6NDGZ4LNQD');</script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-6NDGZ4LNQD', {
+        transport_type: 'beacon',
+        send_page_view: true
+      });
+    </script>
   </head>
   <body>
     <div id="root"></div>

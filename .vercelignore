@@ -1,0 +1,12 @@
+# Vercel ignore file — placed inside frontend-react/ (the Vercel root directory)
+# Only exclude files that should never trigger a redeploy.
+# Everything in this directory (src/, public/, *.html, *.ts, *.json) MUST trigger deploys.
+
+# Node artifacts — never need to deploy these
+node_modules/
+dist/
+
+# Test and local files
+*.test.ts
+*.test.tsx
+*.spec.ts

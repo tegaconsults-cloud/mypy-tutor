@@ -7,6 +7,10 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: false,
     chunkSizeWarningLimit: 1000,
+    // Disable modulepreload injection — Vite injects <link rel="modulepreload">
+    // for every chunk, causing "preloaded but not used" browser warnings for
+    // chunks that are only needed after user interaction (e.g. syntax highlighter).
+    modulePreload: false,
     rollupOptions: {
       output: {
         manualChunks(id) {
