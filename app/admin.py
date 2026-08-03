@@ -473,34 +473,93 @@ def get_announcements() -> list[dict]:
 
 
 async def send_announcement(target: str, subject: str, body_text: str) -> int:
-    """Send announcement email to all matching users. Returns count sent."""
-    from app.email_auth import _confirmed
-    from app.progress import _store as ls
+    """
+    Send announcement email to all matching users. Returns count sent.
 
-    # Build recipient list from all sources:
-    # 1. Email-auth confirmed users (in _confirmed dict)
-    # 2. Google/GitHub OAuth users (in _store but may not be in _confirmed)
+    Source of truth: SQLite (persistent across Render restarts) — NOT the
+    in-memory _confirmed / _store dicts, which are wiped on every Render
+    restart and only contain users active since the last boot.
+    Supabase is used as a final fallback if SQLite is also empty.
+    """
+    from app.db import get_db as _gdb
+
     seen_emails: set[str] = set()
+    # { learner_id: (email, name, tier) }
+    user_map: dict[str, tuple[str, str, str]] = {}
+
+    # ── Source 1: learner_profiles — all users, carries email + tier ─────────────
+    try:
+        with _gdb() as conn:
+            rows = conn.execute(
+                "SELECT learner_id, email, display_name, tier FROM learner_profiles"
+            ).fetchall()
+        for r in rows:
+            lid   = (r["learner_id"] or "").strip()
+            email = (r["email"] or "").lower().strip()
+            name  = (r["display_name"] or "").strip()
+            tier  = (r["tier"] or "free").strip()
+            if lid and email and "@" in email:
+                user_map[lid] = (email, name, tier)
+    except Exception as exc:
+        logger.warning("send_announcement: learner_profiles query failed: %s", exc)
+
+    # ── Source 2: email_accounts — confirmed users, carries proper full name ──────
+    try:
+        with _gdb() as conn:
+            rows = conn.execute(
+                "SELECT learner_id, email, name FROM email_accounts WHERE confirmed=1"
+            ).fetchall()
+        for r in rows:
+            lid   = (r["learner_id"] or "").strip()
+            email = (r["email"] or "").lower().strip()
+            name  = (r["name"] or "").strip()
+            if lid and email and "@" in email:
+                existing = user_map.get(lid)
+                tier     = existing[2] if existing else "free"
+                # Prefer the proper full name from email_accounts
+                best_name = name or (existing[1] if existing else "")
+                user_map[lid] = (email, best_name, tier)
+    except Exception as exc:
+        logger.warning("send_announcement: email_accounts query failed: %s", exc)
+
+    # ── Source 3: Supabase fallback (covers Render ephemeral-restart window) ──────
+    if not user_map:
+        logger.info("send_announcement: SQLite empty — falling back to Supabase")
+        try:
+            from app.supabase_client import get_supabase
+            sb = get_supabase()
+            if sb:
+                res = sb.table("profiles").select("id,email,full_name").execute()
+                for r in (res.data or []):
+                    lid   = (r.get("id") or "").strip()
+                    email = (r.get("email") or "").lower().strip()
+                    name  = (r.get("full_name") or "").strip()
+                    if lid and email and "@" in email:
+                        user_map[lid] = (email, name, "free")
+                # Overlay tiers from learner_progress table
+                res2 = sb.table("learner_progress").select("learner_id,tier").execute()
+                for r in (res2.data or []):
+                    lid  = (r.get("learner_id") or "").strip()
+                    tier = (r.get("tier") or "free").strip()
+                    if lid in user_map:
+                        e, n, _ = user_map[lid]
+                        user_map[lid] = (e, n, tier)
+        except Exception as exc:
+            logger.warning("send_announcement: Supabase fallback failed: %s", exc)
+
+    # ── Build deduplicated recipient list filtered by target tier ─────────────────
     recipients: list[tuple[str, str]] = []
-
-    # Source 1: email-auth users
-    for email, u in _confirmed.items():
-        lid     = u.get("learner_id", "")
-        profile = ls.get(lid)
-        tier    = profile.tier if profile else "free"
-        if _matches_target(target, tier):
-            seen_emails.add(email.lower())
-            recipients.append((email, u.get("name", email)))
-
-    # Source 2: OAuth users (Google/GitHub) whose email is stored in their LearnerProfile
-    for lid, profile in ls.items():
-        email = (profile.email or "").lower().strip()
-        if not email or email in seen_emails:
+    for lid, (email, name, tier) in user_map.items():
+        if email in seen_emails:
             continue
-        tier = profile.tier
         if _matches_target(target, tier):
             seen_emails.add(email)
-            recipients.append((email, profile.display_name or email.split("@")[0]))
+            recipients.append((email, name or email.split("@")[0]))
+
+    logger.info(
+        "send_announcement: target=%s total_users=%d matching=%d",
+        target, len(user_map), len(recipients),
+    )
 
     if not recipients:
         _save_announcement_db(subject, target, 0)
@@ -510,13 +569,17 @@ async def send_announcement(target: str, subject: str, body_text: str) -> int:
         from app.services.email_service import send_bulk_announcement
         sent = send_bulk_announcement(
             subject=subject,
-            body_html=f"<p style='color:#475569;line-height:1.7;white-space:pre-wrap;'>{body_text}</p>",
+            body_html=(
+                "<p style='color:#475569;line-height:1.7;white-space:pre-wrap;'>"
+                + body_text
+                + "</p>"
+            ),
             body_text=body_text,
             recipients=recipients,
             target_label=target,
         )
-    except Exception as e:
-        logger.error("Announcement send failed: %s", e)
+    except Exception as exc:
+        logger.error("Announcement send failed: %s", exc)
         sent = 0
 
     record = {"subject": subject, "target": target, "sent_to": sent,
