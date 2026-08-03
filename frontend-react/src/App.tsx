@@ -17,6 +17,7 @@ import PromptCounterBar from './components/PromptCounterBar'
 import FeedbackModal from './components/FeedbackModal'
 import ReferralModal from './components/ReferralModal'
 import OnboardingModal from './components/OnboardingModal'
+import EnquiryModal from './components/EnquiryModal'
 import Logo from './components/Logo'
 import { useAuth } from './context/AuthContext'
 import { useProgress } from './context/ProgressContext'
@@ -40,6 +41,7 @@ export default function App() {
   const [authTab, setAuthTab]         = useState<'signin' | 'signup'>('signin')
   const [feedbackOpen, setFeedbackOpen]     = useState(false)
   const [referralOpen, setReferralOpen]     = useState(false)
+  const [enquiryOpen,  setEnquiryOpen]      = useState(false)
   const [onboardingOpen, setOnboardingOpen] = useState(false)
   const [nudgeVisible, setNudgeVisible]     = useState(false)
   const [oauthError, setOauthError]         = useState('')
@@ -96,6 +98,12 @@ export default function App() {
     const h = () => setFeedbackOpen(true)
     window.addEventListener('open-feedback', h)
     return () => window.removeEventListener('open-feedback', h)
+  }, [])
+
+  useEffect(() => {
+    const h = () => setEnquiryOpen(true)
+    window.addEventListener('open-enquiry', h)
+    return () => window.removeEventListener('open-enquiry', h)
   }, [])
 
   const openAuth = (tab: 'signin' | 'signup' = 'signin') => {
@@ -161,6 +169,7 @@ export default function App() {
           {/* Modals */}
           {authOpen      && <AuthModal defaultTab={authTab} onClose={() => setAuthOpen(false)} />}
           {feedbackOpen  && <FeedbackModal onClose={() => setFeedbackOpen(false)} />}
+          {enquiryOpen   && <EnquiryModal onClose={() => setEnquiryOpen(false)} />}
           {referralOpen && user && <ReferralModal onClose={() => setReferralOpen(false)} />}
           {onboardingOpen && <OnboardingModal onDone={handleOnboardingDone} />}
 

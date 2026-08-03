@@ -348,9 +348,9 @@ def send_payment_receipt_email(name: str, email: str, amount: float,
         "tier1":              "Beginner Bundle (4 courses) — NGN 8,000",
         "tier2":              "Intermediate Bundle (7 courses) — NGN 15,000",
         "tier3":              "Elite Bundle (all 16 courses) — NGN 35,000",
-        "beginner bundle":    "Beginner Bundle (4 courses) — NGN 8,000",
-        "intermediate bundle":"Intermediate Bundle (7 courses) — NGN 15,000",
-        "elite bundle":       "Elite Bundle (all 16 courses) — NGN 35,000",
+        "beginner bundle":    "Beginner Bundle (4 courses) — NGN 10,000",
+        "intermediate bundle":"Intermediate Bundle (7 courses) — NGN 20,000",
+        "elite bundle":       "Elite Bundle (all 16 courses) — NGN 45,000",
         # Certificate fees — standalone exam/assessment
         "basic-cert":         "Basic Python Certificate — NGN 30,000",
         "adv-cert":           "Advanced Python Certificate — NGN 60,000",
@@ -563,3 +563,94 @@ def send_admin_notification(subject: str, body: str) -> None:
         args=(admin_email, "[MyPyTutor Admin] " + subject, html, text, "admin_notification"),
         daemon=False,
     ).start()
+
+# ── 13. User enquiry / support ticket ────────────────────────────────────────
+def send_enquiry_email(name: str, email: str, category: str,
+                       subject: str, message: str,
+                       learner_id: str = "") -> None:
+    """
+    Forward a user support enquiry to support@mypytutor.com.ng (which is
+    linked to tega.com.ng@gmail.com via Resend routing or Gmail forwarding).
+    Also send a confirmation receipt to the user.
+    """
+    support    = _support_email()   # support@mypytutor.com.ng
+    admin_dest = _e("ADMIN_EMAIL", support)   # real inbox: tega.com.ng@gmail.com
+    app        = _app_url()
+
+    # ── Email to support inbox (admin receives this) ──────────────────────
+    admin_body = (
+        "<h2 style='color:#0D47A1;font-size:1.1rem;margin:0 0 16px;'>&#128232; New Support Enquiry</h2>"
+        + _box(
+            "<strong>Category:</strong> " + category + "<br/>"
+            "<strong>Subject:</strong> " + subject + "<br/>"
+            "<strong>From:</strong> " + name + " &lt;" + email + "&gt;<br/>"
+            + ("<strong>Learner ID:</strong> <code style='font-size:.82rem;'>" + learner_id + "</code><br/>" if learner_id and learner_id != "guest" else "")
+            + "<strong>Message:</strong><br/>"
+            + "<div style='white-space:pre-wrap;margin-top:8px;color:#475569;line-height:1.7;'>" + message + "</div>",
+            bg="#f0f7ff", border="#0D47A1"
+        )
+        + "<p style='color:#64748b;font-size:.82rem;margin-top:16px;'>"
+          "Reply directly to this email to respond to the learner.</p>"
+    )
+    admin_html = _shell(admin_body, f"Support: {category} — {subject}")
+    admin_text = (
+        f"New Support Enquiry\n\nCategory: {category}\nSubject: {subject}\n"
+        f"From: {name} <{email}>\nLearner ID: {learner_id}\n\nMessage:\n{message}"
+    )
+
+    # Dispatch to admin — reply-to set to user's email so admin can reply directly
+    def _send_to_admin():
+        if _resend_key():
+            try:
+                import httpx
+                r = httpx.post(
+                    "https://api.resend.com/emails",
+                    headers={"Authorization": "Bearer " + _resend_key(),
+                             "Content-Type": "application/json"},
+                    json={
+                        "from":     _from_address(),
+                        "to":       [admin_dest],
+                        "reply_to": email,        # admin replies go to the user
+                        "subject":  f"[Support] {category}: {subject}",
+                        "html":     admin_html,
+                        "text":     admin_text,
+                    },
+                    timeout=15,
+                )
+                if r.status_code in (200, 201):
+                    return
+            except Exception:
+                pass
+        # SMTP fallback
+        _dispatch(admin_dest, f"[Support] {category}: {subject}",
+                  admin_html, admin_text, "enquiry_admin")
+
+    threading.Thread(target=_send_to_admin, daemon=False,
+                     name="enquiry-admin-" + email[:20]).start()
+
+    # ── Confirmation receipt to the user ─────────────────────────────────
+    first = name.split()[0] if name else "Learner"
+    receipt_body = (
+        "<p style='color:#1e293b;margin:0 0 12px;'>Hi <strong>" + first + "</strong>,</p>"
+        "<h2 style='color:" + PRIMARY + ";font-size:1.2rem;margin:0 0 12px;'>"
+        "&#9989; We received your message!</h2>"
+        "<p style='color:#475569;line-height:1.7;margin:0 0 16px;'>"
+        "Our support team will review your enquiry and respond within <strong>24 hours</strong>.</p>"
+        + _box(
+            "<strong>Category:</strong> " + category + "<br/>"
+            "<strong>Subject:</strong> " + subject,
+            bg="#f0f7ff", border="#0D47A1"
+        )
+        + "<p style='color:#64748b;font-size:.82rem;margin-top:16px;'>"
+          "Need faster help? Email us directly at "
+          "<a href='mailto:" + support + "' style='color:" + PRIMARY + ";'>" + support + "</a></p>"
+    )
+    receipt_html = _shell(receipt_body, "We received your support request — MyPy Tutor")
+    receipt_text = (
+        f"Hi {first},\n\nWe received your support request.\n\n"
+        f"Category: {category}\nSubject: {subject}\n\n"
+        f"We'll respond within 24 hours.\n\n"
+        f"Direct email: {support}\n\n-- The MyPy Tutor Support Team"
+    )
+    _dispatch_async(email, "Your MyPy Tutor support request was received",
+                    receipt_html, receipt_text, "enquiry_receipt")

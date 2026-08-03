@@ -486,25 +486,26 @@ PROJECT_PATHS: dict[str, list[str]] = {
 # ---------------------------------------------------------------------------
 
 COURSE_CATALOG: dict[str, dict] = {
-    # ── Beginner bundle (or buy individually)
-    "python-fundamentals":       {"price_ngn": 3500,  "tier_unlocks": ["tier1","tier2","tier3"], "category": "Python Basics",        "badge": "🐍"},
-    "python-strings":            {"price_ngn": 2500,  "tier_unlocks": ["tier1","tier2","tier3"], "category": "Python Basics",        "badge": "🔤"},
-    "python-collections":        {"price_ngn": 2500,  "tier_unlocks": ["tier1","tier2","tier3"], "category": "Python Basics",        "badge": "📦"},
-    "python-control-flow":       {"price_ngn": 2500,  "tier_unlocks": ["tier1","tier2","tier3"], "category": "Python Basics",        "badge": "🔀"},
-    # ── Intermediate
-    "python-functions-advanced": {"price_ngn": 4000,  "tier_unlocks": ["tier2","tier3"],         "category": "Intermediate Python",  "badge": "⚙️"},
-    "python-oop":                {"price_ngn": 4000,  "tier_unlocks": ["tier2","tier3"],         "category": "Intermediate Python",  "badge": "🏗️"},
-    "python-modules-stdlib":     {"price_ngn": 4000,  "tier_unlocks": ["tier2","tier3"],         "category": "Intermediate Python",  "badge": "📚"},
-    # ── Advanced
-    "python-dsa":                {"price_ngn": 6000,  "tier_unlocks": ["tier3"],                 "category": "Advanced Python",      "badge": "🧮"},
-    "numpy-mastery":             {"price_ngn": 5500,  "tier_unlocks": ["tier3"],                 "category": "Data Science",         "badge": "🔢"},
-    "pandas-mastery":            {"price_ngn": 5500,  "tier_unlocks": ["tier3"],                 "category": "Data Science",         "badge": "🐼"},
-    "data-science-python":       {"price_ngn": 6000,  "tier_unlocks": ["tier3"],                 "category": "Data Science",         "badge": "📊"},
-    "python-databases":          {"price_ngn": 5000,  "tier_unlocks": ["tier3"],                 "category": "Advanced Python",      "badge": "🗄️"},
-    "web-apis":                  {"price_ngn": 5000,  "tier_unlocks": ["tier3"],                 "category": "Advanced Python",      "badge": "🌐"},
-    "prompt-engineering":        {"price_ngn": 5000,  "tier_unlocks": ["tier3"],                 "category": "AI & Prompting",       "badge": "🤖"},
-    "ai-prompt-engineering":     {"price_ngn": 15000, "tier_unlocks": ["tier3"],                 "category": "AI & Prompting",       "badge": "🧠💬"},
-    "machine-learning":          {"price_ngn": 12000, "tier_unlocks": ["tier3"],                 "category": "Machine Learning",     "badge": "🧠"},
+    # ── Beginner bundle (or buy individually) — all ₦5,000+
+    "python-fundamentals":       {"price_ngn": 5000,  "tier_unlocks": ["tier1","tier2","tier3"], "category": "Python Basics",        "badge": "🐍"},
+    "python-strings":            {"price_ngn": 5000,  "tier_unlocks": ["tier1","tier2","tier3"], "category": "Python Basics",        "badge": "🔤"},
+    "python-collections":        {"price_ngn": 5000,  "tier_unlocks": ["tier1","tier2","tier3"], "category": "Python Basics",        "badge": "📦"},
+    "python-control-flow":       {"price_ngn": 5000,  "tier_unlocks": ["tier1","tier2","tier3"], "category": "Python Basics",        "badge": "🔀"},
+    # ── Intermediate — ₦6,000 each
+    "python-functions-advanced": {"price_ngn": 6000,  "tier_unlocks": ["tier2","tier3"],         "category": "Intermediate Python",  "badge": "⚙️"},
+    "python-oop":                {"price_ngn": 6000,  "tier_unlocks": ["tier2","tier3"],         "category": "Intermediate Python",  "badge": "🏗️"},
+    "python-modules-stdlib":     {"price_ngn": 6000,  "tier_unlocks": ["tier2","tier3"],         "category": "Intermediate Python",  "badge": "📚"},
+    # ── Advanced — ₦8,000 each
+    "python-dsa":                {"price_ngn": 8000,  "tier_unlocks": ["tier3"],                 "category": "Advanced Python",      "badge": "🧮"},
+    "numpy-mastery":             {"price_ngn": 8000,  "tier_unlocks": ["tier3"],                 "category": "Data Science",         "badge": "🔢"},
+    "pandas-mastery":            {"price_ngn": 8000,  "tier_unlocks": ["tier3"],                 "category": "Data Science",         "badge": "🐼"},
+    "data-science-python":       {"price_ngn": 8000,  "tier_unlocks": ["tier3"],                 "category": "Data Science",         "badge": "📊"},
+    "python-databases":          {"price_ngn": 8000,  "tier_unlocks": ["tier3"],                 "category": "Advanced Python",      "badge": "🗄️"},
+    "web-apis":                  {"price_ngn": 8000,  "tier_unlocks": ["tier3"],                 "category": "Advanced Python",      "badge": "🌐"},
+    "prompt-engineering":        {"price_ngn": 8000,  "tier_unlocks": ["tier3"],                 "category": "AI & Prompting",       "badge": "🤖"},
+    # ── Premium — flagship courses
+    "ai-prompt-engineering":     {"price_ngn": 18000, "tier_unlocks": ["tier3"],                 "category": "AI & Prompting",       "badge": "🧠💬"},
+    "machine-learning":          {"price_ngn": 15000, "tier_unlocks": ["tier3"],                 "category": "Machine Learning",     "badge": "🧠"},
 }
 
 # ---------------------------------------------------------------------------
@@ -543,16 +544,16 @@ PROMPT_PLANS: dict[str, dict] = {
 TIER_PLANS: dict[str, dict] = {
     "tier1": {
         "name":         "Beginner Bundle",
-        "price_ngn":    8000,
-        "description":  "Unlock ALL 4 Beginner courses: Fundamentals, Strings, Collections, Control Flow.",
+        "price_ngn":    10000,
+        "description":  "Unlock ALL 4 Beginner courses: Fundamentals, Strings, Collections, Control Flow. Save ₦10,000 vs buying individually.",
         "eligible_courses": ["python-fundamentals","python-strings","python-collections","python-control-flow"],
         "unlocks_count": 4,
         "paystack_url": "https://paystack.shop/pay/vt_re4d3h52",
     },
     "tier2": {
         "name":         "Intermediate Bundle",
-        "price_ngn":    15000,
-        "description":  "Unlock ALL 7 Beginner + Intermediate courses.",
+        "price_ngn":    20000,
+        "description":  "Unlock ALL 7 Beginner + Intermediate courses. Save ₦18,000 vs buying individually.",
         "eligible_courses": ["python-fundamentals","python-strings","python-collections","python-control-flow",
                              "python-functions-advanced","python-oop","python-modules-stdlib"],
         "unlocks_count": 7,
@@ -560,8 +561,8 @@ TIER_PLANS: dict[str, dict] = {
     },
     "tier3": {
         "name":         "Elite Bundle",
-        "price_ngn":    35000,
-        "description":  "Unlock ALL 16 courses including ML, AI, DSA, Data Science, Web APIs and more.",
+        "price_ngn":    45000,
+        "description":  "Unlock ALL 16 courses including ML, AI, DSA, Data Science, Web APIs and more. Save ₦62,000 vs buying individually.",
         "eligible_courses": list(COURSE_CATALOG.keys()),
         "unlocks_count": 16,
         "paystack_url": "https://paystack.shop/pay/vt_re4d3h52",

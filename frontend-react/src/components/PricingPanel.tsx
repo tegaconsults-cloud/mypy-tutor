@@ -7,24 +7,24 @@ const PAYSTACK = 'https://paystack.shop/pay/vt_re4d3h52'
 
 const BUNDLES = [
   {
-    tier: 'tier-1', badge: '🟢 Beginner Bundle', name: 'Python Foundation', price: '₦8,000',
+    tier: 'tier-1', badge: '🟢 Beginner Bundle', name: 'Python Foundation', price: '₦10,000',
     period: 'one-time', desc: 'All 4 beginner courses bundled.',
-    features: ['43 structured lessons + exercises','Per-lesson quizzes & XP','Basic Certificate eligibility','Save ₦3,000 vs individual'],
-    cta: 'Buy Beginner Bundle', link: `${PAYSTACK}?plan=beginner+bundle&tier=tier1&amount=8000`,
+    features: ['43 structured lessons + exercises','Per-lesson quizzes & XP','Basic Certificate eligibility','Save ₦10,000 vs individual (₦5,000 each)'],
+    cta: 'Buy Beginner Bundle', link: `${PAYSTACK}?plan=beginner+bundle&tier=tier1&amount=10000`,
     gradient: 'linear-gradient(135deg,rgba(13,71,161,0.18),rgba(6,13,28,0.95))', border: 'rgba(13,71,161,0.45)', accent: '#93c5fd',
   },
   {
-    tier: 'tier-2', badge: '⚡ Intermediate Bundle', name: '7 Courses', price: '₦15,000', popular: true,
+    tier: 'tier-2', badge: '⚡ Intermediate Bundle', name: '7 Courses', price: '₦20,000', popular: true,
     period: 'one-time', desc: 'Beginner + Functions, OOP, Standard Library.',
-    features: ['86 structured lessons','OOP, decorators, generators','Advanced Certificate eligibility','Save ₦9,000 vs individual'],
-    cta: 'Buy Intermediate Bundle', link: `${PAYSTACK}?plan=intermediate+bundle&tier=tier2&amount=15000`,
+    features: ['86 structured lessons','OOP, decorators, generators','Advanced Certificate eligibility','Save ₦18,000 vs individual'],
+    cta: 'Buy Intermediate Bundle', link: `${PAYSTACK}?plan=intermediate+bundle&tier=tier2&amount=20000`,
     gradient: 'linear-gradient(135deg,rgba(224,163,0,0.15),rgba(6,13,28,0.95))', border: 'rgba(224,163,0,0.4)', accent: '#E0A300',
   },
   {
-    tier: 'tier-3', badge: '👑 Elite Bundle', name: 'ALL 16 Courses', price: '₦35,000',
+    tier: 'tier-3', badge: '👑 Elite Bundle', name: 'ALL 16 Courses', price: '₦45,000',
     period: 'one-time', desc: 'Every course: ML, AI, DSA, Data Science.',
-    features: ['Machine Learning (30 lessons)','AI & Prompt Engineering','NumPy, Pandas, Data Science','Executive Masters Certificate','Save ₦55,000 vs individual'],
-    cta: 'Buy Elite Bundle', link: `${PAYSTACK}?plan=elite+bundle&tier=tier3&amount=35000`,
+    features: ['Machine Learning (30 lessons)','AI & Prompt Engineering','NumPy, Pandas, Data Science','Executive Masters Certificate','Save ₦62,000 vs individual'],
+    cta: 'Buy Elite Bundle', link: `${PAYSTACK}?plan=elite+bundle&tier=tier3&amount=45000`,
     gradient: 'linear-gradient(135deg,rgba(139,92,246,0.18),rgba(6,13,28,0.95))', border: 'rgba(139,92,246,0.4)', accent: '#c4b5fd',
   },
 ]

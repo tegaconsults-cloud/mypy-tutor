@@ -865,6 +865,75 @@ async def survey_feedback(fb: SurveyFeedback) -> dict:
 async def feedback_summary() -> FeedbackSummary:
     return get_summary()
 
+
+# ---------------------------------------------------------------------------
+# Enquiry / Support Contact
+# ---------------------------------------------------------------------------
+
+class _EnquiryRequest(_BM):
+    name:       str = Field(..., min_length=1, max_length=80)
+    email:      str = Field(..., min_length=5, max_length=254)
+    category:   str = Field(..., min_length=1, max_length=60)
+    subject:    str = Field(..., min_length=1, max_length=200)
+    message:    str = Field(..., min_length=10, max_length=4000)
+    learner_id: str = Field(default="guest", max_length=64)
+
+
+@app.post("/enquiry")
+async def submit_enquiry(body: _EnquiryRequest) -> dict:
+    """
+    User support enquiry — forwarded to support@mypytutor.com.ng
+    which is linked to tega.com.ng@gmail.com via ADMIN_EMAIL env var.
+    Also persists to SQLite for admin visibility.
+    """
+    import re as _re
+    if not _re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", body.email):
+        raise HTTPException(status_code=400, detail="Invalid email address.")
+
+    # Persist to SQLite
+    try:
+        from app.db import get_db as _gdb
+        with _gdb() as _conn:
+            _conn.execute("""
+                CREATE TABLE IF NOT EXISTS enquiries (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    learner_id  TEXT DEFAULT '',
+                    name        TEXT NOT NULL,
+                    email       TEXT NOT NULL,
+                    category    TEXT NOT NULL,
+                    subject     TEXT NOT NULL,
+                    message     TEXT NOT NULL,
+                    status      TEXT DEFAULT 'open',
+                    created_at  REAL DEFAULT (unixepoch())
+                )
+            """)
+            _conn.execute(
+                "INSERT INTO enquiries (learner_id,name,email,category,subject,message) "
+                "VALUES (?,?,?,?,?,?)",
+                (body.learner_id, body.name, body.email,
+                 body.category, body.subject, body.message)
+            )
+    except Exception as _e:
+        logger.debug("Enquiry SQLite save failed (non-fatal): %s", _e)
+
+    # Send email to support inbox + confirmation to user
+    try:
+        from app.services.email_service import send_enquiry_email
+        send_enquiry_email(
+            name=body.name,
+            email=body.email,
+            category=body.category,
+            subject=body.subject,
+            message=body.message,
+            learner_id=body.learner_id,
+        )
+    except Exception as _e:
+        logger.warning("Enquiry email dispatch failed (non-fatal): %s", _e)
+
+    log_activity(body.learner_id, "enquiry:submitted",
+                 f"category={body.category} | {body.subject[:60]}")
+    return {"ok": True, "message": "Your enquiry has been sent. We'll respond within 24 hours."}
+
 # ---------------------------------------------------------------------------
 # Certificate routes
 # ---------------------------------------------------------------------------
@@ -1428,14 +1497,14 @@ async def paystack_webhook(request: Request) -> dict:
 
             if not tier:
                 # Infer tier from amount using canonical bundle prices:
-                # Elite ₦35,000 | Intermediate ₦15,000 | Beginner ₦8,000
+                # Elite ₦45,000 | Intermediate ₦20,000 | Beginner ₦10,000
                 # Certificate fees are handled above (basic-cert/adv-cert/exec-cert)
-                if amount_ngn >= 30000:
-                    tier = "tier3"   # Elite Bundle ₦35,000
-                elif amount_ngn >= 12000:
-                    tier = "tier2"   # Intermediate Bundle ₦15,000
-                elif amount_ngn >= 6000:
-                    tier = "tier1"   # Beginner Bundle ₦8,000
+                if amount_ngn >= 40000:
+                    tier = "tier3"   # Elite Bundle ₦45,000
+                elif amount_ngn >= 17000:
+                    tier = "tier2"   # Intermediate Bundle ₦20,000
+                elif amount_ngn >= 8000:
+                    tier = "tier1"   # Beginner Bundle ₦10,000
 
             # ── TYPE 3: Prompt plan (parallel check) ─────────────────────
             prompt_plan = _PAYSTACK_PROMPT_PLAN.get(plan_meta)
@@ -1463,9 +1532,9 @@ async def paystack_webhook(request: Request) -> dict:
                 apply_tier_upgrade(learner_id, tier)     # in-memory cache sync
 
                 tier_labels = {
-                    "tier1": "Beginner Bundle (₦8,000 — 4 courses)",
-                    "tier2": "Intermediate Bundle (₦15,000 — 7 courses)",
-                    "tier3": "Elite Bundle (₦35,000 — all 16 courses)",
+                    "tier1": "Beginner Bundle (₦10,000 — 4 courses)",
+                    "tier2": "Intermediate Bundle (₦20,000 — 7 courses)",
+                    "tier3": "Elite Bundle (₦45,000 — all 16 courses)",
                 }
                 plan_label = tier_labels.get(tier, tier)
                 import secrets as _sec
@@ -3020,6 +3089,68 @@ async def admin_update_withdrawal(withdrawal_id: int, request: Request) -> dict:
         raise HTTPException(status_code=404, detail="Withdrawal request not found.")
     log_activity("admin", "withdrawal:status-update", f"id={withdrawal_id} status={status}")
     return {"ok": True, "withdrawal_id": withdrawal_id, "status": status}
+
+
+@app.get("/admin/enquiries")
+async def admin_enquiries_list(request: Request) -> dict:
+    """Admin: list all support enquiries from SQLite."""
+    _require_admin(request)
+    import datetime as _dt
+    try:
+        from app.db import get_db as _gdb
+        with _gdb() as _conn:
+            _conn.execute("""
+                CREATE TABLE IF NOT EXISTS enquiries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    learner_id TEXT DEFAULT '',
+                    name TEXT NOT NULL,
+                    email TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    subject TEXT NOT NULL,
+                    message TEXT NOT NULL,
+                    status TEXT DEFAULT 'open',
+                    created_at REAL DEFAULT (unixepoch())
+                )
+            """)
+            rows = _conn.execute(
+                "SELECT * FROM enquiries ORDER BY id DESC LIMIT 500"
+            ).fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["created_at"] = _dt.datetime.fromtimestamp(float(d["created_at"])).isoformat()
+            except Exception:
+                pass
+            result.append(d)
+        total  = len(result)
+        open_  = sum(1 for x in result if x.get("status") == "open")
+        closed = total - open_
+        return {"enquiries": result, "total": total, "open": open_, "closed": closed}
+    except Exception as e:
+        logger.warning("admin_enquiries_list failed: %s", e)
+        return {"enquiries": [], "total": 0, "open": 0, "closed": 0}
+
+
+@app.post("/admin/enquiries/{enquiry_id}/resolve")
+async def admin_resolve_enquiry(enquiry_id: int, request: Request) -> dict:
+    """Admin: mark an enquiry as resolved."""
+    _require_admin(request)
+    try:
+        from app.db import get_db as _gdb
+        with _gdb() as _conn:
+            cur = _conn.execute(
+                "UPDATE enquiries SET status='resolved' WHERE id=?", (enquiry_id,)
+            )
+        if cur.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Enquiry not found.")
+        log_activity("admin", "enquiry:resolved", f"id={enquiry_id}")
+        return {"ok": True, "enquiry_id": enquiry_id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning("admin_resolve_enquiry failed: %s", e)
+        raise HTTPException(status_code=500, detail="Could not update enquiry.")
 
 
 @app.get("/admin/history/{learner_id}")

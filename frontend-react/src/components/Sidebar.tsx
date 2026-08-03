@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, MessageSquare, BookOpen, Trophy, BarChart2, Award,
-  CreditCard, User, Zap, Code, Layers, Shield, Database, Brain, MessageCircle,
+  CreditCard, User, Zap, Code, Layers, Shield, Database, Brain, MessageCircle, HelpCircle,
 } from 'lucide-react'
 import { useProgress } from '../context/ProgressContext'
 import { getTopics } from '../api'
@@ -168,13 +168,24 @@ export default function Sidebar({ open, onClose, onPanelChange, onAuthClick: _on
               )}
             </div>
 
-            {/* Footer — Feedback */}
-            <div className="px-3 py-3 shrink-0" style={{ borderTop: '1px solid rgba(13,71,161,0.2)' }}>
+            {/* Footer — Feedback + Support */}
+            <div className="px-3 py-3 shrink-0 flex flex-col gap-2"
+              style={{ borderTop: '1px solid rgba(13,71,161,0.2)' }}>
               <button
                 onClick={() => window.dispatchEvent(new Event('open-feedback'))}
                 className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-all duration-200"
                 style={{ background: 'linear-gradient(135deg,#0D47A1,#1565E8)', boxShadow: '0 4px 16px rgba(13,71,161,0.4)' }}>
                 <MessageCircle size={15} /> Send Feedback
+              </button>
+              <button
+                onClick={() => { window.dispatchEvent(new Event('open-enquiry')); onClose() }}
+                className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200"
+                style={{
+                  background: 'rgba(224,163,0,0.12)',
+                  border: '1px solid rgba(224,163,0,0.3)',
+                  color: '#E0A300',
+                }}>
+                <HelpCircle size={15} /> Contact Support
               </button>
             </div>
           </motion.div>
