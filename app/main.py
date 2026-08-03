@@ -162,9 +162,9 @@ app.add_middleware(
 # /chat
 # ---------------------------------------------------------------------------
 
-@app.post("/chat", response_model=ChatResponse)
+@app.post("/chat")
 async def chat(request: ChatRequest, req: Request,
-               background_tasks: BackgroundTasks) -> ChatResponse:
+               background_tasks: BackgroundTasks) -> JSONResponse:
     validate_chat_request(request.message, request.history, request.level, request.learner_id)
 
     profile = get_profile(request.learner_id)
@@ -246,16 +246,16 @@ async def chat(request: ChatRequest, req: Request,
 
     ask_survey = increment_interaction(request.learner_id)
 
-    return ChatResponse(
-        intent=response_dict["intent"],
-        content=response_dict["content"],
-        topic=response_dict["topic"],
-        level=profile.level,
-        xp_gained=xp,
-        badge=badge,
-        ask_survey=ask_survey,
-        conversation_id=conv_id,
-    )
+    return JSONResponse(content={
+        "intent":          response_dict["intent"],
+        "content":         response_dict["content"],
+        "topic":           response_dict["topic"],
+        "level":           profile.level,
+        "xp_gained":       xp,
+        "badge":           badge,
+        "ask_survey":      ask_survey,
+        "conversation_id": conv_id,
+    })
 
 # ---------------------------------------------------------------------------
 # /topics  /health
@@ -425,6 +425,181 @@ async def auth_me(user=Depends(require_user)) -> AuthResponse:
         token=token, learner_id=user.learner_id,
         name=user.name, email=user.email, picture=picture,
     )
+
+
+# ---------------------------------------------------------------------------
+# Auth — GitHub OAuth
+# ---------------------------------------------------------------------------
+
+@app.get("/auth/github/login")
+async def auth_github_login() -> JSONResponse:
+    """Redirect the user to GitHub's OAuth authorization page."""
+    from fastapi.responses import RedirectResponse
+    import urllib.parse, secrets as _sec
+
+    client_id    = _os.getenv("GITHUB_CLIENT_ID", "")
+    app_url      = _os.getenv("APP_URL", "https://mypytutor.onrender.com")
+    redirect_uri = f"{app_url}/auth/github/callback"
+    frontend_url = _os.getenv("FRONTEND_URL", app_url)
+
+    if not client_id:
+        return RedirectResponse(
+            url=f"{frontend_url}/?auth=error&msg=GitHub+Sign-In+not+configured"
+        )
+
+    state  = _sec.token_hex(16)   # CSRF token
+    params = urllib.parse.urlencode({
+        "client_id":    client_id,
+        "redirect_uri": redirect_uri,
+        "scope":        "read:user user:email",
+        "state":        state,
+    })
+    return RedirectResponse(
+        url=f"https://github.com/login/oauth/authorize?{params}"
+    )
+
+
+@app.get("/auth/github/callback")
+async def auth_github_callback(code: str = None, error: str = None,
+                                state: str = None) -> JSONResponse:
+    """Handle GitHub OAuth callback — exchange code for token, fetch profile, sign in."""
+    from fastapi.responses import RedirectResponse
+    import urllib.parse, json
+
+    app_url       = _os.getenv("APP_URL", "https://mypytutor.onrender.com")
+    frontend_url  = _os.getenv("FRONTEND_URL", app_url)
+    client_id     = _os.getenv("GITHUB_CLIENT_ID", "")
+    client_secret = _os.getenv("GITHUB_CLIENT_SECRET", "")
+    redirect_uri  = f"{app_url}/auth/github/callback"
+
+    if error or not code:
+        msg = urllib.parse.quote(error or "GitHub sign-in was cancelled")
+        return RedirectResponse(url=f"{frontend_url}/?auth=error&msg={msg}")
+
+    if not client_id or not client_secret:
+        return RedirectResponse(
+            url=f"{frontend_url}/?auth=error&msg=GitHub+OAuth+not+configured"
+        )
+
+    try:
+        import httpx as _httpx
+
+        async with _httpx.AsyncClient(timeout=10) as hc:
+            # 1. Exchange code for access token
+            token_res = await hc.post(
+                "https://github.com/login/oauth/access_token",
+                data={
+                    "client_id":     client_id,
+                    "client_secret": client_secret,
+                    "code":          code,
+                    "redirect_uri":  redirect_uri,
+                },
+                headers={"Accept": "application/json"},
+            )
+            if token_res.status_code != 200:
+                logger.error("GitHub token exchange failed: %s", token_res.text)
+                return RedirectResponse(
+                    url=f"{frontend_url}/?auth=error&msg=GitHub+token+exchange+failed"
+                )
+            access_token = token_res.json().get("access_token", "")
+            if not access_token:
+                return RedirectResponse(
+                    url=f"{frontend_url}/?auth=error&msg=GitHub+access+token+missing"
+                )
+
+            # 2. Fetch GitHub user profile
+            user_res = await hc.get(
+                "https://api.github.com/user",
+                headers={"Authorization": f"Bearer {access_token}",
+                         "Accept": "application/vnd.github+json"},
+            )
+            if user_res.status_code != 200:
+                return RedirectResponse(
+                    url=f"{frontend_url}/?auth=error&msg=GitHub+profile+fetch+failed"
+                )
+            gh_user = user_res.json()
+
+            # 3. Fetch primary email if not public
+            email = gh_user.get("email") or ""
+            if not email:
+                email_res = await hc.get(
+                    "https://api.github.com/user/emails",
+                    headers={"Authorization": f"Bearer {access_token}",
+                             "Accept": "application/vnd.github+json"},
+                )
+                if email_res.status_code == 200:
+                    for e in email_res.json():
+                        if e.get("primary") and e.get("verified"):
+                            email = e.get("email", "")
+                            break
+
+        # 4. Build a stable learner_id from the GitHub numeric user id
+        github_id  = str(gh_user.get("id", ""))
+        learner_id = f"gh_{github_id}"
+        name       = gh_user.get("name") or gh_user.get("login") or email.split("@")[0]
+        picture    = gh_user.get("avatar_url") or ""
+
+        # 5. Upsert UserAccount in memory
+        from app.models import UserAccount
+        from app.auth import _users, create_session_token as _cst
+        if learner_id not in _users:
+            _users[learner_id] = UserAccount(
+                learner_id=learner_id,
+                email=email,
+                name=name,
+                picture=picture,
+                google_sub=github_id,   # repurposed field — stores GitHub id
+            )
+            logger.info("New GitHub user: %s (%s)", name, email)
+        else:
+            u = _users[learner_id]
+            u.name    = name
+            u.email   = email
+            u.picture = picture
+
+        # 6. Persist email/name/picture to learner profile + Supabase
+        lp = get_profile(learner_id)
+        changed = False
+        if not lp.email and email:
+            lp.email = email; changed = True
+        if not lp.display_name and name:
+            lp.display_name = name; changed = True
+        if changed:
+            from app.progress import save_profile as _sp
+            _sp(lp)
+        if picture:
+            try:
+                from app.db import get_db as _gdb
+                with _gdb() as _conn:
+                    _conn.execute("""
+                        INSERT INTO user_profiles (learner_id, display_name, photo_url)
+                        VALUES (?, ?, ?)
+                        ON CONFLICT(learner_id) DO UPDATE SET
+                          photo_url    = CASE WHEN excluded.photo_url != '' THEN excluded.photo_url ELSE user_profiles.photo_url END,
+                          display_name = CASE WHEN excluded.display_name != '' THEN excluded.display_name ELSE user_profiles.display_name END
+                    """, (learner_id, name or "", picture))
+            except Exception:
+                pass
+        sb_upsert_profile(learner_id, email, name)
+
+        # 7. Create session token and redirect to frontend
+        token     = _cst(learner_id)
+        user_data = urllib.parse.quote(json.dumps({
+            "token":      token,
+            "learner_id": learner_id,
+            "name":       name,
+            "email":      email,
+            "picture":    picture,
+        }))
+        return RedirectResponse(
+            url=f"{frontend_url}/?auth=github_success&user={user_data}"
+        )
+
+    except Exception as exc:
+        logger.error("GitHub OAuth callback error: %s", exc)
+        return RedirectResponse(
+            url=f"{frontend_url}/?auth=error&msg=GitHub+sign-in+failed"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -797,6 +972,16 @@ async def get_progress(learner_id: str) -> ProgressResponse:
     validate_learner_id(learner_id)
     profile = get_profile(learner_id)
     gaps    = get_knowledge_gaps(learner_id)
+    # Read updated_at from SQLite so the frontend can detect admin-driven tier changes
+    # without waiting for the 60-second progress cache to expire.
+    updated_at = 0.0
+    try:
+        from app.db import load_profile as _lp
+        row = _lp(learner_id)
+        if row:
+            updated_at = float(row.get("updated_at") or 0)
+    except Exception:
+        pass
     return ProgressResponse(
         learner_id=profile.learner_id,
         level=profile.level,
@@ -809,6 +994,7 @@ async def get_progress(learner_id: str) -> ProgressResponse:
         current_course_step=profile.current_course_step,
         completed_projects=profile.completed_projects,
         topic_progress=profile.topic_progress,
+        updated_at=updated_at,
     )
 
 
@@ -1211,12 +1397,26 @@ async def paystack_webhook(request: Request) -> dict:
                                    data.get("reference", ""))
             payment = add_payment(email, customer.get("name", email),
                                   amount_ngn, f"Course: {course_meta}", "paystack")
+            # Paystack charge.success means the payment IS confirmed — mark it immediately
+            confirm_payment(payment.id)
             invoice_id = f"INV-{_sec.token_hex(5).upper()}"
             create_invoice_db(invoice_id, payment.id, learner_id, email,
                               customer.get("name", email),
                               f"Course: {course_meta}", amount_ngn)
             sb_save_payment(payment.id, email, customer.get("name", email),
                             amount_ngn, f"Course: {course_meta}", "paystack")
+            # Send payment receipt email (non-blocking)
+            try:
+                from app.services.email_service import send_payment_receipt_email as _svc_pay
+                _svc_pay(
+                    name=customer.get("name", email),
+                    email=email,
+                    amount=amount_ngn,
+                    plan=f"Course: {course_meta}",
+                    payment_id=payment.id,
+                )
+            except Exception as _ep:
+                logger.debug("Payment receipt email failed (non-fatal): %s", _ep)
             log_activity(learner_id, "payment:course",
                          f"course={course_meta} | ₦{amount_ngn:.0f}")
             logger.info("Paystack webhook: course purchase %s for %s | invoice=%s",
@@ -1271,12 +1471,27 @@ async def paystack_webhook(request: Request) -> dict:
                 import secrets as _sec
                 payment    = add_payment(email, customer.get("name", email),
                                          amount_ngn, plan_label, "paystack")
+                # Paystack charge.success = payment IS confirmed — mark immediately
+                confirm_payment(payment.id)
                 invoice_id = f"INV-{_sec.token_hex(5).upper()}"
                 create_invoice_db(invoice_id, payment.id, learner_id, email,
                                   customer.get("name", email), plan_label, amount_ngn)
                 sb_save_payment(payment.id, email, customer.get("name", email),
                                 amount_ngn, plan_label, "paystack")
                 sb_update_tier(learner_id, tier)
+
+                # Send payment receipt email to the user (non-blocking)
+                try:
+                    from app.services.email_service import send_payment_receipt_email as _svc_pay
+                    _svc_pay(
+                        name=customer.get("name", email),
+                        email=email,
+                        amount=amount_ngn,
+                        plan=plan_label,
+                        payment_id=payment.id,
+                    )
+                except Exception as _ep:
+                    logger.debug("Payment receipt email failed (non-fatal): %s", _ep)
 
                 # Credit referral bonus
                 try:
@@ -1289,13 +1504,13 @@ async def paystack_webhook(request: Request) -> dict:
                         ).fetchone()
                     if ref_use:
                         _ref_code = ref_use["code"]
-                        bonus = round(amount_ngn * 0.05, 2)  # 5% to referrer
+                        bonus = round(amount_ngn * 0.15, 2)  # 15% bonus to referrer on payment
                         with _gdb() as _conn:
                             _conn.execute(
                                 "UPDATE referrals SET bonus_balance=bonus_balance+? WHERE code=?",
                                 (bonus, _ref_code)
                             )
-                        logger.info("Credited ₦%s referral bonus (5%%) for code %s", bonus, _ref_code)
+                        logger.info("Credited ₦%s referral bonus (15%%) for code %s", bonus, _ref_code)
                 except Exception as rb_exc:
                     logger.debug("Referral bonus credit failed: %s", rb_exc)
 
@@ -1812,17 +2027,31 @@ async def admin_invite_team(body: _TeamInvite, request: Request) -> dict:
     m = invite_team_member(body.email, body.name, body.role)
     try:
         from app.email_auth import _send_email_async
-        _app_url = _os.getenv("APP_URL", "https://mypytutor.onrender.com")
-        html = f"""<div style="font-family:Arial;background:#0f1117;color:#e2e8f0;padding:32px;">
-        <h2 style="color:#63b3ed;">🐍 MyPy Tutor — Team Invitation</h2>
-        <p>Hi {body.name},</p>
-        <p>You've been invited to join the MyPy Tutor team as <strong>{body.role}</strong>.</p>
-        <a href="{_app_url}" style="background:#3182ce;color:#fff;padding:12px 24px;border-radius:8px;
-        text-decoration:none;font-weight:bold;">Access Platform</a>
-        <p style="color:#4a5568;margin-top:20px;font-size:0.8rem;">MyPy Tutor · Teamsamikoko Global Academy</p>
-        </div>"""
+        _frontend_url = _os.getenv("FRONTEND_URL", _os.getenv("APP_URL", "https://mypytutor.com.ng"))
+        html = f"""<!DOCTYPE html>
+<html><body style="font-family:Arial,sans-serif;background:#0f1117;color:#e2e8f0;padding:32px;">
+<div style="max-width:520px;margin:0 auto;background:#0d1120;border-radius:16px;padding:32px;border:1px solid rgba(13,71,161,0.3);">
+  <div style="text-align:center;margin-bottom:24px">
+    <img src="{_frontend_url}/icons/mypytutor_logo.jpg" alt="MyPy Tutor" style="width:56px;height:56px;border-radius:50%;border:2px solid rgba(224,163,0,0.5);" />
+    <h2 style="color:#E0A300;margin:12px 0 4px;font-size:1.3rem;">MyPy Tutor</h2>
+    <p style="color:#4d6080;font-size:.78rem;margin:0">Powered by TeamTega Technologies Limited</p>
+  </div>
+  <h3 style="color:#93c5fd;margin-bottom:8px;">🎉 Team Invitation</h3>
+  <p style="color:#a0aec0;line-height:1.7;">Hi <strong style="color:#e2e8f0;">{body.name}</strong>,</p>
+  <p style="color:#a0aec0;line-height:1.7;margin-top:8px;">
+    You've been invited to join the <strong style="color:#e2e8f0;">MyPy Tutor</strong> team
+    as <strong style="color:#E0A300;">{body.role}</strong>.
+  </p>
+  <a href="{_frontend_url}" style="display:inline-block;margin-top:24px;background:#0D47A1;color:#fff;
+     padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:.95rem;">
+    🚀 Access the Platform
+  </a>
+  <p style="color:#4d6080;font-size:.75rem;margin-top:28px;">
+    MyPy Tutor · Teamsamikoko Global Academy · Powered by TeamTega Technologies Limited
+  </p>
+</div></body></html>"""
         _send_email_async(body.email, "You're invited to join the MyPy Tutor team!", html,
-                          f"Hi {body.name}, you've been invited to the MyPy Tutor team as {body.role}.")
+                          f"Hi {body.name}, you've been invited to the MyPy Tutor team as {body.role}.\n\nAccess the platform: {_frontend_url}")
     except Exception as e:
         logger.warning("Team invite email failed: %s", e)
     return {"ok": True, "member": {"email": m.email, "name": m.name, "role": m.role}}
@@ -1834,20 +2063,36 @@ async def admin_create_task(body: _TaskCreate, request: Request) -> dict:
     t = create_task(body.title, body.description, body.assigned_to, body.priority, body.due_date)
     try:
         from app.email_auth import _send_email_async
-        _app_url = _os.getenv("APP_URL", "https://mypytutor.onrender.com")
-        html = f"""<div style="font-family:Arial;background:#0f1117;color:#e2e8f0;padding:32px;">
-        <h2 style="color:#f6ad55;">📋 New Task Assigned</h2>
-        <p><strong>{body.title}</strong></p>
-        <p style="color:#a0aec0;">{body.description}</p>
-        <p>Priority: <strong style="color:{'#fc8181' if body.priority=='urgent' else '#f6ad55'}">
-        {body.priority.upper()}</strong></p>
-        {"<p>Due: " + body.due_date + "</p>" if body.due_date else ""}
-        <a href="{_app_url}" style="background:#3182ce;color:#fff;padding:12px 24px;border-radius:8px;
-        text-decoration:none;font-weight:bold;">View Task</a>
-        <p style="color:#4a5568;margin-top:20px;font-size:0.8rem;">MyPy Tutor · Teamsamikoko Global Academy</p>
-        </div>"""
+        _frontend_url = _os.getenv("FRONTEND_URL", _os.getenv("APP_URL", "https://mypytutor.com.ng"))
+        priority_color = {"urgent": "#ef4444", "high": "#f59e0b", "medium": "#3b82f6", "low": "#6b7280"}.get(body.priority, "#3b82f6")
+        html = f"""<!DOCTYPE html>
+<html><body style="font-family:Arial,sans-serif;background:#0f1117;color:#e2e8f0;padding:32px;">
+<div style="max-width:520px;margin:0 auto;background:#0d1120;border-radius:16px;padding:32px;border:1px solid rgba(13,71,161,0.3);">
+  <div style="text-align:center;margin-bottom:24px">
+    <img src="{_frontend_url}/icons/mypytutor_logo.jpg" alt="MyPy Tutor" style="width:56px;height:56px;border-radius:50%;border:2px solid rgba(224,163,0,0.5);" />
+    <h2 style="color:#E0A300;margin:12px 0 4px;font-size:1.3rem;">MyPy Tutor</h2>
+    <p style="color:#4d6080;font-size:.78rem;margin:0">Powered by TeamTega Technologies Limited</p>
+  </div>
+  <h3 style="color:#fcd34d;margin-bottom:8px;">📋 New Task Assigned</h3>
+  <div style="background:#111827;border-radius:10px;padding:16px;margin-bottom:16px;">
+    <p style="color:#e2e8f0;font-weight:bold;font-size:1rem;margin:0 0 8px;">{body.title}</p>
+    <p style="color:#94a3b8;font-size:.88rem;line-height:1.6;margin:0 0 10px;">{body.description}</p>
+    <span style="display:inline-block;background:{priority_color}22;color:{priority_color};
+          border:1px solid {priority_color}55;border-radius:6px;padding:3px 10px;font-size:.78rem;font-weight:700;">
+      {body.priority.upper()} PRIORITY
+    </span>
+    {f'<p style="color:#4d6080;font-size:.78rem;margin:10px 0 0;">⏰ Due: <strong style=color:#e2e8f0>{body.due_date}</strong></p>' if body.due_date else ''}
+  </div>
+  <a href="{_frontend_url}" style="display:inline-block;background:#0D47A1;color:#fff;
+     padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:.95rem;">
+    📋 View Task
+  </a>
+  <p style="color:#4d6080;font-size:.75rem;margin-top:28px;">
+    MyPy Tutor · Teamsamikoko Global Academy · Powered by TeamTega Technologies Limited
+  </p>
+</div></body></html>"""
         _send_email_async(body.assigned_to, f"Task assigned: {body.title}", html,
-                          f"New task: {body.title}\n{body.description}\nPriority: {body.priority}")
+                          f"New task: {body.title}\n{body.description}\nPriority: {body.priority}{chr(10)+'Due: '+body.due_date if body.due_date else ''}\n\nView: {_frontend_url}")
     except Exception as e:
         logger.warning("Task email failed: %s", e)
     return {"ok": True, "task_id": t.id}

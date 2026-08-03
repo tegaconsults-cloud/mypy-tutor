@@ -456,9 +456,26 @@ def sb_load_pending_confirmations() -> list[dict]:
             .execute()
         )
         rows = res.data or []
-        # Add created_at_ts field (numeric) for age check in email_auth.py
+        # Add created_at_ts field (numeric) for age check in email_auth.py.
+        # Supabase may store created_at as a FLOAT (Unix epoch) or as an ISO
+        # TIMESTAMPTZ string depending on the column type. Handle both safely.
         for r in rows:
-            r["created_at_ts"] = float(r.get("created_at") or 0)
+            raw_ca = r.get("created_at")
+            if raw_ca is None:
+                r["created_at_ts"] = 0.0
+            else:
+                try:
+                    r["created_at_ts"] = float(raw_ca)
+                except (TypeError, ValueError):
+                    # ISO string (e.g. "2024-01-15T12:34:56+00:00") — parse it
+                    try:
+                        import datetime as _dt2
+                        # Strip timezone offset for fromisoformat compatibility
+                        ts_str = str(raw_ca).replace("Z", "+00:00")
+                        dt = _dt2.datetime.fromisoformat(ts_str)
+                        r["created_at_ts"] = dt.timestamp()
+                    except Exception:
+                        r["created_at_ts"] = 0.0
         return rows
     except Exception as exc:
         logger.debug("sb_load_pending_confirmations failed: %s", exc)

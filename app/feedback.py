@@ -1,6 +1,8 @@
 """
-In-memory feedback store for MyPy Tutor.
-All feedback is automatically forwarded to tega.com.ng@gmail.com via Gmail SMTP.
+Feedback store for MyPy Tutor.
+Ratings and surveys are persisted to SQLite on every write so data survives
+Render ephemeral restarts. All feedback is also forwarded by email to the
+admin inbox via Gmail SMTP (fire-and-forget, non-blocking).
 """
 
 import os
@@ -98,7 +100,7 @@ SURVEY_EVERY = 5
 # ---------------------------------------------------------------------------
 
 def record_message_feedback(fb: MessageFeedback) -> None:
-    """Store thumbs rating and email admin."""
+    """Store thumbs rating in memory + SQLite, and email admin."""
     r = _Rating(
         learner_id=fb.learner_id,
         rating=fb.rating,
@@ -107,6 +109,18 @@ def record_message_feedback(fb: MessageFeedback) -> None:
         comment=fb.comment,
     )
     _ratings.append(r)
+
+    # Persist to SQLite so feedback survives Render restarts
+    try:
+        from app.db import get_db as _gdb
+        with _gdb() as _conn:
+            _conn.execute(
+                "INSERT INTO feedback_ratings (learner_id, rating, intent, topic, comment) "
+                "VALUES (?,?,?,?,?)",
+                (fb.learner_id, fb.rating, fb.intent or '', fb.topic or '', fb.comment or '')
+            )
+    except Exception as exc:
+        logger.debug("Feedback SQLite save failed (non-fatal): %s", exc)
 
     emoji   = "👍" if fb.rating == "up" else "👎"
     ts      = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
@@ -129,7 +143,7 @@ def record_message_feedback(fb: MessageFeedback) -> None:
 
 
 def record_survey(fb: SurveyFeedback) -> None:
-    """Store full survey response and email admin."""
+    """Store full survey response in memory + SQLite, and email admin."""
     s = _Survey(
         learner_id=fb.learner_id,
         overall=fb.overall,
@@ -139,6 +153,20 @@ def record_survey(fb: SurveyFeedback) -> None:
         would_recommend=fb.would_recommend,
     )
     _surveys.append(s)
+
+    # Persist to SQLite so surveys survive Render restarts
+    try:
+        from app.db import get_db as _gdb
+        with _gdb() as _conn:
+            _conn.execute(
+                "INSERT INTO feedback_surveys "
+                "(learner_id, overall, clarity, helpfulness, suggestion, would_recommend) "
+                "VALUES (?,?,?,?,?,?)",
+                (fb.learner_id, fb.overall, fb.clarity, fb.helpfulness,
+                 fb.suggestion or '', int(fb.would_recommend))
+            )
+    except Exception as exc:
+        logger.debug("Survey SQLite save failed (non-fatal): %s", exc)
 
     stars   = "⭐" * fb.overall
     ts      = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")

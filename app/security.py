@@ -66,10 +66,16 @@ _RATE_STORE_MAX = 10_000   # evict oldest IPs when over this size
 
 
 def _evict_rate_store(store: dict) -> None:
-    """Drop the 20% oldest entries when the store exceeds capacity."""
+    """Drop the 20% of entries whose most-recent timestamp is oldest."""
     if len(store) > _RATE_STORE_MAX:
         evict_count = _RATE_STORE_MAX // 5
-        for key in list(store.keys())[:evict_count]:
+        now = time.monotonic()
+        # Sort by the last (most recent) timestamp in each deque — evict stalest first
+        sorted_keys = sorted(
+            store.keys(),
+            key=lambda k: store[k][-1] if store[k] else 0,
+        )
+        for key in sorted_keys[:evict_count]:
             store.pop(key, None)
 
 
@@ -135,9 +141,14 @@ def check_free_prompt_limit(learner_id: str, ip: str) -> tuple[bool, int]:
     """
     Check if a free-tier user has exceeded their daily limit.
     Returns (allowed: bool, used_count: int).
+    Each authenticated learner_id gets their own quota; anonymous users are
+    identified by IP so one unauthenticated visitor cannot exhaust another's quota.
     """
     _ensure_prompt_store_loaded()
-    key   = learner_id if learner_id and learner_id != "default" else ip
+    # Always use a per-user key so every individual gets their own quota.
+    # For unauthenticated requests learner_id == "default" — fall back to IP
+    # so each anonymous visitor gets their own bucket.
+    key   = learner_id if learner_id and learner_id != "default" else f"ip_{ip}"
     today = _wat_date_key()
 
     existing = _daily_prompt_store.get(key)
@@ -163,7 +174,7 @@ def check_free_prompt_limit(learner_id: str, ip: str) -> tuple[bool, int]:
 def increment_free_prompt_count(learner_id: str, ip: str) -> int:
     """Increment daily prompt counter in both memory and SQLite. Returns new count."""
     _ensure_prompt_store_loaded()
-    key   = learner_id if learner_id and learner_id != "default" else ip
+    key   = learner_id if learner_id and learner_id != "default" else f"ip_{ip}"
     today = _wat_date_key()
 
     # Atomically increment in SQLite (source of truth)
@@ -182,7 +193,7 @@ def increment_free_prompt_count(learner_id: str, ip: str) -> int:
 def get_free_prompt_count(learner_id: str, ip: str) -> int:
     """Get current daily prompt count. Checks memory first, then SQLite."""
     _ensure_prompt_store_loaded()
-    key   = learner_id if learner_id and learner_id != "default" else ip
+    key   = learner_id if learner_id and learner_id != "default" else f"ip_{ip}"
     today = _wat_date_key()
 
     existing = _daily_prompt_store.get(key)

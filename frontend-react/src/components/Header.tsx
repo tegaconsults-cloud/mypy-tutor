@@ -6,6 +6,7 @@ import {
   ChevronDown, X, Zap,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { useProgress } from '../context/ProgressContext'
 import Logo from './Logo'
 
 type Panel = 'chat' | 'courses' | 'quiz' | 'progress' | 'certificates' | 'pricing' | 'profile'
@@ -33,12 +34,26 @@ const LEVELS = [
   { value: 'advanced',     label: '🔴 Advanced' },
 ]
 
+/** Human-readable label + colour for each tier key. */
+const TIER_META: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  free:  { label: 'Free',             color: '#E0A300', bg: 'rgba(224,163,0,0.15)',    border: 'rgba(224,163,0,0.3)' },
+  tier1: { label: 'Beginner Bundle',  color: '#60a5fa', bg: 'rgba(13,71,161,0.2)',     border: 'rgba(13,71,161,0.4)' },
+  tier2: { label: 'Career Builder',   color: '#a78bfa', bg: 'rgba(139,92,246,0.15)',   border: 'rgba(139,92,246,0.35)' },
+  tier3: { label: 'Elite',            color: '#34d399', bg: 'rgba(16,185,129,0.15)',   border: 'rgba(16,185,129,0.35)' },
+}
+
 export default function Header({ panel, onPanelChange, onMenuClick, onAuthClick, onReferralClick }: Props) {
   const { user, signOut } = useAuth()
+  const { progress, refresh } = useProgress()
   const [dropOpen, setDropOpen] = useState(false)
   const [level, setLevel] = useState(localStorage.getItem('mypy_tutor_level') || 'beginner')
   const [copyMsg, setCopyMsg] = useState('')
   const dropRef = useRef<HTMLDivElement>(null)
+
+  // Fetch progress whenever the user is available so the tier badge is live
+  useEffect(() => {
+    if (user) refresh(user.learner_id)
+  }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -70,6 +85,10 @@ export default function Header({ panel, onPanelChange, onMenuClick, onAuthClick,
 
   const initials = (user?.name || user?.email || 'U')
     .split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
+
+  // Resolve the current tier from progress (live) or fall back to 'free'
+  const currentTier = progress?.tier ?? 'free'
+  const tierMeta = TIER_META[currentTier] ?? TIER_META.free
 
   return (
     <header
@@ -164,9 +183,10 @@ export default function Header({ panel, onPanelChange, onMenuClick, onAuthClick,
                     style={{ borderBottom: '1px solid rgba(13,71,161,0.2)' }}>
                     <div className="font-semibold text-sm text-white truncate">{user.name}</div>
                     <div className="text-xs mt-0.5 truncate" style={{ color: '#4d6080' }}>{user.email}</div>
+                    {/* Live tier badge — reads from progress context */}
                     <div className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase"
-                      style={{ background: 'rgba(224,163,0,0.15)', color: '#E0A300', border: '1px solid rgba(224,163,0,0.3)' }}>
-                      <Zap size={9} /> Free Plan
+                      style={{ background: tierMeta.bg, color: tierMeta.color, border: `1px solid ${tierMeta.border}` }}>
+                      <Zap size={9} /> {tierMeta.label}
                     </div>
                   </div>
 

@@ -61,7 +61,9 @@ export default function ReferralModal({ onClose }: Props) {
   }, [user])
 
   const code     = data?.code || '...'
-  const shareMsg = `Join MyPy Tutor — Africa's best AI Python Tutor! 🐍\nUse my code ${code} at signup to get 5% off your first payment.\n👉 ${appUrl}`
+  // Build a deep-link that auto-fills the referral code at signup
+  const referralLink = `${appUrl}/?ref=${code}`
+  const shareMsg = `Join MyPy Tutor — Africa's best AI Python Tutor! 🐍\nUse my referral link to get 5% off your first payment.\n👉 ${referralLink}`
 
   const copyMsg = () => {
     navigator.clipboard.writeText(shareMsg)
@@ -78,7 +80,7 @@ export default function ReferralModal({ onClose }: Props) {
   const shareNative = async () => {
     if (navigator.share) {
       try {
-        await navigator.share({ title: 'MyPy Tutor Referral', text: shareMsg, url: appUrl })
+        await navigator.share({ title: 'MyPy Tutor Referral', text: shareMsg, url: referralLink })
       } catch {}
     } else {
       copyMsg()
