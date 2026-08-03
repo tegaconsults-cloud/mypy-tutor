@@ -318,12 +318,31 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
             <div class="fr"><label>User Name</label><input id="pn" placeholder="Full name"/></div>
             <div class="fr"><label>Amount (₦)</label><input id="pa" type="number" placeholder="5000"/></div>
             <div class="fr"><label>Plan</label><select id="pp">
-              <option value="tier1">Tier 1 — ₦5,000/mo</option>
-              <option value="tier2">Tier 2 — ₦10,000/mo</option>
-              <option value="tier3">Tier 3 — ₦20,000/mo</option>
-              <option value="basic-cert">Basic Certificate — ₦30,000</option>
-              <option value="adv-cert">Advanced — ₦60,000</option>
-              <option value="exec-cert">Executive — ₦100,000</option>
+              <optgroup label="Course Bundles (one-time)">
+                <option value="beginner bundle">Beginner Bundle — ₦8,000 (4 courses)</option>
+                <option value="intermediate bundle">Intermediate Bundle — ₦15,000 (7 courses)</option>
+                <option value="elite bundle">Elite Bundle — ₦35,000 (all 16 courses)</option>
+              </optgroup>
+              <optgroup label="Certificate Fees">
+                <option value="basic-cert">Basic Python Certificate — ₦30,000</option>
+                <option value="adv-cert">Advanced Python Certificate — ₦60,000</option>
+                <option value="exec-cert">Executive Masters Certificate — ₦100,000</option>
+              </optgroup>
+              <optgroup label="AI Prompt Plans (monthly)">
+                <option value="prompt-starter">Prompt Starter 50/day — ₦2,000/mo</option>
+                <option value="prompt-pro">Prompt Pro 200/day — ₦5,000/mo</option>
+                <option value="prompt-unlimited">Prompt Unlimited — ₦10,000/mo</option>
+              </optgroup>
+              <optgroup label="Individual Courses">
+                <option value="python-fundamentals">Python Fundamentals — ₦3,500</option>
+                <option value="python-strings">Python Strings — ₦2,500</option>
+                <option value="python-collections">Python Collections — ₦2,500</option>
+                <option value="python-control-flow">Control Flow — ₦2,500</option>
+                <option value="python-functions-advanced">Functions Advanced — ₦4,000</option>
+                <option value="python-oop">OOP — ₦4,000</option>
+                <option value="machine-learning">Machine Learning — ₦12,000</option>
+                <option value="ai-prompt-engineering">AI &amp; Prompt Engineering — ₦15,000</option>
+              </optgroup>
             </select></div>
             <div class="fr"><label>Method</label><select id="pm"><option value="bank">Bank Transfer</option><option value="paystack">Paystack</option></select></div>
             <div class="fr"><label>Notes</label><input id="pnotes" placeholder="Optional"/></div>
@@ -480,8 +499,8 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
         <div class="sec" style="margin-bottom:14px">
           <h3>📧 Email Delivery Test</h3>
           <p style="color:#718096;font-size:.82rem;margin-bottom:10px">
-            Send a test email to verify your Gmail SMTP settings are working.
-            If users are not receiving emails, run this first.
+            Tests Resend then SMTP fallback — each with a 12s timeout (total ~25s max).
+            Shows per-provider results so you can diagnose exactly which one failed and why.
           </p>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
             <div style="flex:1;min-width:200px">
@@ -993,22 +1012,38 @@ async function sendTestEmail(){
   const resEl = document.getElementById('email-test-result');
   const cfgEl = document.getElementById('email-config-box');
   resEl.style.display='block';
-  resEl.innerHTML='<span style="color:#718096">Sending test email — please wait up to 30s…</span>';
+  resEl.innerHTML='<span style="color:#718096">Sending test email — please wait up to 25s…</span>';
   cfgEl.style.display='none';
   const r=await api('/admin/email/test',{method:'POST',body:JSON.stringify({to})});
   const d=await r.json();
+
   if(d.sent){
-    resEl.innerHTML=`<div class="alert-g">✅ Test email sent to <strong>${to}</strong>. Check your inbox (and spam folder).</div>`;
+    resEl.innerHTML=`<div class="alert-g">✅ Test email sent via <strong>${d.provider_used||'resend'}</strong> to <strong>${to}</strong>. Check your inbox (and spam).</div>`;
   } else {
-    resEl.innerHTML=`<div class="alert-r">❌ Failed to send.<br/>
-      <span style="font-size:.82rem;font-family:monospace;word-break:break-all;display:block;margin-top:6px;background:#1a0a0a;padding:8px;border-radius:6px;">${d.error||'Unknown error'}</span>
+    // Build a per-provider breakdown
+    const resendOk  = d.results?.resend?.ok;
+    const smtpOk    = d.results?.smtp?.ok;
+    const resendErr = d.results?.resend?.error || '';
+    const smtpErr   = d.results?.smtp?.error   || '';
+    const rows = [
+      `<tr><td style="padding:3px 8px;color:#93c5fd;width:60px">Resend</td>
+       <td style="padding:3px 8px">${resendOk?'✅ OK':`❌ ${resendErr}`}</td></tr>`,
+      `<tr><td style="padding:3px 8px;color:#93c5fd">SMTP</td>
+       <td style="padding:3px 8px">${smtpOk?'✅ OK':`❌ ${smtpErr}`}</td></tr>`,
+    ].join('');
+    resEl.innerHTML=`<div class="alert-r">❌ Delivery failed.<br/>
+      <table style="margin-top:8px;font-size:.78rem;border-collapse:collapse;">${rows}</table>
+      ${d.error?`<div style="margin-top:8px;font-size:.8rem;color:#fcd34d;">💡 ${d.error}</div>`:''}
     </div>`;
   }
+
   if(d.config){
     cfgEl.style.display='block';
     document.getElementById('email-config-detail').innerHTML=
       Object.entries(d.config).map(([k,v])=>
-        `<div style="margin-bottom:3px"><span style="color:#4a5568">${k}:</span> <span style="color:${String(v).includes('NOT SET')||String(v).includes('FAIL')?'#fc8181':'#68d391'}">${v}</span></div>`
+        `<div style="margin-bottom:3px"><span style="color:#4a5568">${k}:</span> <span style="color:${
+          String(v).includes('NOT SET')||String(v).includes('FAIL')||String(v).startsWith('⚠')?'#fc8181':
+          String(v).startsWith('✅')?'#68d391':'#a0aec0'}">${v}</span></div>`
       ).join('');
   }
 }
