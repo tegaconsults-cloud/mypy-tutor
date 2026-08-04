@@ -818,4 +818,15 @@ def confirm_password_reset(token: str, new_password: str) -> tuple[bool, str]:
         logger.warning("Supabase password update failed: %s", exc)
 
     logger.info("Password reset successful for %s", email)
-    return True, "Password updated successfully! You can now sign in with your new password."
+
+    # Revoke all existing sessions so old tokens are invalidated immediately.
+    # The user must sign in fresh with the new password.
+    try:
+        lid = _confirmed.get(email, {}).get("learner_id", "")
+        if lid:
+            from app.db import revoke_all_sessions
+            revoke_all_sessions(lid)
+    except Exception as _rev_exc:
+        logger.debug("Session revocation after password reset failed (non-fatal): %s", _rev_exc)
+
+    return True, "Password updated successfully. Please sign in with your new password."

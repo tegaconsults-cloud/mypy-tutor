@@ -323,6 +323,22 @@ async def require_user(
     if not credentials:
         raise HTTPException(status_code=401, detail="Authentication required.")
     learner_id = verify_session_token(credentials.credentials)
+
+    # Check token revocation — invalidated after password change or account deletion
+    try:
+        # The token payload contains the issued-at time; extract it from the signed value
+        # itsdangerous stores the timestamp in the signature — use loads_unsafe for timing
+        s = URLSafeTimedSerializer(_get_session_secret())
+        _, ts = s.loads_unsafe(credentials.credentials, salt="session")
+        if ts is not None:
+            from app.db import is_session_revoked
+            if is_session_revoked(learner_id, float(ts)):
+                raise HTTPException(status_code=401, detail="Session expired. Please sign in again.")
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # Non-fatal — allow if revocation check fails (DB unavailable)
+
     user = get_user_by_id(learner_id)
     if not user:
         raise HTTPException(status_code=401, detail="User not found. Please sign in again.")

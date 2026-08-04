@@ -600,6 +600,118 @@ def purge_expired_reset_tokens() -> None:
         pass
 
 
+# ---------------------------------------------------------------------------
+# Token revocation — invalidate all sessions for a learner
+# Used on password change and account deletion.
+# ---------------------------------------------------------------------------
+
+def revoke_all_sessions(learner_id: str) -> None:
+    """
+    Record that all sessions for this learner are invalidated after a given
+    timestamp. The session token itself is stateless (HMAC), but we store a
+    'revoked_before' timestamp — any token issued before this time is rejected
+    by require_user() when it calls is_session_revoked().
+
+    This is a lightweight blacklist: one row per user, not one row per token.
+    """
+    import time as _t
+    try:
+        with get_db() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS session_revocations (
+                    learner_id   TEXT PRIMARY KEY,
+                    revoked_at   REAL NOT NULL
+                )
+            """)
+            conn.execute("""
+                INSERT INTO session_revocations (learner_id, revoked_at)
+                VALUES (?, ?)
+                ON CONFLICT(learner_id) DO UPDATE SET revoked_at = excluded.revoked_at
+            """, (learner_id, _t.time()))
+    except Exception as _e:
+        import logging as _log
+        _log.getLogger(__name__).warning("revoke_all_sessions failed: %s", _e)
+
+
+def is_session_revoked(learner_id: str, token_issued_at: float) -> bool:
+    """Return True if the token was issued before the last revocation for this learner."""
+    try:
+        with get_db() as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS session_revocations (
+                    learner_id TEXT PRIMARY KEY,
+                    revoked_at REAL NOT NULL
+                )
+            """)
+            row = conn.execute(
+                "SELECT revoked_at FROM session_revocations WHERE learner_id=?",
+                (learner_id,)
+            ).fetchone()
+        if row and token_issued_at < float(row["revoked_at"]):
+            return True
+        return False
+    except Exception:
+        return False  # non-fatal — allow on DB error
+
+
+# ---------------------------------------------------------------------------
+# Account deletion — NDPR/GDPR right to erasure
+# ---------------------------------------------------------------------------
+
+def delete_account(learner_id: str, email: str) -> dict:
+    """
+    Delete a learner account. Performs:
+    - Hard delete: email_accounts, user_profiles, password_resets, session_revocations
+    - Anonymisation: learner_profiles (keep learning data in aggregate, remove PII)
+    - Anonymisation: prompt_history (remove content, keep intent/topic for analytics)
+    - Payments retained 7 years (Nigerian tax law) with email anonymised
+    Returns a summary of what was deleted/anonymised.
+    """
+    import time as _t
+    anon_id = f"deleted_{learner_id[:8]}"
+    summary = {}
+    try:
+        with get_db() as conn:
+            # Hard delete PII tables
+            conn.execute("DELETE FROM email_accounts WHERE learner_id=?", (learner_id,))
+            conn.execute("DELETE FROM user_profiles WHERE learner_id=?", (learner_id,))
+            conn.execute("DELETE FROM password_resets WHERE email=?", (email.lower(),))
+            conn.execute("DELETE FROM referral_withdrawals WHERE learner_id=?", (learner_id,))
+            # Revoke sessions (prevent reuse after deletion)
+            conn.execute("""
+                INSERT INTO session_revocations (learner_id, revoked_at) VALUES (?, ?)
+                ON CONFLICT(learner_id) DO UPDATE SET revoked_at=excluded.revoked_at
+            """, (learner_id, _t.time()))
+            # Anonymise learner profile — keep learning stats, remove email/name
+            conn.execute("""
+                UPDATE learner_profiles SET email='', display_name='[deleted]'
+                WHERE learner_id=?
+            """, (learner_id,))
+            # Anonymise prompt history content (keep metadata for training quality)
+            conn.execute("""
+                UPDATE prompt_history SET content='[deleted]' WHERE learner_id=?
+            """, (learner_id,))
+            # Anonymise payment email (retain record for 7 years per Nigerian tax law)
+            conn.execute("""
+                UPDATE payments SET user_email='deleted@deleted.invalid',
+                                    user_name='[deleted]'
+                WHERE user_email=?
+            """, (email.lower(),))
+            summary = {
+                "email_account": "deleted",
+                "user_profile": "deleted",
+                "sessions": "revoked",
+                "learning_profile": "anonymised",
+                "prompt_history": "anonymised",
+                "payments": "email anonymised (retained 7 years per law)",
+            }
+    except Exception as _e:
+        import logging as _log
+        _log.getLogger(__name__).error("delete_account DB error for %s: %s", learner_id, _e)
+        raise
+    return summary
+
+
 def update_password_hash(email: str, new_hash: str) -> None:
     with get_db() as conn:
         conn.execute(

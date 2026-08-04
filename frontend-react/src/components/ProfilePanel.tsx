@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { User, MapPin, Globe, Lock, Camera, LogOut, ExternalLink, Mail } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { User, MapPin, Globe, Lock, Camera, LogOut, ExternalLink, Mail, Trash2, AlertTriangle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { getProfile, saveProfile, forgotPassword, API_BASE } from '../api'
+import { getProfile, saveProfile, forgotPassword, deleteAccount, API_BASE } from '../api'
 
 export default function ProfilePanel() {
   const { user, signOut } = useAuth()
@@ -15,6 +16,9 @@ export default function ProfilePanel() {
   const [msg,      setMsg]      = useState('')
   const [pwMsg,    setPwMsg]    = useState('')
   const [invoices, setInvoices] = useState<{id:string;plan:string;amount:number}[]>([])
+  const [deleteStep,    setDeleteStep]    = useState<'idle' | 'confirm' | 'deleting'>('idle')
+  const [deletePassword, setDeletePassword] = useState('')
+  const [deleteError,    setDeleteError]    = useState('')
 
   const lid      = user?.learner_id || 'default'
   const isGoogle = localStorage.getItem('mpt_auth_type') === 'google'
@@ -58,6 +62,19 @@ export default function ProfilePanel() {
     if (!email) { setPwMsg('Could not find account email.'); return }
     try { await forgotPassword(email); setPwMsg(`✅ Reset link sent to ${email}`) }
     catch { setPwMsg('❌ Network error') }
+  }
+
+  const handleDeleteAccount = async () => {
+    setDeleteStep('deleting')
+    setDeleteError('')
+    try {
+      await deleteAccount(deletePassword)
+      // Sign out locally after successful deletion
+      signOut()
+    } catch (err: unknown) {
+      setDeleteError(err instanceof Error ? err.message : 'Deletion failed. Please try again.')
+      setDeleteStep('confirm')
+    }
   }
 
   if (!user) return (
@@ -189,6 +206,89 @@ export default function ProfilePanel() {
           </div>
         </motion.div>
       )}
+
+      {/* Legal links */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
+        className="flex items-center justify-center gap-4 text-xs py-2 flex-wrap">
+        <Link to="/terms" target="_blank" rel="noopener" style={{ color: '#4d6080' }}
+          className="hover:text-blue-400 transition-colors">Terms of Service</Link>
+        <span style={{ color: '#1e3a5f' }}>·</span>
+        <Link to="/privacy" target="_blank" rel="noopener" style={{ color: '#4d6080' }}
+          className="hover:text-blue-400 transition-colors">Privacy Policy</Link>
+        <span style={{ color: '#1e3a5f' }}>·</span>
+        <a href="mailto:support@mypytutor.com.ng" style={{ color: '#4d6080' }}
+          className="hover:text-blue-400 transition-colors">Support</a>
+      </motion.div>
+
+      {/* Delete Account — danger zone */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
+        className="card border"
+        style={{ borderColor: 'rgba(239,68,68,0.2)', background: 'rgba(239,68,68,0.04)' }}>
+        <div className="flex items-center gap-2 mb-2">
+          <Trash2 size={14} style={{ color: '#ef4444' }} />
+          <h3 className="font-bold text-sm" style={{ color: '#ef4444', fontFamily: 'Sora' }}>Delete Account</h3>
+        </div>
+
+        {deleteStep === 'idle' && (
+          <>
+            <p className="text-xs leading-relaxed mb-3" style={{ color: '#64748b' }}>
+              Permanently delete your account and all personal data (NDPR right to erasure). Learning statistics will be anonymised. Payment records are retained 7 years as required by Nigerian tax law.
+            </p>
+            <button onClick={() => setDeleteStep('confirm')}
+              className="btn btn-sm flex items-center gap-1.5 w-full justify-center"
+              style={{ background: 'rgba(239,68,68,0.1)', color: '#fca5a5', border: '1px solid rgba(239,68,68,0.3)' }}>
+              <Trash2 size={12} /> Delete My Account
+            </button>
+          </>
+        )}
+
+        {deleteStep === 'confirm' && (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-start gap-2 p-3 rounded-xl"
+              style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+              <AlertTriangle size={14} style={{ color: '#ef4444', flexShrink: 0, marginTop: 1 }} />
+              <p className="text-xs" style={{ color: '#fca5a5', lineHeight: 1.6 }}>
+                This action is <strong>permanent and irreversible</strong>. Your account, learning history, and profile will be deleted.
+              </p>
+            </div>
+            {!isGoogle && (
+              <div>
+                <label className="text-[10px] font-bold uppercase tracking-widest block mb-1.5" style={{ color: '#64748b' }}>
+                  Enter your password to confirm
+                </label>
+                <input type="password" value={deletePassword}
+                  onChange={e => setDeletePassword(e.target.value)}
+                  placeholder="Your current password"
+                  className="h-11"
+                  style={{ background: 'rgba(6,13,28,0.8)', borderColor: 'rgba(239,68,68,0.3)' }} />
+              </div>
+            )}
+            {deleteError && (
+              <div className="text-xs text-center px-3 py-2 rounded-xl"
+                style={{ background: 'rgba(239,68,68,0.1)', color: '#fca5a5' }}>
+                {deleteError}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <button onClick={() => { setDeleteStep('idle'); setDeletePassword(''); setDeleteError('') }}
+                className="btn btn-secondary flex-1 btn-sm">Cancel</button>
+              <button onClick={handleDeleteAccount}
+                disabled={!isGoogle && !deletePassword}
+                className="btn btn-sm flex-1 font-bold"
+                style={{ background: '#dc2626', color: '#fff' }}>
+                Yes, Delete Forever
+              </button>
+            </div>
+          </div>
+        )}
+
+        {deleteStep === 'deleting' && (
+          <div className="flex items-center justify-center gap-2 py-3">
+            <div className="loading-dots scale-75"><span /><span /><span /></div>
+            <span className="text-xs" style={{ color: '#fca5a5' }}>Deleting account…</span>
+          </div>
+        )}
+      </motion.div>
     </div>
   )
 }

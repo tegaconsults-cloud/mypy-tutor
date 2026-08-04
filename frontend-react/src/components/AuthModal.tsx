@@ -362,7 +362,10 @@ export default function AuthModal({ defaultTab = 'signin', onClose }: Props) {
           </a>
 
           <p className="text-[10px] text-center" style={{ color: '#4d6080' }}>
-            By signing in you agree to our Terms of Service.
+            By signing in you agree to our{' '}
+            <a href="/terms" target="_blank" rel="noopener" style={{ color: '#60a5fa' }}>Terms of Service</a>
+            {' '}and{' '}
+            <a href="/privacy" target="_blank" rel="noopener" style={{ color: '#60a5fa' }}>Privacy Policy</a>.
           </p>
         </motion.div>
       </motion.div>

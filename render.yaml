@@ -50,6 +50,9 @@ services:
         sync: false
       - key: DB_PATH
         sync: false
+      # Observability
+      - key: SENTRY_DSN
+        sync: false          # Get from sentry.io → Project → Settings → Client Keys
       # Python optimisations for low-memory deployment
       - key: PYTHONOPTIMIZE
         value: "1"              # removes assert statements and docstrings from .pyc

@@ -346,3 +346,16 @@ export async function submitEnquiry(payload: {
   if (!r.ok) throw new Error(data.detail || data.error || 'Failed to send enquiry')
   return data
 }
+
+// ── Account deletion ──────────────────────────────────────────────────────
+
+export async function deleteAccount(password: string) {
+  const r = await fetch(url('/auth/account'), {
+    method: 'DELETE',
+    headers: authHeaders(),
+    body: JSON.stringify({ password, confirm: 'DELETE' }),
+  })
+  const data = await r.json()
+  if (!r.ok) throw new Error(data.detail || data.error || 'Account deletion failed')
+  return data
+}

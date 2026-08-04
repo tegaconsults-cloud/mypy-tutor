@@ -115,6 +115,38 @@ from app.supabase_client import (
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Sentry error tracking — initialised early so all errors are captured.
+# Set SENTRY_DSN in Render dashboard → Environment to enable.
+# Free tier: 5,000 errors/month. No-op when SENTRY_DSN is unset.
+# ---------------------------------------------------------------------------
+_sentry_dsn = _os.getenv("SENTRY_DSN", "")
+if _sentry_dsn:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.fastapi import FastApiIntegration
+        from sentry_sdk.integrations.starlette import StarletteIntegration
+        sentry_sdk.init(
+            dsn=_sentry_dsn,
+            integrations=[
+                StarletteIntegration(transaction_style="endpoint"),
+                FastApiIntegration(transaction_style="endpoint"),
+            ],
+            # Capture 10% of transactions for performance monitoring
+            # (free tier has limits — keep this low)
+            traces_sample_rate=0.1,
+            # Don't send PII (emails, IPs) to Sentry
+            send_default_pii=False,
+            # Release tag helps correlate errors to deploys
+            release=_os.getenv("RENDER_GIT_COMMIT", "unknown"),
+            environment=_os.getenv("RENDER_SERVICE_NAME", "development"),
+        )
+        logger.info("Sentry initialised (dsn configured)")
+    except ImportError:
+        logger.warning("sentry-sdk not installed — run: pip install sentry-sdk[fastapi]")
+    except Exception as _sentry_exc:
+        logger.warning("Sentry init failed (non-fatal): %s", _sentry_exc)
+
+# ---------------------------------------------------------------------------
 # App initialisation
 # ---------------------------------------------------------------------------
 
@@ -298,6 +330,20 @@ async def topics() -> dict:
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/ping")
+async def ping() -> dict:
+    """
+    Lightweight liveness endpoint for UptimeRobot monitoring.
+    UptimeRobot setup:
+      1. Sign up free at uptimerobot.com
+      2. Add Monitor → HTTP(s) → URL: https://mypytutor.onrender.com/ping
+      3. Check interval: 5 minutes (keeps Render free tier awake)
+      4. Alert contacts: add your email / Telegram
+    Returns 200 OK in <5ms — no DB or Supabase calls.
+    """
+    return {"ok": True}
 
 
 @app.get("/favicon.ico", include_in_schema=False)
@@ -1760,6 +1806,37 @@ async def paystack_webhook(request: Request) -> dict:
         meta       = data.get("metadata", {}) or {}
         amount_kob = data.get("amount", 0)
         amount_ngn = amount_kob / 100
+        reference  = str(data.get("reference", "")).strip()
+
+        # ── IDEMPOTENCY: skip if this reference was already processed ────────
+        # Paystack retries webhooks on non-200 responses. Without this check,
+        # a network blip could cause double tier upgrades / double bonus credits.
+        if reference:
+            try:
+                from app.db import get_db as _gdb_idem
+                with _gdb_idem() as _idem_conn:
+                    # Create the processed_webhooks table if it doesn't exist
+                    _idem_conn.execute("""
+                        CREATE TABLE IF NOT EXISTS processed_webhooks (
+                            reference TEXT PRIMARY KEY,
+                            processed_at REAL DEFAULT (unixepoch())
+                        )
+                    """)
+                    existing = _idem_conn.execute(
+                        "SELECT 1 FROM processed_webhooks WHERE reference=?",
+                        (reference,)
+                    ).fetchone()
+                    if existing:
+                        logger.info("Paystack webhook: duplicate reference %s — skipped", reference)
+                        return {"ok": True}
+                    # Mark as processed BEFORE doing any upgrades
+                    _idem_conn.execute(
+                        "INSERT INTO processed_webhooks (reference) VALUES (?)",
+                        (reference,)
+                    )
+            except Exception as _idem_exc:
+                logger.warning("Webhook idempotency check failed (proceeding): %s", _idem_exc)
+                # Non-fatal: if we can't check, proceed but log the risk
 
         # Get learner_id from email
         from app.db import load_email_account
@@ -3946,6 +4023,93 @@ async def update_profile(learner_id: str, body: UserProfileUpdate,
         ).start()
     log_activity(learner_id, "profile:updated", f"name={body.display_name}")
     return {"ok": True, "message": "Profile updated successfully."}
+
+
+# ---------------------------------------------------------------------------
+# Account deletion — NDPR/GDPR right to erasure (Article 17)
+# ---------------------------------------------------------------------------
+
+class _DeleteAccountRequest(_BM):
+    password: str = _Field(..., min_length=1, max_length=128,
+                           description="Current password — confirms the user's identity")
+    confirm:  str = _Field(..., min_length=1, max_length=20,
+                           description="Must equal 'DELETE' to confirm intent")
+
+
+@app.delete("/auth/account")
+async def delete_account(body: _DeleteAccountRequest,
+                         user=Depends(require_user)) -> dict:
+    """
+    Permanently delete the authenticated user's account.
+    NDPR/GDPR right to erasure — permanently removes PII, anonymises
+    learning data, retains payment records for 7 years (Nigerian tax law).
+    Requires: current password + confirmation string 'DELETE'.
+    """
+    if body.confirm.upper() != "DELETE":
+        raise HTTPException(
+            status_code=400,
+            detail="Confirmation must be the word DELETE to proceed."
+        )
+
+    # For email users: verify password before deleting
+    from app.email_auth import _confirmed, verify_password
+    email = user.email.lower().strip() if user.email else ""
+    if email and email in _confirmed:
+        stored_hash = _confirmed[email].get("password_hash", "")
+        if stored_hash and not verify_password(body.password, stored_hash):
+            raise HTTPException(
+                status_code=401,
+                detail="Incorrect password. Account deletion cancelled."
+            )
+    # OAuth users (Google/GitHub): no password to verify — identity already proved by session token
+
+    try:
+        from app.db import delete_account as _delete_account_db
+        summary = _delete_account_db(user.learner_id, email)
+    except Exception as exc:
+        logger.error("Account deletion failed for %s: %s", user.learner_id, exc)
+        raise HTTPException(
+            status_code=500,
+            detail="Account deletion failed. Please contact support@mypytutor.com.ng"
+        )
+
+    # Remove from in-memory caches
+    try:
+        from app.email_auth import _confirmed as _ec, _by_id as _bi
+        _ec.pop(email, None)
+        _bi.pop(user.learner_id, None)
+        from app.auth import _users as _au
+        _au.pop(user.learner_id, None)
+        from app.progress import _store as _ps
+        _ps.pop(user.learner_id, None)
+    except Exception:
+        pass  # Non-fatal — caches will expire naturally
+
+    # Clean up Supabase asynchronously
+    try:
+        import threading as _thr_del
+        def _supabase_cleanup():
+            try:
+                from app.supabase_client import get_supabase
+                sb = get_supabase()
+                if sb:
+                    sb.table("email_accounts").delete().eq("learner_id", user.learner_id).execute()
+                    sb.table("profiles").delete().eq("id", user.learner_id).execute()
+                    sb.table("learner_progress").delete().eq("learner_id", user.learner_id).execute()
+            except Exception as _se:
+                logger.debug("Supabase cleanup after deletion failed (non-fatal): %s", _se)
+        _thr_del.Thread(target=_supabase_cleanup, daemon=False).start()
+    except Exception:
+        pass
+
+    log_activity(user.learner_id, "account:deleted", f"email={email}")
+    logger.info("Account deleted: learner_id=%s email=%s", user.learner_id, email)
+
+    return {
+        "ok":      True,
+        "message": "Your account has been permanently deleted. We're sorry to see you go.",
+        "summary": summary,
+    }
 
 
 # ---------------------------------------------------------------------------
