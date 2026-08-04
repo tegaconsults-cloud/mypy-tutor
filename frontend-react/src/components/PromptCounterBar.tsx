@@ -1,73 +1,112 @@
 import React, { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Cpu, ArrowUpRight } from 'lucide-react'
+import { Zap, ArrowUpRight } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { getPromptCount } from '../api'
 
-const FREE_LIMIT = 10
+const DEFAULT_LIMIT = 10
 
 export default function PromptCounterBar() {
   const { user } = useAuth()
-  const [used, setUsed] = useState(0)
-  const [limit, setLimit] = useState(FREE_LIMIT)
+  const [used,   setUsed]   = useState(0)
+  const [limit,  setLimit]  = useState(DEFAULT_LIMIT)
   const [isPaid, setIsPaid] = useState(false)
+  const [loaded, setLoaded] = useState(false)
 
-  // Re-fetch from server whenever user changes (login/logout/tier-change).
-  // This ensures the counter shows the real SQLite-persisted count,
-  // not a stale in-memory value from before logout.
+  // Fetch real count from server on mount and whenever user changes
   useEffect(() => {
+    setLoaded(false)
     const lid = user?.learner_id || 'default'
-    getPromptCount(lid).then(d => {
-      if (!d) return
-      setUsed(d.used ?? 0)
-      setLimit(d.limit ?? FREE_LIMIT)
-      setIsPaid(!d.is_limited)
-    }).catch(() => {})
-  }, [user?.learner_id]) // keyed on learner_id so it re-runs on login AND logout
+    getPromptCount(lid)
+      .then(d => {
+        if (!d) return
+        setUsed(d.used   ?? 0)
+        setLimit(d.limit ?? DEFAULT_LIMIT)
+        // is_limited = true means free tier (has a cap)
+        // is_limited = false means paid tier (no cap) — hide the bar
+        setIsPaid(d.is_limited === false)
+      })
+      .catch(() => {
+        // Non-fatal — show bar with defaults so user sees their quota
+      })
+      .finally(() => setLoaded(true))
+  }, [user?.learner_id])
 
+  // Increment locally on each chat message so it updates without a roundtrip
   useEffect(() => {
-    const handler = () => setUsed(u => Math.min(u + 1, limit))
+    const handler = () => {
+      setUsed(u => {
+        const next = u + 1
+        // If we just hit the limit, dispatch an event so ChatPanel can gate immediately
+        if (next >= limit) window.dispatchEvent(new Event('prompt-limit-reached'))
+        return next
+      })
+    }
     window.addEventListener('prompt-used', handler)
     return () => window.removeEventListener('prompt-used', handler)
   }, [limit])
 
-  // Hide bar entirely for paid users (no limit to show)
+  // Don't render until we have data (avoids flash of 0/10 before fetch completes)
+  if (!loaded) return null
+  // Hide bar for paid users — they have no daily cap
   if (isPaid) return null
 
-  const pct = Math.min((used / limit) * 100, 100)
-  const isNearLimit = pct >= 80
+  const pct         = Math.min((used / limit) * 100, 100)
+  const isNearLimit = pct >= 70
   const isAtLimit   = used >= limit
 
-  const barColor = isAtLimit   ? '#ef4444' :
-                   isNearLimit ? '#E0A300' : '#0D47A1'
-  const textColor = isAtLimit   ? '#fca5a5' :
-                    isNearLimit ? '#E0A300' : '#4d6080'
+  const accent    = isAtLimit ? '#ef4444' : isNearLimit ? '#E0A300' : '#3b82f6'
+  const textColor = isAtLimit ? '#fca5a5' : isNearLimit ? '#fcd34d' : '#94a3b8'
 
   return (
-    <div className="flex items-center gap-3 px-4 py-1 shrink-0"
-      style={{ background: 'rgba(6,13,28,0.85)', borderBottom: '1px solid rgba(13,71,161,0.1)' }}>
+    <motion.div
+      initial={{ opacity: 0, height: 0 }}
+      animate={{ opacity: 1, height: 'auto' }}
+      className="shrink-0 px-4 py-1.5 flex items-center gap-3"
+      style={{
+        background: isAtLimit
+          ? 'rgba(239,68,68,0.06)'
+          : 'rgba(6,13,28,0.9)',
+        borderBottom: `1px solid ${isAtLimit ? 'rgba(239,68,68,0.2)' : 'rgba(13,71,161,0.12)'}`,
+      }}>
 
+      {/* Icon + count */}
       <div className="flex items-center gap-1.5 shrink-0">
-        <Cpu size={11} style={{ color: textColor }} />
-        <span className="text-[10px] font-semibold" style={{ color: textColor }}>
-          {used}/{limit} prompts
+        <Zap size={11} style={{ color: accent }} />
+        <span className="text-[10px] font-bold" style={{ color: textColor }}>
+          {used}/{limit}
+          <span className="font-normal ml-1" style={{ color: '#4d6080' }}>free prompts today</span>
         </span>
       </div>
 
-      <div className="flex-1 h-1 rounded-full overflow-hidden" style={{ background: 'rgba(13,71,161,0.15)' }}>
-        <motion.div className="h-full rounded-full"
-          style={{ background: barColor }}
+      {/* Progress bar */}
+      <div className="flex-1 h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+        <motion.div
+          className="h-full rounded-full"
+          style={{ background: accent }}
           animate={{ width: `${pct}%` }}
-          transition={{ duration: 0.4 }} />
+          transition={{ duration: 0.5, ease: 'easeOut' }}
+        />
       </div>
 
-      {isAtLimit && (
-        <a href="https://paystack.shop/pay/vt_re4d3h52" target="_blank" rel="noopener noreferrer"
-          className="flex items-center gap-1 text-[10px] font-bold transition-colors shrink-0"
-          style={{ color: '#E0A300' }}>
-          Upgrade <ArrowUpRight size={10} />
+      {/* Upgrade CTA when at/near limit */}
+      {isNearLimit && (
+        <a
+          href="https://paystack.shop/pay/vt_re4d3h52"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-0.5 text-[10px] font-bold shrink-0 transition-opacity hover:opacity-80"
+          style={{ color: accent }}>
+          {isAtLimit ? 'Upgrade' : 'Upgrade'} <ArrowUpRight size={9} />
         </a>
       )}
-    </div>
+
+      {/* Resets note when at limit */}
+      {isAtLimit && (
+        <span className="text-[9px] shrink-0" style={{ color: '#4d6080' }}>
+          resets 5AM WAT
+        </span>
+      )}
+    </motion.div>
   )
 }
