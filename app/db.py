@@ -344,6 +344,8 @@ def init_db() -> None:
             "ALTER TABLE referral_uses ADD COLUMN referrer_bonus REAL DEFAULT 0",
             "ALTER TABLE referral_uses ADD COLUMN referee_discount REAL DEFAULT 0",
             "ALTER TABLE user_profiles ADD COLUMN photo_url TEXT DEFAULT ''",
+            # Prompt plan purchased by the learner — persisted so it survives restarts
+            "ALTER TABLE learner_profiles ADD COLUMN prompt_plan TEXT DEFAULT ''",
             """CREATE TABLE IF NOT EXISTS referral_withdrawals (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, learner_id TEXT NOT NULL,
                 email TEXT NOT NULL, amount REAL NOT NULL, bank_name TEXT NOT NULL,

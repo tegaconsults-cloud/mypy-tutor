@@ -1033,11 +1033,143 @@ async def get_certificate(
 
 
 # ---------------------------------------------------------------------------
-# /progress  /prompts/count
+# Certificate verification — public endpoint linked from cert emails
 # ---------------------------------------------------------------------------
 
+@app.get("/verify/{cert_id}", response_class=HTMLResponse)
+async def verify_certificate(cert_id: str) -> HTMLResponse:
+    """
+    Public certificate verification page.
+    Linked from every certificate email as: /verify/{cert_id}
+    Returns a branded HTML page confirming the certificate is genuine.
+    """
+    import re as _re3
+    # cert_id is safe-hex, but validate just in case
+    if not _re3.match(r'^[a-zA-Z0-9_\-]{4,80}$', cert_id):
+        raise HTTPException(status_code=400, detail="Invalid certificate ID.")
+
+    record = None
+    try:
+        from app.db import get_db as _gdb
+        with _gdb() as _conn:
+            row = _conn.execute(
+                "SELECT * FROM certificates WHERE cert_id=?", (cert_id,)
+            ).fetchone()
+        if row:
+            record = dict(row)
+    except Exception as exc:
+        logger.warning("Cert verify DB error: %s", exc)
+
+    frontend_url = _os.getenv("FRONTEND_URL", _os.getenv("APP_URL", "https://mypytutor.com.ng"))
+
+    if not record:
+        html = f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Certificate Not Found — MyPy Tutor</title>
+<style>
+  body{{font-family:Arial,sans-serif;background:#0f1117;color:#e2e8f0;
+       display:flex;align-items:center;justify-content:center;
+       min-height:100vh;margin:0;padding:20px;box-sizing:border-box;}}
+  .box{{background:#1a202c;border:1px solid #2d3748;border-radius:14px;
+        padding:40px;max-width:480px;width:100%;text-align:center;}}
+  h2{{color:#f6ad55;margin-bottom:12px;}}
+  p{{color:#a0aec0;line-height:1.6;margin-bottom:20px;}}
+  a{{background:#3182ce;color:#fff;text-decoration:none;padding:12px 24px;
+     border-radius:8px;font-weight:700;display:inline-block;margin-top:8px;}}
+</style></head>
+<body><div class="box">
+  <div style="font-size:3rem;margin-bottom:16px;">&#10060;</div>
+  <h2>Certificate Not Found</h2>
+  <p>No certificate with ID <code style="background:#2d3748;padding:2px 6px;
+     border-radius:4px;font-size:0.85em;">{cert_id}</code> was found
+     in our records.</p>
+  <p>If you believe this is an error, please contact
+     <a href="mailto:support@mypytutor.com.ng" style="background:none;
+     color:#63b3ed;padding:0;">support@mypytutor.com.ng</a>.</p>
+  <a href="{frontend_url}">&#8592; Return to MyPy Tutor</a>
+</div></body></html>"""
+        return HTMLResponse(content=html, status_code=404)
+
+    import datetime as _dtt
+    try:
+        issued_str = _dtt.datetime.fromtimestamp(
+            float(record["issued_at"])
+        ).strftime("%d %B %Y")
+    except Exception:
+        issued_str = str(record.get("issued_at", ""))
+
+    level_label = str(record.get("level", "")).title()
+    learner_name = record.get("learner_name", "Learner")
+
+    html = f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Certificate Verified — MyPy Tutor</title>
+<style>
+  *{{box-sizing:border-box;}}
+  body{{font-family:Arial,sans-serif;background:#0f1117;color:#e2e8f0;
+       display:flex;align-items:center;justify-content:center;
+       min-height:100vh;margin:0;padding:20px;}}
+  .box{{background:#1a202c;border:1px solid #276749;border-radius:14px;
+        padding:40px;max-width:520px;width:100%;text-align:center;}}
+  .badge{{font-size:3.5rem;margin-bottom:8px;}}
+  h2{{color:#68d391;font-size:1.4rem;margin:0 0 8px;}}
+  .subtitle{{color:#a0aec0;font-size:0.85rem;margin-bottom:28px;}}
+  .card{{background:#2d3748;border-radius:10px;padding:20px 24px;
+          text-align:left;margin-bottom:24px;}}
+  .row{{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;}}
+  .row:last-child{{margin-bottom:0;}}
+  .label{{color:#718096;font-size:0.8rem;min-width:110px;padding-top:1px;}}
+  .value{{color:#e2e8f0;font-size:0.9rem;font-weight:600;word-break:break-all;}}
+  .issuer{{color:#a0aec0;font-size:0.78rem;margin-bottom:24px;line-height:1.6;}}
+  a.btn{{background:#276749;color:#fff;text-decoration:none;padding:12px 28px;
+         border-radius:8px;font-weight:700;display:inline-block;}}
+  a.btn:hover{{background:#2f855a;}}
+</style></head>
+<body>
+<div class="box">
+  <div class="badge">&#9989;</div>
+  <h2>Certificate Verified</h2>
+  <p class="subtitle">This certificate is authentic and issued by MyPy Tutor</p>
+
+  <div class="card">
+    <div class="row">
+      <span class="label">Recipient</span>
+      <span class="value">{learner_name}</span>
+    </div>
+    <div class="row">
+      <span class="label">Programme</span>
+      <span class="value">{level_label} Python Certificate</span>
+    </div>
+    <div class="row">
+      <span class="label">Issued</span>
+      <span class="value">{issued_str}</span>
+    </div>
+    <div class="row">
+      <span class="label">Certificate ID</span>
+      <span class="value" style="font-family:monospace;font-size:0.8rem;">{cert_id}</span>
+    </div>
+    <div class="row">
+      <span class="label">Status</span>
+      <span class="value" style="color:#68d391;">&#10004; Genuine</span>
+    </div>
+  </div>
+
+  <p class="issuer">
+    Issued by <strong>Teamsamikoko Global Academy</strong><br/>
+    Reg No: 3508656 &middot; Powered by TeamTega Technologies Limited<br/>
+    MyPy Tutor &mdash; Africa's Best AI, Python &amp; Machine Learning Tutor
+  </p>
+
+  <a class="btn" href="{frontend_url}">&#8592; Visit MyPy Tutor</a>
+</div>
+</body></html>"""
+    return HTMLResponse(content=html)
+
 @app.get("/progress/{learner_id}", response_model=ProgressResponse)
-async def get_progress(learner_id: str) -> ProgressResponse:
+async def get_progress(learner_id: str,
+                       credentials=Depends(_bearer_optional)) -> ProgressResponse:
     validate_learner_id(learner_id)
     profile = get_profile(learner_id)
     gaps    = get_knowledge_gaps(learner_id)
@@ -1051,10 +1183,26 @@ async def get_progress(learner_id: str) -> ProgressResponse:
             updated_at = float(row.get("updated_at") or 0)
     except Exception:
         pass
+
+    # Only expose tier to the owner of the profile (matching session token)
+    # or unauthenticated requests for the learner's OWN data.
+    # We expose tier freely here because the frontend needs it for XP display —
+    # but we strip the tier from any request where the token belongs to a
+    # DIFFERENT learner (cross-user enumeration).
+    exposed_tier = profile.tier
+    if credentials:
+        try:
+            from app.auth import verify_session_token
+            token_lid = verify_session_token(credentials.credentials)
+            if token_lid != learner_id:
+                exposed_tier = ""   # different user — hide tier
+        except Exception:
+            exposed_tier = ""
+
     return ProgressResponse(
         learner_id=profile.learner_id,
         level=profile.level,
-        tier=profile.tier,
+        tier=exposed_tier,
         xp=profile.xp,
         badges=profile.badges,
         topics_seen=profile.topics_seen,
@@ -1171,9 +1319,17 @@ async def learner_courses(learner_id: str) -> dict:
 
 
 @app.post("/course/start")
-async def start_course(learner_id: str, course_name: str) -> dict:
+async def start_course(learner_id: str, course_name: str,
+                       user=Depends(get_current_user)) -> dict:
     validate_learner_id(learner_id)
     validate_course_name(course_name)
+
+    # Enforce: the authenticated user can only start courses for themselves.
+    # Unauthenticated callers are rejected outright.
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to access courses.")
+    if user.learner_id != learner_id:
+        raise HTTPException(status_code=403, detail="You can only manage your own courses.")
 
     course  = get_course(course_name)
     if not course:
@@ -1235,8 +1391,14 @@ async def start_course(learner_id: str, course_name: str) -> dict:
 
 
 @app.post("/course/next")
-async def next_course_step(learner_id: str) -> dict:
+async def next_course_step(learner_id: str,
+                           user=Depends(get_current_user)) -> dict:
     validate_learner_id(learner_id)
+
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to continue your course.")
+    if user.learner_id != learner_id:
+        raise HTTPException(status_code=403, detail="You can only manage your own courses.")
 
     profile = get_profile(learner_id)
     if not profile.current_course:
@@ -1287,8 +1449,14 @@ async def next_course_step(learner_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 @app.post("/quiz/generate", response_model=QuizResponse)
-async def generate_quiz(request: QuizRequest, req: Request) -> QuizResponse:
+async def generate_quiz(request: QuizRequest, req: Request,
+                        user=Depends(get_current_user)) -> QuizResponse:
     validate_topic(request.topic)
+    # If a token is provided, enforce it matches the learner_id in the body.
+    # Anonymous (no token) quiz requests are still allowed — they use IP-based
+    # rate limiting and the free daily limit just like anonymous chat.
+    if user is not None and user.learner_id != request.learner_id:
+        raise HTTPException(status_code=403, detail="learner_id does not match your session.")
     # Enforce free-tier daily limit for quiz generation (counts the same as a chat prompt)
     profile = get_profile(request.learner_id)
     if profile.tier == "free":
@@ -1317,8 +1485,13 @@ async def generate_quiz(request: QuizRequest, req: Request) -> QuizResponse:
 
 
 @app.post("/quiz/answer", response_model=QuizAnswerResponse)
-async def evaluate_quiz_answer(request: QuizAnswerRequest) -> QuizAnswerResponse:
+async def evaluate_quiz_answer(request: QuizAnswerRequest,
+                               user=Depends(get_current_user)) -> QuizAnswerResponse:
     validate_topic(request.topic)
+    # If authenticated, enforce learner_id matches token — prevents XP farming
+    # for other users. Anonymous quiz answers (free-tier) are still accepted.
+    if user is not None and user.learner_id != request.learner_id:
+        raise HTTPException(status_code=403, detail="learner_id does not match your session.")
     system_prompt = build_system_prompt("quiz_eval", topic=request.topic, level=request.level)
     messages = [{
         "role": "user",
@@ -1430,14 +1603,23 @@ async def paystack_webhook(request: Request) -> dict:
     secret_key = _os.getenv("PAYSTACK_SECRET_KEY", "")
     body_bytes  = await request.body()
 
-    if secret_key:
-        sig_header = request.headers.get("x-paystack-signature", "")
-        expected   = hmac.new(
-            secret_key.encode(), body_bytes, hashlib.sha512
-        ).hexdigest()
-        if not hmac.compare_digest(sig_header, expected):
-            logger.warning("Paystack webhook signature mismatch — ignored")
-            raise HTTPException(status_code=400, detail="Invalid signature")
+    # ── CRITICAL: always verify the HMAC signature.
+    # If PAYSTACK_SECRET_KEY is not set we reject the request entirely —
+    # accepting unsigned webhooks would let anyone fake a payment.
+    if not secret_key:
+        logger.error(
+            "PAYSTACK_SECRET_KEY env var is not set — rejecting webhook. "
+            "Add it to Render → Environment immediately."
+        )
+        raise HTTPException(status_code=400, detail="Webhook not configured")
+
+    sig_header = request.headers.get("x-paystack-signature", "")
+    expected   = hmac.new(
+        secret_key.encode(), body_bytes, hashlib.sha512
+    ).hexdigest()
+    if not hmac.compare_digest(sig_header, expected):
+        logger.warning("Paystack webhook signature mismatch — ignored")
+        raise HTTPException(status_code=400, detail="Invalid signature")
 
     import json as _json
     try:
@@ -1517,17 +1699,26 @@ async def paystack_webhook(request: Request) -> dict:
                 from app.courses import PROMPT_PLANS
                 plan_info = PROMPT_PLANS.get(prompt_plan, {})
                 daily_limit = plan_info.get("daily_limit", 50)
-                # Store prompt plan on learner profile via a custom attribute
                 from app.progress import get_profile as _gp, save_profile as _sp
                 p = _gp(learner_id)
-                # We store prompt plan as a tier variant prefix
-                # For simplicity, boost the security limit directly
-                from app.security import _daily_prompt_store
                 import datetime as _dtt
                 today = _dtt.date.today().isoformat()
-                # Reset daily count fully — prompt plan grants fresh allocation
+                from app.security import _daily_prompt_store
                 _daily_prompt_store[learner_id] = (today, 0)
-                # Store on profile as display_name tag (non-destructive)
+                # Persist prompt plan on learner profile as a special tier prefix
+                # so the daily limit is restored on Render restart
+                try:
+                    from app.db import get_db as _gdb2
+                    with _gdb2() as _pc:
+                        _pc.execute("""
+                            INSERT INTO learner_profiles (learner_id, tier)
+                            VALUES (?, ?)
+                            ON CONFLICT(learner_id) DO UPDATE SET
+                              prompt_plan    = excluded.tier,
+                              updated_at     = unixepoch()
+                        """, (learner_id, prompt_plan))
+                except Exception:
+                    pass  # non-fatal — in-memory reset still applied
                 log_activity(learner_id, "payment:prompt_plan",
                              f"plan={prompt_plan} limit={daily_limit} | ₦{amount_ngn:.0f}")
 
@@ -1537,10 +1728,10 @@ async def paystack_webhook(request: Request) -> dict:
                 apply_tier_upgrade(learner_id, tier)     # in-memory cache sync
 
                 tier_labels = {
-                    "tier1": "Beginner Bundle (₦5,000 — 4 courses)",
-                    "tier2": "Intermediate Bundle (₦15,000 — 7 courses)",
-                    "tier3": "Advanced Bundle (₦30,000 — 14 courses)",
-                    "tier4": "Premium Bundle (₦50,000 — all 16 courses)",
+                    "tier1": "Beginner Bundle — ₦30,000 (4 courses)",
+                    "tier2": "Intermediate Bundle — ₦60,000 (7 courses)",
+                    "tier3": "Advanced Bundle — ₦100,000 (14 courses)",
+                    "tier4": "Premium Bundle — ₦100,000 (all 16 courses)",
                 }
                 plan_label = tier_labels.get(tier, tier)
                 import secrets as _sec
@@ -1696,6 +1887,12 @@ def _require_admin(request: Request) -> str:
     if not token or not verify_admin_token(token):
         raise HTTPException(status_code=403, detail="Admin authentication required.")
     return token
+
+
+# Optional bearer — used by routes that need to know WHO is calling but
+# don't require authentication (e.g. /progress to detect cross-user reads).
+from fastapi.security import HTTPBearer as _HTTPBearer, HTTPAuthorizationCredentials as _HAC
+_bearer_optional = _HTTPBearer(auto_error=False)
 
 
 # ---------------------------------------------------------------------------
@@ -2759,8 +2956,14 @@ async def use_referral(body: ReferralUse) -> dict:
 
 
 @app.post("/referral/withdraw")
-async def request_referral_withdrawal(body: _ReferralWithdraw) -> dict:
-    """Create a referral payout request when the learner has enough balance."""
+async def request_referral_withdrawal(body: _ReferralWithdraw,
+                                       user=Depends(get_current_user)) -> dict:
+    """Create a referral payout request. Requires authentication as the owner."""
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to request a withdrawal.")
+    if user.learner_id != body.learner_id:
+        raise HTTPException(status_code=403, detail="You can only withdraw your own referral balance.")
+
     validate_learner_id(body.learner_id)
     balance = get_referral_bonus_balance(body.learner_id).get("balance", 0.0)
 
@@ -2789,8 +2992,13 @@ async def request_referral_withdrawal(body: _ReferralWithdraw) -> dict:
 
 
 @app.get("/referral/withdrawals/{learner_id}")
-async def get_referral_withdrawals(learner_id: str) -> dict:
+async def get_referral_withdrawals(learner_id: str,
+                                   user=Depends(get_current_user)) -> dict:
     validate_learner_id(learner_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to view withdrawals.")
+    if user.learner_id != learner_id:
+        raise HTTPException(status_code=403, detail="You can only view your own withdrawal history.")
     rows = get_withdrawals_for_learner(learner_id)
     return {"learner_id": learner_id, "withdrawals": rows, "total": len(rows)}
 
@@ -3442,37 +3650,69 @@ _startup_threading.Thread(
 # ---------------------------------------------------------------------------
 
 @app.get("/auth/profile/{learner_id}")
-async def get_profile_data(learner_id: str) -> dict:
-    """Get the editable profile fields for a learner."""
+async def get_profile_data(learner_id: str,
+                           user=Depends(get_current_user)) -> dict:
+    """Get editable profile fields. Returns full data to the profile owner,
+    public-safe data only to others."""
     validate_learner_id(learner_id)
     db_profile = get_user_profile_db(learner_id)
     lp = get_profile(learner_id)
-    return {
+
+    is_owner = (user is not None and user.learner_id == learner_id)
+
+    # Base data — safe to return to anyone (no tier/email exposure to non-owners)
+    result = {
         "learner_id":   learner_id,
         "display_name": db_profile.get("display_name") or lp.display_name or "",
         "bio":          db_profile.get("bio", ""),
         "location":     db_profile.get("location", ""),
         "website":      db_profile.get("website", ""),
         "photo_url":    db_profile.get("photo_url", ""),
-        "email":        lp.email or "",
         "level":        lp.level,
-        "tier":         lp.tier,
         "xp":           lp.xp,
         "badges":       lp.badges,
     }
+    # Owner-only fields
+    if is_owner:
+        result["email"] = lp.email or ""
+        result["tier"]  = lp.tier
+    return result
 
 
 @app.post("/auth/profile/{learner_id}")
-async def update_profile(learner_id: str, body: UserProfileUpdate) -> dict:
-    """Update editable profile fields."""
+async def update_profile(learner_id: str, body: UserProfileUpdate,
+                         user=Depends(get_current_user)) -> dict:
+    """Update editable profile fields. Requires authentication as the profile owner."""
     validate_learner_id(learner_id)
+
+    # Must be authenticated and be the owner of the profile
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to update your profile.")
+    if user.learner_id != learner_id:
+        raise HTTPException(status_code=403, detail="You can only edit your own profile.")
+
+    # Sanitise photo_url — accept only https:// URLs or base64 data URLs for images.
+    # Reject javascript: URIs, plain strings, and other non-image content.
+    import re as _re2
+    photo = body.photo_url.strip() if body.photo_url else ""
+    if photo:
+        is_data_url  = _re2.match(r'^data:image/(jpeg|png|gif|webp|svg\+xml);base64,', photo)
+        is_https_url = _re2.match(r'^https://', photo)
+        if not is_data_url and not is_https_url:
+            raise HTTPException(status_code=400,
+                detail="photo_url must be an https:// URL or a base64 data:image/... URL.")
+        # Enforce size limit on base64 images (max 2MB decoded ≈ ~2.7MB base64)
+        if is_data_url and len(photo) > 2_800_000:
+            raise HTTPException(status_code=400,
+                detail="Profile picture too large. Maximum size is 2MB.")
+
     update_user_profile_db(
         learner_id,
         display_name=body.display_name,
         bio=body.bio,
         location=body.location,
         website=body.website,
-        photo_url=body.photo_url,
+        photo_url=photo,
     )
     # Mirror display_name to LearnerProfile in memory + SQLite
     lp = get_profile(learner_id)

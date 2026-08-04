@@ -35,42 +35,46 @@ LLM_ENDPOINTS = {"/chat", "/quiz/generate", "/quiz/answer",
                  "/course/start", "/course/next", "/exercise/generate"}
 
 # Auth endpoints — strict brute-force protection
-AUTH_ENDPOINTS         = {"/auth/signin", "/auth/signup", "/admin/login"}
-AUTH_RATE_LIMIT_REQUESTS = 10    # max 10 attempts
-AUTH_RATE_LIMIT_WINDOW   = 300   # per 5 minutes per IP
+AUTH_ENDPOINTS           = {"/auth/signin", "/auth/signup", "/admin/login"}
+AUTH_RATE_LIMIT_REQUESTS = 10     # max 10 attempts
+AUTH_RATE_LIMIT_WINDOW   = 300    # per 5 minutes per IP
+
+# Enquiry endpoint — strict throttle to prevent inbox spam
+ENQUIRY_ENDPOINTS            = {"/enquiry"}
+ENQUIRY_RATE_LIMIT_REQUESTS  = 3      # max 3 enquiries
+ENQUIRY_RATE_LIMIT_WINDOW    = 3600   # per hour per IP
 
 # Input size limits
-MAX_MESSAGE_LEN   = 4_000         # characters in a single user message
-MAX_CODE_LEN      = 8_000         # characters of pasted code (embedded in message)
-MAX_HISTORY_ITEMS = 20            # max conversation turns sent per request
-MAX_HISTORY_MSG_LEN = 12_000       # characters per history message (AI responses are long)
+MAX_MESSAGE_LEN     = 4_000       # characters in a single user message
+MAX_CODE_LEN        = 8_000       # characters of pasted code (embedded in message)
+MAX_HISTORY_ITEMS   = 20          # max conversation turns sent per request
+MAX_HISTORY_MSG_LEN = 12_000      # characters per history message (AI responses are long)
 
 # Allowed field values
-ALLOWED_LEVELS    = {"beginner", "intermediate", "advanced"}
-LEARNER_ID_RE     = re.compile(r"^[a-zA-Z0-9_\-]{1,64}$")
-COURSE_NAME_RE    = re.compile(r"^[a-zA-Z0-9_\-]{1,80}$")
-TOPIC_RE          = re.compile(r"^[a-zA-Z0-9 _\-&/]{1,100}$")
+ALLOWED_LEVELS  = {"beginner", "intermediate", "advanced"}
+LEARNER_ID_RE   = re.compile(r"^[a-zA-Z0-9_\-]{1,64}$")
+COURSE_NAME_RE  = re.compile(r"^[a-zA-Z0-9_\-]{1,80}$")
+TOPIC_RE        = re.compile(r"^[a-zA-Z0-9 _\-&/]{1,100}$")
 
 # Free tier daily prompt limit — resets at 5am WAT (UTC+1)
 FREE_DAILY_LIMIT = 10
 
 # ---------------------------------------------------------------------------
-# In-memory rate limit store
+# In-memory rate limit stores
+# { ip: deque of timestamps } — capped at 10k unique IPs to prevent memory growth
 # ---------------------------------------------------------------------------
 
-# { ip: deque of timestamps } — capped at 10k unique IPs to prevent memory growth
 _general_store: dict[str, deque] = defaultdict(deque)
 _llm_store:     dict[str, deque] = defaultdict(deque)
 _auth_store:    dict[str, deque] = defaultdict(deque)   # brute-force protection
-_RATE_STORE_MAX = 10_000   # evict oldest IPs when over this size
+_enquiry_store: dict[str, deque] = defaultdict(deque)   # enquiry spam protection
+_RATE_STORE_MAX = 10_000
 
 
 def _evict_rate_store(store: dict) -> None:
     """Drop the 20% of entries whose most-recent timestamp is oldest."""
     if len(store) > _RATE_STORE_MAX:
         evict_count = _RATE_STORE_MAX // 5
-        now = time.monotonic()
-        # Sort by the last (most recent) timestamp in each deque — evict stalest first
         sorted_keys = sorted(
             store.keys(),
             key=lambda k: store[k][-1] if store[k] else 0,
@@ -83,7 +87,6 @@ def _check_rate(store: dict, ip: str, limit: int, window: int) -> bool:
     """Return True if request is allowed, False if rate-limited."""
     now = time.monotonic()
     dq  = store[ip]
-    # Evict old timestamps outside the window
     while dq and dq[0] < now - window:
         dq.popleft()
     if len(dq) >= limit:
@@ -95,13 +98,13 @@ def _check_rate(store: dict, ip: str, limit: int, window: int) -> bool:
 
 # ---------------------------------------------------------------------------
 # Free-tier daily prompt counter
-# Write-through cache: memory is always checked first for speed; every
-# mutation is also written to SQLite so counts survive Render restarts.
+# Write-through cache: memory first for speed; every mutation also written to
+# SQLite so counts survive Render restarts.
 # ---------------------------------------------------------------------------
 
 import datetime as _dt
 
-# { key -> (date_str, count) }  — in-memory cache loaded from SQLite at startup
+# { key -> (date_str, count) }
 _daily_prompt_store: dict[str, tuple[str, int]] = {}
 _prompt_store_loaded: bool = False
 
@@ -117,7 +120,6 @@ def _ensure_prompt_store_loaded() -> None:
         counts = load_todays_prompt_counts(today)
         for k, c in counts.items():
             _daily_prompt_store[k] = (today, c)
-        # Clean up rows older than yesterday so the table stays small
         import datetime as _dt2
         yesterday = (_dt2.date.today() - _dt2.timedelta(days=1)).isoformat()
         purge_old_prompt_counts(yesterday)
@@ -129,7 +131,7 @@ def _ensure_prompt_store_loaded() -> None:
 def _wat_date_key() -> str:
     """
     Return today's date string in WAT (UTC+1), reset at 5am WAT.
-    Prompts used between 00:00–04:59 WAT count toward the previous day's quota.
+    Prompts used between 00:00-04:59 WAT count toward the previous day's quota.
     """
     wat_now = _dt.datetime.utcnow() + _dt.timedelta(hours=1)
     if wat_now.hour < 5:
@@ -138,22 +140,14 @@ def _wat_date_key() -> str:
 
 
 def check_free_prompt_limit(learner_id: str, ip: str) -> tuple[bool, int]:
-    """
-    Check if a free-tier user has exceeded their daily limit.
-    Returns (allowed: bool, used_count: int).
-    Each authenticated learner_id gets their own quota; anonymous users are
-    identified by IP so one unauthenticated visitor cannot exhaust another's quota.
-    """
+    """Check if a free-tier user has exceeded their daily limit.
+    Returns (allowed: bool, used_count: int)."""
     _ensure_prompt_store_loaded()
-    # Always use a per-user key so every individual gets their own quota.
-    # For unauthenticated requests learner_id == "default" — fall back to IP
-    # so each anonymous visitor gets their own bucket.
     key   = learner_id if learner_id and learner_id != "default" else f"ip_{ip}"
     today = _wat_date_key()
 
     existing = _daily_prompt_store.get(key)
     if existing is None or existing[0] != today:
-        # New day or new user — check SQLite first (covers restart recovery)
         try:
             from app.db import get_daily_prompt_count_db
             db_count = get_daily_prompt_count_db(key, today)
@@ -172,17 +166,15 @@ def check_free_prompt_limit(learner_id: str, ip: str) -> tuple[bool, int]:
 
 
 def increment_free_prompt_count(learner_id: str, ip: str) -> int:
-    """Increment daily prompt counter in both memory and SQLite. Returns new count."""
+    """Increment daily prompt counter in memory and SQLite. Returns new count."""
     _ensure_prompt_store_loaded()
     key   = learner_id if learner_id and learner_id != "default" else f"ip_{ip}"
     today = _wat_date_key()
 
-    # Atomically increment in SQLite (source of truth)
     try:
         from app.db import increment_daily_prompt_count_db
         new_count = increment_daily_prompt_count_db(key, today)
     except Exception:
-        # Fallback: increment only in memory if DB fails
         existing  = _daily_prompt_store.get(key)
         new_count = ((existing[1] + 1) if existing and existing[0] == today else 1)
 
@@ -200,7 +192,6 @@ def get_free_prompt_count(learner_id: str, ip: str) -> int:
     if existing and existing[0] == today:
         return existing[1]
 
-    # Cache miss — load from SQLite
     try:
         from app.db import get_daily_prompt_count_db
         count = get_daily_prompt_count_db(key, today)
@@ -218,8 +209,10 @@ class SecurityMiddleware(BaseHTTPMiddleware):
     """
     Single middleware that applies:
     1. General rate limiting (all routes)
-    2. Stricter LLM rate limiting (AI endpoints)
-    3. Security response headers
+    2. Auth endpoint brute-force protection
+    3. Stricter LLM rate limiting (AI endpoints)
+    4. Enquiry spam protection
+    5. Security response headers
     """
 
     async def dispatch(self, request: Request, call_next):
@@ -239,7 +232,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                 headers={"Retry-After": str(RATE_LIMIT_WINDOW)},
             )
 
-        # 2. Auth endpoint brute-force protection (login attempts)
+        # 2. Auth endpoint brute-force protection
         if request.url.path in AUTH_ENDPOINTS:
             if not _check_rate(_auth_store, ip, AUTH_RATE_LIMIT_REQUESTS, AUTH_RATE_LIMIT_WINDOW):
                 logger.warning("Auth brute-force blocked: %s %s", ip, request.url.path)
@@ -259,41 +252,45 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                     headers={"Retry-After": str(LLM_RATE_LIMIT_WINDOW)},
                 )
 
+        # 4. Enquiry spam protection
+        if request.url.path in ENQUIRY_ENDPOINTS:
+            if not _check_rate(_enquiry_store, ip, ENQUIRY_RATE_LIMIT_REQUESTS, ENQUIRY_RATE_LIMIT_WINDOW):
+                logger.warning("Enquiry spam blocked: %s", ip)
+                return JSONResponse(
+                    status_code=429,
+                    content={"error": "Too many enquiries. Please wait before sending another."},
+                    headers={"Retry-After": str(ENQUIRY_RATE_LIMIT_WINDOW)},
+                )
+
         response = await call_next(request)
 
-        # 4. Security headers on every response
-        response.headers["X-Content-Type-Options"]    = "nosniff"
-        response.headers["X-Frame-Options"]           = "DENY"
-        response.headers["X-XSS-Protection"]          = "1; mode=block"
-        response.headers["Referrer-Policy"]           = "strict-origin-when-cross-origin"
-        response.headers["Permissions-Policy"]        = "geolocation=(), microphone=(), camera=()"
+        # 5. Security headers on every response
+        response.headers["X-Content-Type-Options"]  = "nosniff"
+        response.headers["X-Frame-Options"]         = "DENY"
+        response.headers["X-XSS-Protection"]        = "1; mode=block"
+        response.headers["Referrer-Policy"]         = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"]      = "geolocation=(), microphone=(), camera=()"
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            # Scripts: self + all CDN libs + Google GSI + GA
             "script-src 'self' 'unsafe-inline' "
             "https://cdn.jsdelivr.net "
             "https://cdnjs.cloudflare.com "
             "https://accounts.google.com "
             "https://www.googletagmanager.com "
             "https://www.google-analytics.com; "
-            # Styles: self + inline + CDN + Google GSI + Google Fonts stylesheet
             "style-src 'self' 'unsafe-inline' "
             "https://cdnjs.cloudflare.com "
             "https://accounts.google.com "
             "https://fonts.googleapis.com; "
-            # Fonts: self + CDN + Google Fonts gstatic
             "font-src 'self' "
             "https://cdnjs.cloudflare.com "
             "https://fonts.gstatic.com; "
-            # Images: self + data URIs + GA + GTM + Google profile pictures + render domain
             "img-src 'self' data: "
             "https://mypytutor.onrender.com "
             "https://www.google-analytics.com "
             "https://www.googletagmanager.com "
             "https://lh3.googleusercontent.com "
             "https://avatars.githubusercontent.com; "
-            # Fetch / XHR / WebSocket — must include the Render API explicitly
-            # so the React app served from Vercel (mypytutor.com.ng) can call it.
             "connect-src 'self' "
             "https://mypytutor.onrender.com "
             "https://mypytutor.com.ng "
@@ -311,12 +308,9 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             "https://lh3.googleusercontent.com "
             "https://avatars.githubusercontent.com "
             "https://api.github.com; "
-            # Frames: Google GSI sign-in iframe
             "frame-src https://accounts.google.com; "
-            # Workers (service worker)
             "worker-src 'self';"
         )
-        # Remove server fingerprint
         if "server" in response.headers:
             del response.headers["server"]
         if "x-powered-by" in response.headers:
@@ -326,11 +320,16 @@ class SecurityMiddleware(BaseHTTPMiddleware):
 
 
 def _get_ip(request: Request) -> str:
-    """Extract real client IP, respecting Render's forwarded headers."""
+    """Extract real client IP, respecting Render's X-Forwarded-For header.
+    Only trusts the first hop — prevents spoofing via crafted header values."""
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        # Take the first IP (the real client) from the chain
-        return forwarded.split(",")[0].strip()
+        # Take only the first (leftmost) IP — that is the real client.
+        # Subsequent entries are proxies we don't control.
+        first_ip = forwarded.split(",")[0].strip()
+        # Basic sanity check: reject obviously invalid values
+        if first_ip and not first_ip.startswith("unknown"):
+            return first_ip
     return request.client.host if request.client else "unknown"
 
 
@@ -359,39 +358,29 @@ def validate_level(level: str) -> str:
 
 
 def validate_course_name(name: str) -> str:
-    """Validate course name param."""
     if not COURSE_NAME_RE.match(name):
         raise HTTPException(status_code=400, detail="Invalid course name.")
     return name
 
 
 def validate_topic(topic: str) -> str:
-    """Validate topic param."""
     if not TOPIC_RE.match(topic):
         raise HTTPException(status_code=400, detail="Invalid topic.")
     return topic
 
 
 def validate_chat_request(message: str, history: list, level: str, learner_id: str) -> None:
-    """
-    Full validation of a /chat request payload.
-    Raises HTTPException 400 on any violation.
-    """
-    # Message length
+    """Full validation of a /chat request payload. Raises 400 on any violation."""
     if len(message) > MAX_MESSAGE_LEN:
         raise HTTPException(
             status_code=400,
             detail=f"Message too long. Maximum {MAX_MESSAGE_LEN} characters.",
         )
-
-    # History size
     if len(history) > MAX_HISTORY_ITEMS:
         raise HTTPException(
             status_code=400,
             detail=f"History too long. Maximum {MAX_HISTORY_ITEMS} messages.",
         )
-
-    # Each history message length
     for i, msg in enumerate(history):
         if len(msg.content) > MAX_HISTORY_MSG_LEN:
             raise HTTPException(
@@ -403,6 +392,5 @@ def validate_chat_request(message: str, history: list, level: str, learner_id: s
                 status_code=400,
                 detail=f"Invalid role '{msg.role}' in history.",
             )
-
     validate_level(level)
     validate_learner_id(learner_id)

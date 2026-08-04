@@ -209,7 +209,7 @@ def send_welcome_email(name: str, email: str) -> None:
     )
     html = _shell(body, "Welcome to MyPy Tutor, " + first + "! Start learning Python today.")
     text = ("Dear " + first + ",\n\nWelcome to MyPy Tutor!\n\n"
-            "Sir. Tega is your AI Python tutor. Start learning at:\n" + app + "\n\n"
+            "Sir. Tega is your AI, Python and Machine Learning tutor. Start learning at:\n" + app + "\n\n"
             "Warm regards,\nThe MyPy Tutor Team\n"
             "TeamTega Technologies Limited\n"
             "Teamsamikoko Global Academy - Reg No: 3508656\n")
@@ -507,25 +507,41 @@ def send_weekly_progress_email(name: str, email: str, xp_this_week: int,
 # ── 11. Product announcement ──────────────────────────────────────────────────
 def send_product_update_email(name: str, email: str, subject: str,
                                body_html: str, target_label: str = "All Users") -> None:
-    first = name.split()[0] if name else "Learner"
-    app   = _app_url()
+    first   = name.split()[0] if name else "Learner"
+    app     = _app_url()
+    support = _support_email()
+    # CAN-SPAM / GDPR compliant: every bulk email must include an unsubscribe option.
+    # We use a mailto: unsubscribe link pointing to support so the team can honour it.
+    unsubscribe_line = (
+        "<p style='color:#94a3b8;font-size:0.72rem;margin:16px 0 0;'>"
+        "Sent to: " + target_label + " &middot; "
+        "To unsubscribe from announcements, reply to this email or contact "
+        "<a href='mailto:" + support + "?subject=Unsubscribe' "
+        "style='color:#90c4ff;'>support</a>.</p>"
+    )
     body  = (
         "<p style='color:#1e293b;margin:0 0 16px;'>Hi <strong>" + first + "</strong>,</p>"
         + body_html
         + _hr()
         + _cta("&#128640; Open MyPy Tutor", app)
-        + "<p style='color:#94a3b8;font-size:0.78rem;margin:16px 0 0;'>Sent to: " + target_label + "</p>"
+        + unsubscribe_line
     )
     html = _shell(body, subject)
-    text = "Hi " + first + ",\n\n" + subject + "\n\nOpen at: " + app + "\n\n-- MyPy Tutor Team"
+    text = (
+        "Hi " + first + ",\n\n" + subject + "\n\nOpen at: " + app
+        + "\n\n-- MyPy Tutor Team"
+        + "\n\nTo unsubscribe, email: " + support + " with subject 'Unsubscribe'."
+    )
     _dispatch_async(email, subject, html, text, "announcement")
 
 
 def send_bulk_announcement(subject: str, body_html: str, body_text: str,
                             recipients: list, target_label: str = "All Users") -> int:
     """
+    Send a personalised announcement to every recipient in the list.
     recipients: list of (email, name) tuples.
-    Returns number of threads dispatched.
+    Returns number of emails dispatched.
+    CAN-SPAM / GDPR: every email includes an unsubscribe link via send_product_update_email.
     """
     sent = 0
     for rcpt_email, rcpt_name in recipients:
