@@ -162,6 +162,10 @@ _allowed_origins = list(filter(None, [
 
 app.add_middleware(SecurityMiddleware)
 
+# GZip all responses ≥1KB — reduces bandwidth ~70% on Render's metered egress
+from starlette.middleware.gzip import GZipMiddleware
+app.add_middleware(GZipMiddleware, minimum_size=1024)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
@@ -395,8 +399,13 @@ async def auth_google_callback(code: str = None, error: str = None) -> JSONRespo
             lp.display_name = user.name
             from app.progress import save_profile as _sp
             _sp(lp)
-        # Mirror to Supabase
-        sb_upsert_profile(user.learner_id, user.email, user.name)
+        # Mirror to Supabase — non-blocking (fire-and-forget)
+        import threading as _thr_gg
+        _thr_gg.Thread(
+            target=sb_upsert_profile,
+            args=(user.learner_id, user.email, user.name),
+            daemon=False,
+        ).start()
 
         import urllib.parse as _up
         user_data = _up.quote(json.dumps({
@@ -419,8 +428,11 @@ async def auth_google(request: GoogleAuthRequest) -> AuthResponse:
     payload = await verify_google_token_strict(request.credential)
     user    = get_or_create_user(payload)
     token   = create_session_token(user.learner_id)
-    # Mirror to Supabase
-    sb_upsert_profile(user.learner_id, user.email, user.name)
+    # Mirror to Supabase non-blocking
+    import threading as _thr_ag
+    _thr_ag.Thread(target=sb_upsert_profile,
+                   args=(user.learner_id, user.email, user.name),
+                   daemon=False).start()
     return AuthResponse(
         token=token, learner_id=user.learner_id,
         name=user.name, email=user.email, picture=user.picture,
@@ -605,7 +617,9 @@ async def auth_github_callback(code: str = None, error: str = None,
                     """, (learner_id, name or "", picture))
             except Exception:
                 pass
-        sb_upsert_profile(learner_id, email, name)
+        # Non-blocking Supabase mirror
+        import threading as _thr_gh
+        _thr_gh.Thread(target=sb_upsert_profile, args=(learner_id, email, name), daemon=False).start()
 
         # 7. Create session token and redirect to frontend
         token     = _cst(learner_id)
@@ -1066,7 +1080,13 @@ async def get_certificate(
     clean_name = _re.sub(r'[<>&"\']', '', name).strip()[:80] or "Learner"
     cert_id    = get_cert_id(learner_id, level)
     log_certificate(cert_id, learner_id, clean_name, level)
-    sb_save_certificate(cert_id, learner_id, clean_name, level)
+    # Non-blocking Supabase write — cert HTML is generated immediately
+    import threading as _thr_cert
+    _thr_cert.Thread(
+        target=sb_save_certificate,
+        args=(cert_id, learner_id, clean_name, level),
+        daemon=False,
+    ).start()
     html_doc   = generate_certificate_html(learner_name=clean_name, level=level, cert_id=cert_id)
 
     # Send certificate email via email_service (non-blocking)
@@ -1763,8 +1783,14 @@ async def paystack_webhook(request: Request) -> dict:
             create_invoice_db(invoice_id, payment.id, learner_id, email,
                               customer.get("name", email),
                               f"Course: {course_meta}", amount_ngn)
-            sb_save_payment(payment.id, email, customer.get("name", email),
-                            amount_ngn, f"Course: {course_meta}", "paystack")
+            # Non-blocking Supabase mirror
+            import threading as _thr_cp
+            _thr_cp.Thread(
+                target=sb_save_payment,
+                args=(payment.id, email, customer.get("name", email),
+                      amount_ngn, f"Course: {course_meta}", "paystack"),
+                daemon=False,
+            ).start()
             # Send payment receipt email (non-blocking)
             try:
                 from app.services.email_service import send_payment_receipt_email as _svc_pay
@@ -1846,9 +1872,19 @@ async def paystack_webhook(request: Request) -> dict:
                 invoice_id = f"INV-{_sec.token_hex(5).upper()}"
                 create_invoice_db(invoice_id, payment.id, learner_id, email,
                                   customer.get("name", email), plan_label, amount_ngn)
-                sb_save_payment(payment.id, email, customer.get("name", email),
-                                amount_ngn, plan_label, "paystack")
-                sb_update_tier(learner_id, tier)
+                # Non-blocking Supabase mirror — webhook must return 200 fast
+                import threading as _thr_wb
+                _thr_wb.Thread(
+                    target=sb_save_payment,
+                    args=(payment.id, email, customer.get("name", email),
+                          amount_ngn, plan_label, "paystack"),
+                    daemon=False,
+                ).start()
+                _thr_wb.Thread(
+                    target=sb_update_tier,
+                    args=(learner_id, tier),
+                    daemon=False,
+                ).start()
 
                 # Send payment receipt email to the user (non-blocking)
                 try:
@@ -3998,7 +4034,9 @@ async def auth_github_callback(code: str = None, error: str = None,
             _users[learner_id].picture = picture
 
         token = _cst(learner_id)
-        sb_upsert_profile(learner_id, email, name)
+        # Non-blocking Supabase mirror
+        import threading as _thr_gh2
+        _thr_gh2.Thread(target=sb_upsert_profile, args=(learner_id, email, name), daemon=False).start()
         log_activity(learner_id, "auth:github", f"login for {email}")
 
         # Persist picture to user_profiles so it survives Render restarts

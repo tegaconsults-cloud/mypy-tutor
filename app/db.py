@@ -27,11 +27,16 @@ DB_PATH = os.getenv("DB_PATH", "mypytutor.db")
 
 @contextmanager
 def get_db():
-    """Context manager for SQLite connection with auto-commit."""
+    """Context manager for SQLite connection with auto-commit.
+    Optimised for Render free tier: WAL mode + tight memory limits."""
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")   # allow concurrent reads
-    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("PRAGMA journal_mode=WAL")       # concurrent reads
+    conn.execute("PRAGMA synchronous=NORMAL")      # faster writes, safe enough
+    conn.execute("PRAGMA cache_size=-2000")        # 2MB page cache (free tier: 512MB RAM)
+    conn.execute("PRAGMA temp_store=MEMORY")       # temp tables in memory
+    conn.execute("PRAGMA mmap_size=67108864")      # 64MB memory-mapped I/O
+    conn.execute("PRAGMA busy_timeout=5000")       # wait up to 5s on locked DB
     try:
         yield conn
         conn.commit()

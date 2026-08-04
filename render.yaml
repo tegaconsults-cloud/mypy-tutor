@@ -2,47 +2,57 @@ services:
   - type: web
     name: mypy-tutor
     runtime: python
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    plan: free                    # Render free tier: 512MB RAM, 0.1 CPU
+    buildCommand: pip install --no-cache-dir -r requirements.txt
+    # Single worker — free tier only has 0.1 CPU, multiple workers thrash
+    # --timeout 120 — Groq LLM can take up to 30s, with retries up to 60s
+    # --keep-alive 5 — keep connections alive briefly to avoid reconnect overhead
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --timeout-keep-alive 5
+    healthCheckPath: /health
     envVars:
       - key: GROQ_API_KEY
-        sync: false          # set manually in Render dashboard
+        sync: false
       - key: SESSION_SECRET
-        sync: false          # random 32+ char string for session tokens
+        sync: false
       - key: ADMIN_EMAIL
-        sync: false          # admin login email — e.g. tega.com.ng@gmail.com
+        sync: false
       - key: ADMIN_PASSWORD
-        sync: false          # admin login password (plain text or SHA-256 hash)
+        sync: false
       - key: GOOGLE_CLIENT_ID
-        sync: false          # set manually in Render dashboard
+        sync: false
       - key: GOOGLE_CLIENT_SECRET
-        sync: false          # set manually in Render dashboard
+        sync: false
       - key: EMAIL_HOST
         value: smtp.gmail.com
       - key: EMAIL_PORT
         value: "587"
       - key: EMAIL_USER
-        sync: false          # your Gmail address
+        sync: false
       - key: EMAIL_PASS
-        sync: false          # Gmail App Password (not your normal password)
+        sync: false
       - key: EMAIL_FROM
-        sync: false          # e.g. MyPy Tutor <your-gmail@gmail.com>
+        sync: false
       - key: APP_URL
-        value: https://mypytutor.onrender.com  # OAuth callback base — MUST be Render URL
+        value: https://mypytutor.onrender.com
       - key: FRONTEND_URL
-        value: https://mypytutor.com.ng  # Vercel frontend — post-auth user redirects
+        value: https://mypytutor.com.ng
       - key: PAYSTACK_SECRET_KEY
-        sync: false          # Paystack secret key — set in Render dashboard
+        sync: false
       - key: SUPABASE_URL
-        sync: false          # https://<project-ref>.supabase.co
+        sync: false
       - key: SUPABASE_ANON_KEY
-        sync: false          # Supabase publishable anon key
+        sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false          # Supabase service role key (server-side only)
+        sync: false
       - key: GITHUB_CLIENT_ID
-        sync: false          # GitHub OAuth App Client ID (optional)
+        sync: false
       - key: GITHUB_CLIENT_SECRET
-        sync: false          # GitHub OAuth App Client Secret (optional)
+        sync: false
       - key: DB_PATH
-        sync: false          # Optional: /data/mypytutor.db for persistent disk
+        sync: false
+      # Python optimisations for low-memory deployment
+      - key: PYTHONOPTIMIZE
+        value: "1"              # removes assert statements and docstrings from .pyc
+      - key: PYTHONDONTWRITEBYTECODE
+        value: "1"              # skip .pyc files — saves disk I/O on ephemeral fs
     autoDeploy: true
