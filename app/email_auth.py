@@ -40,8 +40,14 @@ def _cfg(key: str, default: str = "") -> str:
 # Module-level APP_URL — kept as a patchable name for token URL construction.
 APP_URL = "https://mypytutor.onrender.com"
 
+import secrets as _ea_secrets
+
+# Per-process random fallback — never a known public constant.
+_RUNTIME_FALLBACK_SECRET = _ea_secrets.token_hex(32)
+
+
 def _get_session_secret() -> str:
-    return os.getenv("SESSION_SECRET", "mypytutor-INSECURE-fallback-set-SESSION_SECRET-now")
+    return os.getenv("SESSION_SECRET", _RUNTIME_FALLBACK_SECRET)
 
 def _get_token_serializer() -> "URLSafeTimedSerializer":
     """Build a fresh serializer at call time so SESSION_SECRET is always current."""

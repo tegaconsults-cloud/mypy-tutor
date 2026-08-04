@@ -29,8 +29,14 @@ def _get_admin_email() -> str:
 def _get_admin_password() -> str:
     return os.getenv("ADMIN_PASSWORD", "")
 
+import secrets as _admin_secrets
+
+# Per-process random fallback — not a publicly-known constant.
+_ADMIN_RUNTIME_FALLBACK = _admin_secrets.token_hex(32)
+
+
 def _get_admin_serializer() -> "URLSafeTimedSerializer":
-    secret = os.getenv("SESSION_SECRET", "mypytutor-INSECURE-fallback-set-SESSION_SECRET-now")
+    secret = os.getenv("SESSION_SECRET", _ADMIN_RUNTIME_FALLBACK)
     return URLSafeTimedSerializer(secret)
 
 ADMIN_TOKEN_MAX_AGE = 60 * 60 * 8   # 8 hours

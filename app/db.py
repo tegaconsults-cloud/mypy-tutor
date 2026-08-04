@@ -580,6 +580,21 @@ def mark_reset_token_used(token: str) -> None:
         conn.execute("UPDATE password_resets SET used=1 WHERE token=?", (token,))
 
 
+def purge_expired_reset_tokens() -> None:
+    """Delete used and expired password reset tokens to keep the table small.
+    Called at startup — tokens older than 2 hours are safe to purge."""
+    import time as _t
+    cutoff = _t.time() - (2 * 3600)  # 2 hours ago
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "DELETE FROM password_resets WHERE used=1 OR created_at < ?",
+                (cutoff,)
+            )
+    except Exception:
+        pass
+
+
 def update_password_hash(email: str, new_hash: str) -> None:
     with get_db() as conn:
         conn.execute(

@@ -25,16 +25,25 @@ logger = logging.getLogger(__name__)
 def _get_client_id() -> str:
     return os.getenv("GOOGLE_CLIENT_ID", "")
 
+import secrets as _secrets_mod
+
+# Generate a random fallback once per process startup.
+# This means sessions don't survive restarts when SESSION_SECRET is unset,
+# but at least they can't be forged by someone who read the source code.
+# Production MUST set SESSION_SECRET in Render → Environment.
+_RUNTIME_FALLBACK_SECRET = _secrets_mod.token_hex(32)
+
+
 def _get_session_secret() -> str:
     secret = os.getenv("SESSION_SECRET", "")
     if not secret:
-        # In production this must be set — log a warning but don't crash
         import logging as _log
         _log.getLogger(__name__).warning(
-            "SESSION_SECRET env var not set — using insecure fallback. "
+            "SESSION_SECRET env var not set — using per-process random secret. "
+            "Sessions will not survive restarts. "
             "Set SESSION_SECRET in Render dashboard immediately!"
         )
-        return "mypytutor-INSECURE-fallback-set-SESSION_SECRET-now"
+        return _RUNTIME_FALLBACK_SECRET
     return secret
 
 SESSION_MAX_AGE = 60 * 60 * 24 * 30  # 30 days

@@ -120,6 +120,14 @@ except ValueError as exc:
 from app.email_auth import _load_confirmed_from_db
 init_db()
 _load_confirmed_from_db()
+
+# Purge expired/used password reset tokens so the table doesn't grow unbounded
+try:
+    from app.db import purge_expired_reset_tokens
+    purge_expired_reset_tokens()
+except Exception:
+    pass
+
 logger.info("Database ready")
 
 app = FastAPI(
@@ -1297,9 +1305,15 @@ async def course_price(course_name: str) -> dict:
 
 
 @app.get("/learner/courses/{learner_id}")
-async def learner_courses(learner_id: str) -> dict:
+async def learner_courses(learner_id: str,
+                          user=Depends(get_current_user)) -> dict:
     """Return all courses a learner has access to (tier bundle + individually purchased)."""
     validate_learner_id(learner_id)
+    # Owner check: only the authenticated user can see their own course access list
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to view your courses.")
+    if user.learner_id != learner_id:
+        raise HTTPException(status_code=403, detail="You can only view your own courses.")
     from app.courses import COURSE_CATALOG
     profile = get_profile(learner_id)
     purchased = get_learner_courses(learner_id)
@@ -1516,9 +1530,14 @@ async def evaluate_quiz_answer(request: QuizAnswerRequest,
 
 
 @app.post("/exercise/generate")
-async def generate_exercise(learner_id: str, topic: str) -> dict:
+async def generate_exercise(learner_id: str, topic: str,
+                            user=Depends(get_current_user)) -> dict:
     validate_learner_id(learner_id)
     validate_topic(topic)
+    # Authenticated users must match their own learner_id.
+    # Anonymous users (no token) are allowed — free-tier discovery via chat.
+    if user is not None and user.learner_id != learner_id:
+        raise HTTPException(status_code=403, detail="learner_id does not match your session.")
     profile  = get_profile(learner_id)
     gaps     = get_knowledge_gaps(learner_id)
     is_gap   = topic in gaps
@@ -1846,8 +1865,8 @@ async def service_unavailable_handler(request: Request, exc: Exception) -> JSONR
 # ---------------------------------------------------------------------------
 
 class _AdminLogin(_BM):
-    email:    str
-    password: str
+    email:    str = _Field(..., min_length=5,  max_length=254)
+    password: str = _Field(..., min_length=1,  max_length=128)
 
 
 class _PaymentAdd(_BM):
@@ -2718,9 +2737,14 @@ async def quiz_history(learner_id: str, limit: int = 50) -> dict:
 # ---------------------------------------------------------------------------
 
 @app.post("/assignments/generate")
-async def generate_assignment(learner_id: str, topic: str) -> dict:
+async def generate_assignment(learner_id: str, topic: str,
+                              user=Depends(get_current_user)) -> dict:
     validate_learner_id(learner_id)
     validate_topic(topic)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to generate assignments.")
+    if user.learner_id != learner_id:
+        raise HTTPException(status_code=403, detail="learner_id does not match your session.")
     import secrets as _sec
     profile = get_profile(learner_id)
 
@@ -2745,8 +2769,14 @@ async def generate_assignment(learner_id: str, topic: str) -> dict:
 
 
 @app.post("/assignments/{assignment_id}/submit")
-async def submit_assignment(assignment_id: str, body: AssignmentSubmit) -> dict:
+async def submit_assignment(assignment_id: str, body: AssignmentSubmit,
+                            user=Depends(get_current_user)) -> dict:
     validate_learner_id(body.learner_id)
+    # Owner check: prevent submitting assignments on behalf of another user
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to submit assignments.")
+    if user.learner_id != body.learner_id:
+        raise HTTPException(status_code=403, detail="You can only submit your own assignments.")
     ok = submit_assignment_db(assignment_id, body.learner_id, body.submission)
     if not ok:
         raise HTTPException(status_code=404, detail="Assignment not found.")
@@ -2755,8 +2785,13 @@ async def submit_assignment(assignment_id: str, body: AssignmentSubmit) -> dict:
 
 
 @app.post("/assignments/{assignment_id}/review")
-async def ai_review_assignment(assignment_id: str, learner_id: str) -> dict:
+async def ai_review_assignment(assignment_id: str, learner_id: str,
+                               user=Depends(get_current_user)) -> dict:
     validate_learner_id(learner_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to request assignment review.")
+    if user.learner_id != learner_id:
+        raise HTTPException(status_code=403, detail="You can only review your own assignments.")
     assignments = get_assignments_db(learner_id)
     assignment  = next((a for a in assignments if a["id"] == assignment_id), None)
     if not assignment:
@@ -2790,8 +2825,13 @@ async def ai_review_assignment(assignment_id: str, learner_id: str) -> dict:
 
 
 @app.get("/assignments/{learner_id}")
-async def list_assignments(learner_id: str) -> dict:
+async def list_assignments(learner_id: str,
+                           user=Depends(get_current_user)) -> dict:
     validate_learner_id(learner_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to view assignments.")
+    if user.learner_id != learner_id:
+        raise HTTPException(status_code=403, detail="You can only view your own assignments.")
     assignments = get_assignments_db(learner_id)
     return {"learner_id": learner_id, "assignments": assignments, "total": len(assignments)}
 
@@ -2860,9 +2900,13 @@ async def validate_coupon(body: CouponValidate) -> dict:
 
 
 @app.post("/coupons/apply")
-async def apply_coupon(body: CouponValidate) -> dict:
+async def apply_coupon(body: CouponValidate,
+                       user=Depends(get_current_user)) -> dict:
     if not body.learner_id or not body.email:
         raise HTTPException(status_code=400, detail="learner_id and email required.")
+    # Prevent recording a coupon use on behalf of another learner
+    if user is not None and user.learner_id != body.learner_id:
+        raise HTTPException(status_code=403, detail="learner_id does not match your session.")
     coupon = validate_coupon_db(body.code, body.plan)
     if not coupon:
         raise HTTPException(status_code=404, detail="Coupon is invalid or exhausted.")
@@ -2879,15 +2923,26 @@ async def apply_coupon(body: CouponValidate) -> dict:
 
 # REFERRAL routes — specific paths BEFORE dynamic /{learner_id}
 @app.get("/referral/balance/{learner_id}")
-async def referral_balance(learner_id: str) -> dict:
-    """Return referral bonus balance and earnings history."""
+async def referral_balance(learner_id: str,
+                           user=Depends(get_current_user)) -> dict:
+    """Return referral bonus balance and earnings history. Owner-only."""
     validate_learner_id(learner_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to view your referral balance.")
+    if user.learner_id != learner_id:
+        raise HTTPException(status_code=403, detail="You can only view your own referral balance.")
     return get_referral_bonus_balance(learner_id)
 
 
 @app.get("/referral/{learner_id}")
-async def get_my_referral(learner_id: str) -> dict:
+async def get_my_referral(learner_id: str,
+                          user=Depends(get_current_user)) -> dict:
     validate_learner_id(learner_id)
+    # Referral code and earnings are owner-only data
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to view your referral code.")
+    if user.learner_id != learner_id:
+        raise HTTPException(status_code=403, detail="You can only view your own referral code.")
     existing = get_learner_referral_code(learner_id)
     if existing:
         uses = get_referral_uses(existing["code"])
@@ -2933,12 +2988,18 @@ async def get_my_referral(learner_id: str) -> dict:
 
 
 @app.post("/referral/use")
-async def use_referral(body: ReferralUse) -> dict:
+async def use_referral(body: ReferralUse,
+                       user=Depends(get_current_user)) -> dict:
     """
     Record that a new user signed up with a referral code.
-    Correct split: referee gets 5% discount, referrer earns 15% bonus.
-    payment_amount can be passed for accurate bonus calculation.
+    Requires auth — learner_id in body must match session token to prevent
+    fake referral use records.
     """
+    # Require auth: only the signed-up user can record their own referral use
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to apply a referral code.")
+    if user.learner_id != body.learner_id:
+        raise HTTPException(status_code=403, detail="learner_id does not match your session.")
     ref = get_referral_code(body.code)
     if not ref or ref["uses"] >= ref["max_uses"]:
         raise HTTPException(status_code=404, detail="Referral code is invalid or exhausted.")
@@ -3008,16 +3069,31 @@ async def get_referral_withdrawals(learner_id: str,
 # ---------------------------------------------------------------------------
 
 @app.get("/invoice/{invoice_id}", response_class=HTMLResponse)
-async def get_invoice(invoice_id: str) -> HTMLResponse:
+async def get_invoice(invoice_id: str,
+                      user=Depends(get_current_user)) -> HTMLResponse:
+    """Return a printable invoice. Requires authentication — owner or admin only."""
+    import re as _re4
+    if not _re4.match(r'^[A-Z0-9\-]{4,30}$', invoice_id):
+        raise HTTPException(status_code=400, detail="Invalid invoice ID.")
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to view invoices.")
     inv = get_invoice_db(invoice_id)
     if not inv:
         raise HTTPException(status_code=404, detail="Invoice not found.")
+    # Ensure the requester owns this invoice (learner_id match)
+    if inv.get("learner_id") and inv["learner_id"] != user.learner_id:
+        raise HTTPException(status_code=403, detail="You can only view your own invoices.")
     return HTMLResponse(content=_render_invoice(inv))
 
 
 @app.get("/invoices/{learner_id}")
-async def list_invoices(learner_id: str) -> dict:
+async def list_invoices(learner_id: str,
+                        user=Depends(get_current_user)) -> dict:
     validate_learner_id(learner_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to view invoices.")
+    if user.learner_id != learner_id:
+        raise HTTPException(status_code=403, detail="You can only view your own invoices.")
     invoices = get_invoices_by_learner(learner_id)
     return {"learner_id": learner_id, "invoices": invoices, "total": len(invoices)}
 
@@ -3396,12 +3472,17 @@ async def admin_learner_history(learner_id: str, request: Request) -> dict:
 # ---------------------------------------------------------------------------
 
 @app.get("/conversations/{learner_id}")
-async def list_conversations(learner_id: str) -> dict:
+async def list_conversations(learner_id: str,
+                             user=Depends(get_current_user)) -> dict:
     """
     Return all conversation sessions for a learner.
-    Pulls from Supabase when configured; falls back to SQLite prompt_history.
+    Owner-only: chat history may contain sensitive personal information.
     """
     validate_learner_id(learner_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to view your conversation history.")
+    if user.learner_id != learner_id:
+        raise HTTPException(status_code=403, detail="You can only view your own conversations.")
     if sb_enabled():
         convs = sb_load_all_conversations(learner_id)
         return {"learner_id": learner_id, "conversations": convs,
@@ -3415,12 +3496,16 @@ async def list_conversations(learner_id: str) -> dict:
 
 @app.get("/conversations/{learner_id}/{conversation_id}")
 async def get_conversation(learner_id: str, conversation_id: str,
-                            limit: int = 50) -> dict:
+                            limit: int = 50,
+                            user=Depends(get_current_user)) -> dict:
     """
-    Load all messages from a specific conversation.
-    Sir. Tega uses this to resume context on re-login.
+    Load all messages from a specific conversation. Owner-only.
     """
     validate_learner_id(learner_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to view conversation messages.")
+    if user.learner_id != learner_id:
+        raise HTTPException(status_code=403, detail="You can only view your own conversations.")
     if sb_enabled():
         messages = sb_load_messages(conversation_id, limit=min(limit, 100))
         return {"conversation_id": conversation_id,
@@ -3438,10 +3523,14 @@ async def get_conversation(learner_id: str, conversation_id: str,
 
 
 @app.post("/conversations/{learner_id}/new")
-async def new_conversation(learner_id: str, background_tasks: BackgroundTasks) -> dict:
-    """Start a fresh conversation. Returns immediately with a local ID;
-    Supabase insert runs in background so it never blocks the response."""
+async def new_conversation(learner_id: str, background_tasks: BackgroundTasks,
+                           user=Depends(get_current_user)) -> dict:
+    """Start a fresh conversation. Owner-only — requires auth."""
     validate_learner_id(learner_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to start a conversation.")
+    if user.learner_id != learner_id:
+        raise HTTPException(status_code=403, detail="You can only create your own conversations.")
     import secrets as _sec
     conv_id = f"local_{_sec.token_hex(8)}"
     # Fire-and-forget Supabase insert — does NOT block the response
