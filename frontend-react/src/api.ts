@@ -198,7 +198,9 @@ export async function getProgress(learnerId: string) {
 }
 
 export async function getPromptCount(learnerId: string) {
-  const r = await fetch(url(`/prompts/count?learner_id=${learnerId}`))
+  const r = await fetch(url(`/prompts/count?learner_id=${learnerId}`), {
+    headers: bearerHeaders(),
+  })
   if (!r.ok) return null
   return r.json()
 }

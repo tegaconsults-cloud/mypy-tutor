@@ -1443,11 +1443,28 @@ async def start_course(learner_id: str, course_name: str,
     system_prompt = build_system_prompt(step.intent, topic=step.title, level=profile.level)
     messages      = [{"role": "user", "content": f"Teach me: {step.description}"}]
 
-    try:
-        content = get_completion(system_prompt, messages, intent="course")
-    except Exception as exc:
-        logger.error("Course start LLM error: %s", exc)
-        raise HTTPException(status_code=502, detail="AI service error. Please try again.")
+    # Retry up to 2 times on transient LLM errors (Groq cold start / rate limit)
+    content = None
+    last_exc: Exception | None = None
+    for _attempt in range(2):
+        try:
+            content = get_completion(system_prompt, messages, intent="course")
+            break
+        except Exception as exc:
+            last_exc = exc
+            exc_type = type(exc).__name__.lower()
+            if any(k in exc_type for k in ("ratelimit", "timeout", "serviceunavailable")):
+                import asyncio as _aio
+                await _aio.sleep(1)   # brief pause before retry
+                continue
+            break   # non-transient — don't retry
+
+    if content is None:
+        logger.error("Course start LLM error after retries: %s", last_exc)
+        raise HTTPException(
+            status_code=503,
+            detail="Sir. Tega is warming up. Please wait a moment and try again.",
+        )
 
     return {
         "course": course_name, "step": step.step,
@@ -1495,11 +1512,28 @@ async def next_course_step(learner_id: str,
     system_prompt = build_system_prompt(step.intent, topic=step.title, level=profile.level)
     messages      = [{"role": "user", "content": f"Teach me: {step.description}"}]
 
-    try:
-        content = get_completion(system_prompt, messages, intent="course")
-    except Exception as exc:
-        logger.error("Course next LLM error: %s", exc)
-        raise HTTPException(status_code=502, detail="AI service error. Please try again.")
+    # Retry up to 2 times on transient LLM errors
+    content = None
+    last_exc2: Exception | None = None
+    for _attempt2 in range(2):
+        try:
+            content = get_completion(system_prompt, messages, intent="course")
+            break
+        except Exception as exc2:
+            last_exc2 = exc2
+            exc_type2 = type(exc2).__name__.lower()
+            if any(k in exc_type2 for k in ("ratelimit", "timeout", "serviceunavailable")):
+                import asyncio as _aio2
+                await _aio2.sleep(1)
+                continue
+            break
+
+    if content is None:
+        logger.error("Course next LLM error after retries: %s", last_exc2)
+        raise HTTPException(
+            status_code=503,
+            detail="Sir. Tega is warming up. Please wait a moment and try again.",
+        )
 
     xp, badge = record_lesson(learner_id, step.title, step.intent)
     return {

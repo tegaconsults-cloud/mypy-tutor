@@ -45,6 +45,7 @@ export default function CoursesPanel() {
   const [accessMap, setAccessMap] = useState<Record<string, { unlocked: boolean; via: string }>>({})
   const [loading, setLoading]   = useState(true)
   const [starting, setStarting] = useState<string | null>(null)
+  const [startError, setStartError] = useState<string>('')
 
   useEffect(() => {
     const load = async () => {
@@ -73,26 +74,38 @@ export default function CoursesPanel() {
   const handleStart = async (courseName: string) => {
     if (!user) return
     setStarting(courseName)
+    setStartError('')
     try {
       const data = await startCourse(user.learner_id, courseName)
-      // Navigate to chat with the course content pre-loaded
       window.dispatchEvent(new CustomEvent('sidebar-ask', {
         detail: `### 📚 ${data.course} — Step ${data.step}/${data.total_steps}: ${data.title}\n\n${data.content}`
       }))
       window.dispatchEvent(new CustomEvent('switch-panel', { detail: 'chat' }))
     } catch (err: unknown) {
-      if (err instanceof Error) alert(err.message)
+      if (err instanceof Error) {
+        const msg = err.message || ''
+        // Show user-friendly message — never expose internal server errors
+        if (msg.toLowerCase().includes('upgrade') || msg.toLowerCase().includes('402')) {
+          setStartError('Upgrade required to access this course.')
+        } else if (msg.toLowerCase().includes('ai service') || msg.toLowerCase().includes('502') || msg.toLowerCase().includes('503')) {
+          setStartError('Sir. Tega is warming up — please try again in a moment.')
+        } else if (msg.toLowerCase().includes('sign in') || msg.toLowerCase().includes('401')) {
+          setStartError('Please sign in to start this course.')
+        } else {
+          setStartError('Could not start course. Please try again.')
+        }
+        // Auto-clear error after 5 seconds
+        setTimeout(() => setStartError(''), 5000)
+      }
     } finally {
       setStarting(null)
     }
   }
 
-  // Navigate to the course landing page for more info / to purchase
+  // Navigate to the course landing page in a new tab
   const handleLearnMore = (courseName: string) => {
     const page = COURSE_LANDING_PAGE[courseName]
-    if (page) {
-      window.open(page, '_blank', 'noopener,noreferrer')
-    }
+    if (page) window.open(page, '_blank', 'noopener,noreferrer')
   }
 
   const completed = new Set(progress?.completed_projects || [])
@@ -111,7 +124,14 @@ export default function CoursesPanel() {
   return (
     <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-5 touch-scroll scrollbar-thin">
 
-      {/* Active course banner */}
+      {/* Inline error toast — replaces browser alert() */}
+      {startError && (
+        <div className="rounded-2xl px-4 py-3 flex items-center gap-3 shrink-0"
+          style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}>
+          <span className="text-sm flex-1" style={{ color: '#fca5a5' }}>⚠️ {startError}</span>
+          <button onClick={() => setStartError('')} className="text-sm shrink-0" style={{ color: '#4d6080' }}>✕</button>
+        </div>
+      )}
       {progress?.current_course && (
         <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
           className="rounded-2xl p-4 border"
