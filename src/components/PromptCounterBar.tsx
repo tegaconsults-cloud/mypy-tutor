@@ -46,7 +46,7 @@ export default function PromptCounterBar() {
     return () => window.removeEventListener('prompt-used', handler)
   }, [limit])
 
-  // Don't render until we have data (avoids flash of 0/10 before fetch completes)
+  // Don't render until we have data (avoids flash before fetch completes)
   if (!loaded) return null
   // Hide bar for paid users — they have no daily cap
   if (isPaid) return null
@@ -57,17 +57,18 @@ export default function PromptCounterBar() {
 
   const accent    = isAtLimit ? '#ef4444' : isNearLimit ? '#E0A300' : '#3b82f6'
   const textColor = isAtLimit ? '#fca5a5' : isNearLimit ? '#fcd34d' : '#94a3b8'
+  // Always show a minimum visible bar width so users can see it even at 0 prompts used
+  const barWidth  = used === 0 ? '2px' : `${pct}%`
 
   return (
     <motion.div
-      initial={{ opacity: 0, height: 0 }}
-      animate={{ opacity: 1, height: 'auto' }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
       className="shrink-0 px-4 py-1.5 flex items-center gap-3"
       style={{
-        background: isAtLimit
-          ? 'rgba(239,68,68,0.06)'
-          : 'rgba(6,13,28,0.9)',
-        borderBottom: `1px solid ${isAtLimit ? 'rgba(239,68,68,0.2)' : 'rgba(13,71,161,0.12)'}`,
+        background: isAtLimit ? 'rgba(239,68,68,0.06)' : 'rgba(6,13,28,0.92)',
+        borderBottom: `1px solid ${isAtLimit ? 'rgba(239,68,68,0.2)' : 'rgba(13,71,161,0.15)'}`,
+        minHeight: 32,
       }}>
 
       {/* Icon + count */}
@@ -80,11 +81,11 @@ export default function PromptCounterBar() {
       </div>
 
       {/* Progress bar */}
-      <div className="flex-1 h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)' }}>
+      <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.06)', minWidth: 40 }}>
         <motion.div
           className="h-full rounded-full"
-          style={{ background: accent }}
-          animate={{ width: `${pct}%` }}
+          style={{ background: accent, minWidth: 3 }}
+          animate={{ width: barWidth }}
           transition={{ duration: 0.5, ease: 'easeOut' }}
         />
       </div>
