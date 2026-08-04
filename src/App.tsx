@@ -28,6 +28,8 @@ import AiTutorPage from './pages/AiPythonTutor'
 import CertificationPage from './pages/PythonCertification'
 import InterviewPage from './pages/PythonInterviewQuestions'
 import QuizzesPage from './pages/PythonQuizzes'
+import TermsOfServicePage from './pages/TermsOfService'
+import PrivacyPolicyPage from './pages/PrivacyPolicy'
 
 // Individual course landing pages
 import PythonFundamentalsPage     from './pages/courses/PythonFundamentals'
@@ -173,6 +175,8 @@ export default function App() {
       <Route path="/python-certification"      element={<CertificationPage />} />
       <Route path="/python-interview-questions"element={<InterviewPage />} />
       <Route path="/python-quizzes"            element={<QuizzesPage />} />
+      <Route path="/terms"                     element={<TermsOfServicePage />} />
+      <Route path="/privacy"                   element={<PrivacyPolicyPage />} />
 
       {/* Individual course landing pages */}
       <Route path="/courses/python-fundamentals"       element={<PythonFundamentalsPage />} />
