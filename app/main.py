@@ -16,7 +16,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi import Depends
+from fastapi.security import HTTPBearer as _HTTPBearer
 from pydantic import BaseModel as _BM, Field as _Field
+
+# Optional bearer dependency — declared here (module top) so it is available
+# to ALL route handlers regardless of definition order.
+# Routes use Depends(_bearer_optional) to read the token when present without
+# requiring authentication (auto_error=False means missing token → None, not 401).
+_bearer_optional = _HTTPBearer(auto_error=False)
 
 from app.classifier import classify_intent
 from app.formatter import format_response
@@ -1906,12 +1913,6 @@ def _require_admin(request: Request) -> str:
     if not token or not verify_admin_token(token):
         raise HTTPException(status_code=403, detail="Admin authentication required.")
     return token
-
-
-# Optional bearer — used by routes that need to know WHO is calling but
-# don't require authentication (e.g. /progress to detect cross-user reads).
-from fastapi.security import HTTPBearer as _HTTPBearer, HTTPAuthorizationCredentials as _HAC
-_bearer_optional = _HTTPBearer(auto_error=False)
 
 
 # ---------------------------------------------------------------------------
