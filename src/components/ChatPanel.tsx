@@ -35,19 +35,23 @@ export default function ChatPanel({ onAuthClick }: Props) {
   const [copiedMsg, setCopiedMsg]   = useState<number | null>(null)
   // Daily limit fetched live from server so it stays in sync with backend config
   const [freeLimit, setFreeLimit] = useState(DEFAULT_FREE_LIMIT)
+  const [promptsUsed, setPromptsUsed] = useState(0)
+  const [limitReached, setLimitReached] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef  = useRef<HTMLTextAreaElement>(null)
 
   const learnerId = user?.learner_id || 'default'
   const level     = localStorage.getItem('mypy_tutor_level') || 'beginner'
 
-  // Fetch the real daily limit from the server once on mount / user change
+  // Fetch the real daily limit and current usage from the server
   useEffect(() => {
     getPromptCount(learnerId).then(data => {
-      if (data?.limit && typeof data.limit === 'number') {
-        setFreeLimit(data.limit)
-      }
-    }).catch(() => { /* non-fatal — keep default */ })
+      if (!data) return
+      if (data.limit && typeof data.limit === 'number') setFreeLimit(data.limit)
+      if (data.used  && typeof data.used  === 'number') setPromptsUsed(data.used)
+      // If user is already at limit on load, show the gate immediately
+      if (data.is_limited && data.used >= data.limit) setLimitReached(true)
+    }).catch(() => { /* non-fatal — keep defaults */ })
   }, [learnerId])
 
   useEffect(() => {
@@ -81,6 +85,7 @@ export default function ChatPanel({ onAuthClick }: Props) {
   const send = async (override?: string) => {
     let text = (override || input).trim()
     if (!text) return
+    if (limitReached) return  // hard gate — don't attempt API call
     if (codeMode && code.trim()) text = `${text}\n\n\`\`\`python\n${code.trim()}\n\`\`\``
 
     const history = messages.filter(m => m.role !== 'error')
@@ -104,6 +109,7 @@ export default function ChatPanel({ onAuthClick }: Props) {
       const updated = [...newMsgs, reply]
       setMessages(updated); saveHistory(updated)
       window.dispatchEvent(new Event('prompt-used'))
+      setPromptsUsed(p => p + 1)
       // force=true so XP bar and tier badge update immediately after each message
       if (user) refresh(user.learner_id, true)
     } catch (err: unknown) {
@@ -111,8 +117,26 @@ export default function ChatPanel({ onAuthClick }: Props) {
         const e = err as Error & { status?: number; data?: { limit?: number; error?: string } }
         if (e.status === 402 || e.data?.error === 'free_limit_reached') {
           const limit = e.data?.limit ?? freeLimit
-          const msg = `⏰ **You've used all ${limit} free prompts for today.**\n\nYour quota resets at **5:00 AM WAT** each morning.\n\n### Upgrade for more daily prompts:\n| Plan | Prompts | Price |\n|------|---------|-------|\n| Starter | 50/day | ₦2,000/mo |\n| Pro | 200/day | ₦5,000/mo |\n| Unlimited | ∞ | ₦10,000/mo |\n\n[💳 Upgrade Now →](https://paystack.shop/pay/vt_re4d3h52)`
-          setMessages(m => [...m.slice(0, -1), { role: 'assistant', content: msg }])
+          setLimitReached(true)
+          // Remove the user message we added optimistically, show upgrade card instead
+          const upgradeMsg = [
+            `⏰ **You've used all ${limit} free prompts for today.**`,
+            '',
+            `Your quota resets at **5:00 AM WAT** each morning.`,
+            '',
+            `### Upgrade to keep learning:`,
+            `| Bundle | Courses | Price |`,
+            `|--------|---------|-------|`,
+            `| 🟢 Beginner Bundle | 4 courses | ₦30,000 one-time |`,
+            `| ⚡ Intermediate Bundle | 7 courses | ₦60,000 one-time |`,
+            `| 🚀 Advanced Bundle | 14 courses | ₦100,000 one-time |`,
+            `| 👑 Premium Bundle | ALL 16 courses | ₦100,000 one-time |`,
+            '',
+            `All bundles include **unlimited AI prompts** for enrolled courses.`,
+            '',
+            `[💳 Upgrade Now → paystack.shop/pay/vt_re4d3h52](https://paystack.shop/pay/vt_re4d3h52)`,
+          ].join('\n')
+          setMessages(m => [...m.slice(0, -1), { role: 'assistant', content: upgradeMsg }])
         } else {
           setMessages(m => [...m, { role: 'error', content: e.message }])
         }
@@ -315,6 +339,21 @@ export default function ChatPanel({ onAuthClick }: Props) {
       <div className="shrink-0 px-4 pb-3 pt-2"
         style={{ background: 'rgba(6,13,28,0.97)', borderTop: '1px solid rgba(13,71,161,0.2)', backdropFilter: 'blur(20px)' }}>
 
+        {/* Hard gate when daily limit reached */}
+        {limitReached && (
+          <div className="mb-2 rounded-2xl px-4 py-3 flex items-center justify-between gap-3"
+            style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}>
+            <p className="text-xs font-semibold" style={{ color: '#fca5a5' }}>
+              ⏰ Daily limit reached — resets at 5AM WAT
+            </p>
+            <a href="https://paystack.shop/pay/vt_re4d3h52" target="_blank" rel="noopener noreferrer"
+              className="btn btn-sm flex items-center gap-1 shrink-0 font-bold"
+              style={{ background: 'linear-gradient(135deg,#0D47A1,#E0A300)', color: '#fff', fontSize: '0.7rem' }}>
+              💳 Upgrade
+            </a>
+          </div>
+        )}
+
         <div className="flex items-center gap-2 mb-2">
           <button onClick={() => setCodeMode(c => !c)}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all duration-150"
@@ -363,9 +402,9 @@ export default function ChatPanel({ onAuthClick }: Props) {
             onFocus={e => (e.currentTarget.style.borderColor = '#1565E8')}
             onBlur={e => (e.currentTarget.style.borderColor = 'rgba(13,71,161,0.35)')}
           />
-          <button onClick={() => send()} disabled={loading || !input.trim()}
+          <button onClick={() => send()} disabled={loading || !input.trim() || limitReached}
             className="btn btn-primary rounded-2xl w-12 h-12 p-0 shrink-0"
-            style={{ background: 'linear-gradient(135deg,#0D47A1,#1565E8)' }}>
+            style={{ background: limitReached ? 'rgba(13,71,161,0.3)' : 'linear-gradient(135deg,#0D47A1,#1565E8)' }}>
             <Send size={17} />
           </button>
         </div>
