@@ -5,7 +5,7 @@ import {
   CreditCard, TrendingUp, Share2, ChevronDown, ChevronUp,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { API_BASE, getReferralWithdrawals, requestReferralWithdrawal } from '../api'
+import { getReferral, getReferralWithdrawals, requestReferralWithdrawal } from '../api'
 
 interface ReferralUse {
   used_by_email: string
@@ -49,7 +49,7 @@ export default function ReferralModal({ onClose }: Props) {
     if (!user) return
     setLoading(true)
     Promise.all([
-      fetch(`${API_BASE}/referral/${lid}`).then(r => r.ok ? r.json() : null),
+      getReferral(lid),
       getReferralWithdrawals(lid),
     ])
       .then(([refData, withdrawalData]) => {
