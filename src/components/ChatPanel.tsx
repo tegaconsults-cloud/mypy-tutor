@@ -35,7 +35,6 @@ export default function ChatPanel({ onAuthClick }: Props) {
   const [copiedMsg, setCopiedMsg]   = useState<number | null>(null)
   // Daily limit fetched live from server so it stays in sync with backend config
   const [freeLimit, setFreeLimit] = useState(DEFAULT_FREE_LIMIT)
-  const [promptsUsed, setPromptsUsed] = useState(0)
   const [limitReached, setLimitReached] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef  = useRef<HTMLTextAreaElement>(null)
@@ -48,7 +47,6 @@ export default function ChatPanel({ onAuthClick }: Props) {
     getPromptCount(learnerId).then(data => {
       if (!data) return
       if (data.limit && typeof data.limit === 'number') setFreeLimit(data.limit)
-      if (data.used  && typeof data.used  === 'number') setPromptsUsed(data.used)
       // If user is already at limit on load, show the gate immediately
       if (data.is_limited && data.used >= data.limit) setLimitReached(true)
     }).catch(() => { /* non-fatal — keep defaults */ })
@@ -109,7 +107,6 @@ export default function ChatPanel({ onAuthClick }: Props) {
       const updated = [...newMsgs, reply]
       setMessages(updated); saveHistory(updated)
       window.dispatchEvent(new Event('prompt-used'))
-      setPromptsUsed(p => p + 1)
       // force=true so XP bar and tier badge update immediately after each message
       if (user) refresh(user.learner_id, true)
     } catch (err: unknown) {
@@ -166,7 +163,8 @@ export default function ChatPanel({ onAuthClick }: Props) {
         {/* Welcome */}
         {messages.length === 0 && (
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}
-            className="flex flex-col items-center text-center py-10 px-4 gap-5">
+            className="flex flex-col items-center text-center px-4 gap-4"
+            style={{ paddingTop: 'max(24px, env(safe-area-inset-top, 16px))', paddingBottom: 16 }}>
 
             {/* Sir. Tega avatar */}
             <div className="relative">

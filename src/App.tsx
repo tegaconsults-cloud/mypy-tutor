@@ -29,6 +29,24 @@ import CertificationPage from './pages/PythonCertification'
 import InterviewPage from './pages/PythonInterviewQuestions'
 import QuizzesPage from './pages/PythonQuizzes'
 
+// Individual course landing pages
+import PythonFundamentalsPage     from './pages/courses/PythonFundamentals'
+import PythonStringsPage          from './pages/courses/PythonStrings'
+import PythonCollectionsPage      from './pages/courses/PythonCollections'
+import PythonControlFlowPage      from './pages/courses/PythonControlFlow'
+import PythonFunctionsAdvancedPage from './pages/courses/PythonFunctionsAdvanced'
+import PythonOOPPage              from './pages/courses/PythonOOP'
+import PythonModulesStdlibPage    from './pages/courses/PythonModulesStdlib'
+import PythonDSAPage              from './pages/courses/PythonDSA'
+import DataSciencePythonPage      from './pages/courses/DataSciencePython'
+import PythonDatabasesPage        from './pages/courses/PythonDatabases'
+import NumpyMasteryPage           from './pages/courses/NumpyMastery'
+import PandasMasteryPage          from './pages/courses/PandasMastery'
+import WebAPIsPage                from './pages/courses/WebAPIs'
+import PromptEngineeringPage      from './pages/courses/PromptEngineering'
+import AiPromptEngineeringPage    from './pages/courses/AiPromptEngineering'
+import MachineLearningPage        from './pages/courses/MachineLearning'
+
 type Panel = 'chat' | 'courses' | 'quiz' | 'progress' | 'certificates' | 'pricing' | 'profile'
 
 /** Panels that require the user to be signed in. */
@@ -156,6 +174,24 @@ export default function App() {
       <Route path="/python-interview-questions"element={<InterviewPage />} />
       <Route path="/python-quizzes"            element={<QuizzesPage />} />
 
+      {/* Individual course landing pages */}
+      <Route path="/courses/python-fundamentals"       element={<PythonFundamentalsPage />} />
+      <Route path="/courses/python-strings"            element={<PythonStringsPage />} />
+      <Route path="/courses/python-collections"        element={<PythonCollectionsPage />} />
+      <Route path="/courses/python-control-flow"       element={<PythonControlFlowPage />} />
+      <Route path="/courses/python-functions-advanced" element={<PythonFunctionsAdvancedPage />} />
+      <Route path="/courses/python-oop"                element={<PythonOOPPage />} />
+      <Route path="/courses/python-modules-stdlib"     element={<PythonModulesStdlibPage />} />
+      <Route path="/courses/python-dsa"                element={<PythonDSAPage />} />
+      <Route path="/courses/data-science-python"       element={<DataSciencePythonPage />} />
+      <Route path="/courses/python-databases"          element={<PythonDatabasesPage />} />
+      <Route path="/courses/numpy-mastery"             element={<NumpyMasteryPage />} />
+      <Route path="/courses/pandas-mastery"            element={<PandasMasteryPage />} />
+      <Route path="/courses/web-apis"                  element={<WebAPIsPage />} />
+      <Route path="/courses/prompt-engineering"        element={<PromptEngineeringPage />} />
+      <Route path="/courses/ai-prompt-engineering"     element={<AiPromptEngineeringPage />} />
+      <Route path="/courses/machine-learning"          element={<MachineLearningPage />} />
+
       <Route path="*" element={
         <div className="flex flex-col h-full overflow-hidden" style={{ background: '#060d1c' }}>
           <Header panel={panel} onPanelChange={gotoPanel} onMenuClick={() => setSidebarOpen(true)}
@@ -197,8 +233,8 @@ export default function App() {
             {nudgeVisible && !user && (
               <motion.div key="nudge"
                 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 20 }}
-                className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 max-w-sm w-[calc(100%-32px)]"
-                style={{ filter: 'drop-shadow(0 8px 32px rgba(0,0,0,.7))' }}>
+                className="fixed z-50 max-w-sm w-[calc(100%-32px)]"
+                style={{ bottom: 'calc(5rem + env(safe-area-inset-bottom, 0px))', left: '50%', transform: 'translateX(-50%)', filter: 'drop-shadow(0 8px 32px rgba(0,0,0,.7))' }}>
                 <div className="rounded-2xl p-4 border"
                   style={{ background: '#0f1a2e', border: '1px solid rgba(13,71,161,0.4)', boxShadow: '0 8px 40px rgba(0,0,0,.6)' }}>
                   <div className="flex items-start justify-between gap-3 mb-3">

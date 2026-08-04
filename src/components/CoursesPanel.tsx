@@ -12,24 +12,24 @@ const CAT_ICONS: Record<string, string> = {
   'Machine Learning':   '🤖', 'AI & Prompting':       '✨',
 }
 
-// Map course names to their dedicated landing page routes (already defined in App.tsx routes)
+// Map course names to their dedicated landing page routes
 const COURSE_LANDING_PAGE: Record<string, string> = {
-  'python-fundamentals':        '/python-for-beginners',
-  'python-strings':             '/python-for-beginners',
-  'python-collections':         '/python-for-beginners',
-  'python-control-flow':        '/python-for-beginners',
-  'python-functions-advanced':  '/python-course',
-  'python-oop':                 '/python-course',
-  'python-modules-stdlib':      '/python-course',
-  'python-dsa':                 '/python-course',
-  'data-science-python':        '/python-course',
-  'python-databases':           '/python-course',
-  'numpy-mastery':              '/python-course',
-  'pandas-mastery':             '/python-course',
-  'web-apis':                   '/python-course',
-  'prompt-engineering':         '/ai-python-tutor',
-  'ai-prompt-engineering':      '/ai-python-tutor',
-  'machine-learning':           '/ai-python-tutor',
+  'python-fundamentals':        '/courses/python-fundamentals',
+  'python-strings':             '/courses/python-strings',
+  'python-collections':         '/courses/python-collections',
+  'python-control-flow':        '/courses/python-control-flow',
+  'python-functions-advanced':  '/courses/python-functions-advanced',
+  'python-oop':                 '/courses/python-oop',
+  'python-modules-stdlib':      '/courses/python-modules-stdlib',
+  'python-dsa':                 '/courses/python-dsa',
+  'data-science-python':        '/courses/data-science-python',
+  'python-databases':           '/courses/python-databases',
+  'numpy-mastery':              '/courses/numpy-mastery',
+  'pandas-mastery':             '/courses/pandas-mastery',
+  'web-apis':                   '/courses/web-apis',
+  'prompt-engineering':         '/courses/prompt-engineering',
+  'ai-prompt-engineering':      '/courses/ai-prompt-engineering',
+  'machine-learning':           '/courses/machine-learning',
 }
 
 interface Course {
