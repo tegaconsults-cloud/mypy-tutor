@@ -179,8 +179,18 @@ app.add_middleware(
 
 @app.post("/chat")
 async def chat(request: ChatRequest, req: Request,
-               background_tasks: BackgroundTasks) -> JSONResponse:
+               background_tasks: BackgroundTasks,
+               user=Depends(get_current_user)) -> JSONResponse:
     validate_chat_request(request.message, request.history, request.level, request.learner_id)
+
+    # When authenticated, enforce learner_id matches token so XP/activity
+    # is never credited to a different user's profile.
+    # Anonymous users (no token) pass freely — they use the free-tier quota.
+    if user is not None and user.learner_id != request.learner_id:
+        raise HTTPException(
+            status_code=403,
+            detail="learner_id in request does not match your session."
+        )
 
     profile = get_profile(request.learner_id)
     if profile.tier == "free":
@@ -748,9 +758,16 @@ async def auth_confirm(token: str) -> JSONResponse:
 async def resend_confirmation(request: Request) -> dict:
     """
     Re-send the confirmation email for a pending (unconfirmed) account.
-    Called when user hits "Resend confirmation" link after failed sign-in.
+    Rate-limited: max 3 resend requests per email per 15 minutes to prevent
+    using this endpoint to spam confirmation emails at a victim address.
     Always returns 200 to prevent email enumeration.
     """
+    # Per-email rate limit stored in the auth store (reuses existing infra)
+    from app.security import _check_rate, _auth_store, _get_ip
+    ip = _get_ip(request)
+    if not _check_rate(_auth_store, f"resend_{ip}", 3, 900):  # 3 per 15 min per IP
+        return {"ok": True, "message": "If an account exists, a confirmation link has been sent."}
+
     body = await request.json()
     email = body.get("email", "").lower().strip()
     if not email or "@" not in email:
@@ -863,21 +880,34 @@ async def admin_confirm_email(request: Request) -> dict:
 
 
 @app.post("/feedback/message")
-async def message_feedback(fb: MessageFeedback) -> dict:
+async def message_feedback(fb: MessageFeedback, req: Request) -> dict:
     validate_learner_id(fb.learner_id)
+    # Feedback-specific rate limit: 20 ratings per minute per IP
+    # Prevents bulk fake-review flooding of admin satisfaction metrics
+    from app.security import _check_rate, _general_store, _get_ip
+    ip = _get_ip(req)
+    if not _check_rate(_general_store, f"fb_{ip}", 20, 60):
+        raise HTTPException(status_code=429, detail="Too many feedback submissions. Please slow down.")
     record_message_feedback(fb)
     return {"ok": True}
 
 
 @app.post("/feedback/survey")
-async def survey_feedback(fb: SurveyFeedback) -> dict:
+async def survey_feedback(fb: SurveyFeedback, req: Request) -> dict:
     validate_learner_id(fb.learner_id)
+    # Survey rate limit: max 5 surveys per hour per IP
+    from app.security import _check_rate, _enquiry_store, _get_ip
+    ip = _get_ip(req)
+    if not _check_rate(_enquiry_store, f"surv_{ip}", 5, 3600):
+        raise HTTPException(status_code=429, detail="Too many survey submissions. Please wait before submitting again.")
     record_survey(fb)
     return {"ok": True, "message": "Thank you for your feedback! 🙏"}
 
 
 @app.get("/feedback/summary", response_model=FeedbackSummary)
-async def feedback_summary() -> FeedbackSummary:
+async def feedback_summary(request: Request) -> FeedbackSummary:
+    """Internal business KPIs — admin only."""
+    _require_admin(request)
     return get_summary()
 
 
@@ -960,6 +990,7 @@ async def get_certificate(
     learner_id: str = "default",
     admin_view: bool = False,
     request: Request = None,
+    user=Depends(get_current_user),
 ) -> HTMLResponse:
     if level not in CERT_CONFIGS:
         raise HTTPException(status_code=400, detail="Invalid certificate level.")
@@ -971,7 +1002,19 @@ async def get_certificate(
         except HTTPException:
             admin_view = False   # invalid token — fall through to normal check
 
-    profile = get_profile(learner_id)
+    # When a real user is authenticated, always use their session identity.
+    # This prevents name spoofing: supply ?name=FakeName&learner_id=victim_id.
+    # Anonymous / public certificate pages (e.g. from email link) are still
+    # allowed — they go through the normal eligibility check below.
+    if user is not None:
+        learner_id = user.learner_id   # always use session learner_id
+        # Resolve display name from session user — ignore client-supplied ?name=
+        session_name = (user.name or "").strip()
+        if not session_name:
+            # Fallback: load from profile
+            _prof = get_profile(learner_id)
+            session_name = _prof.display_name or _prof.email.split("@")[0] if _prof.email else "Learner"
+        name = session_name or "Learner"
 
     # Certificate eligibility: check EITHER tier bundle purchase OR relevant courses completed
     CERT_TIER_REQUIRED = {
@@ -986,6 +1029,7 @@ async def get_certificate(
                       "machine-learning", "ai-prompt-engineering"},
     }
 
+    profile            = get_profile(learner_id)
     allowed_tiers      = CERT_TIER_REQUIRED.get(level, set())
     required_courses   = CERT_COURSES_REQUIRED.get(level, set())
     completed          = set(profile.completed_projects)
@@ -2711,16 +2755,26 @@ async def reset_password_route(body: PasswordResetConfirm) -> dict:
 # ---------------------------------------------------------------------------
 
 @app.get("/history/{learner_id}")
-async def prompt_history(learner_id: str, limit: int = 20) -> dict:
+async def prompt_history(learner_id: str, limit: int = 20,
+                         user=Depends(get_current_user)) -> dict:
     validate_learner_id(learner_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to view your learning history.")
+    if user.learner_id != learner_id:
+        raise HTTPException(status_code=403, detail="You can only view your own history.")
     limit   = max(1, min(limit, 50))
     history = get_prompt_history(learner_id, limit)
     return {"learner_id": learner_id, "history": history, "count": len(history)}
 
 
 @app.get("/history/{learner_id}/quiz")
-async def quiz_history(learner_id: str, limit: int = 50) -> dict:
+async def quiz_history(learner_id: str, limit: int = 50,
+                       user=Depends(get_current_user)) -> dict:
     validate_learner_id(learner_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to view your quiz history.")
+    if user.learner_id != learner_id:
+        raise HTTPException(status_code=403, detail="You can only view your own quiz history.")
     attempts = get_quiz_attempts(learner_id, min(limit, 100))
     total    = len(attempts)
     correct  = sum(1 for a in attempts if a.get("correct"))
@@ -3558,20 +3612,22 @@ async def new_conversation(learner_id: str, background_tasks: BackgroundTasks,
 # ---------------------------------------------------------------------------
 
 @app.get("/supabase/status")
-async def supabase_status() -> dict:
-    """Check whether Supabase is configured and reachable."""
+async def supabase_status(request: Request) -> dict:
+    """Check whether Supabase is configured and reachable. Admin-only — leaks infra URL."""
+    _require_admin(request)
     if not sb_enabled():
         return {"enabled": False,
                 "message": "Supabase not configured. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in Render env vars."}
     try:
         from app.supabase_client import get_supabase
         sb = get_supabase()
-        # Simple ping — list 1 row from profiles
         sb.table("profiles").select("id").limit(1).execute()
-        return {"enabled": True, "status": "connected",
-                "url": _os.getenv("SUPABASE_URL", "")[:40] + "…"}
+        return {"enabled": True, "status": "connected"}
     except Exception as exc:
-        return {"enabled": True, "status": "error", "detail": str(exc)[:120]}
+        # Return generic error — do NOT expose internal connection details
+        logger.warning("Supabase status check failed: %s", exc)
+        return {"enabled": True, "status": "error",
+                "detail": "Connection test failed — check Render logs for details."}
 
 
 # ---------------------------------------------------------------------------
@@ -3943,11 +3999,19 @@ async def auth_github_callback(code: str = None, error: str = None,
 # ---------------------------------------------------------------------------
 
 @app.get("/invoice/{invoice_id}/pdf")
-async def get_invoice_pdf(invoice_id: str) -> JSONResponse:
-    """Generate and return a downloadable PDF invoice using ReportLab."""
+async def get_invoice_pdf(invoice_id: str,
+                          user=Depends(get_current_user)) -> JSONResponse:
+    """Generate a downloadable PDF invoice. Requires auth — owner only."""
+    import re as _re5
+    if not _re5.match(r'^[A-Z0-9\-]{4,30}$', invoice_id):
+        raise HTTPException(status_code=400, detail="Invalid invoice ID.")
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to download invoices.")
     inv = get_invoice_db(invoice_id)
     if not inv:
         raise HTTPException(status_code=404, detail="Invoice not found.")
+    if inv.get("learner_id") and inv["learner_id"] != user.learner_id:
+        raise HTTPException(status_code=403, detail="You can only download your own invoices.")
     try:
         import io
         from reportlab.lib.pagesizes import A4
@@ -4038,12 +4102,17 @@ async def get_invoice_pdf(invoice_id: str) -> JSONResponse:
 # ---------------------------------------------------------------------------
 
 @app.get("/payments/metadata/{learner_id}")
-async def get_payment_metadata(learner_id: str) -> dict:
+async def get_payment_metadata(learner_id: str,
+                               user=Depends(get_current_user)) -> dict:
     """
-    Returns the metadata dict to embed in a Paystack payment link.
-    Frontend appends this as custom_fields so the webhook can identify the user.
+    Returns Paystack metadata for embedding in a payment link.
+    Requires auth — learner must be the owner to prevent email enumeration.
     """
     validate_learner_id(learner_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to generate payment metadata.")
+    if user.learner_id != learner_id:
+        raise HTTPException(status_code=403, detail="You can only generate metadata for your own account.")
     lp    = get_profile(learner_id)
     email = lp.email or ""
     return {

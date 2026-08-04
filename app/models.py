@@ -294,7 +294,9 @@ class UserProfileUpdate(BaseModel):
     bio:          str = Field(default="", max_length=500)
     location:     str = Field(default="", max_length=100)
     website:      str = Field(default="", max_length=200)
-    photo_url:    str = Field(default="", max_length=4_000_000)  # base64 data URL, up to ~3MB image
+    # Max 2.8MB base64 string (~2MB decoded image) — matches route handler validation.
+    # Route handler additionally enforces content-type (https:// or data:image/).
+    photo_url:    str = Field(default="", max_length=2_800_000)
 
 
 # ---------------------------------------------------------------------------
