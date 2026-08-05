@@ -2,13 +2,13 @@ import React, { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   X, MessageSquare, BookOpen, Trophy, BarChart2, Award,
-  CreditCard, User, Zap, Code, Layers, Shield, Database, Brain, MessageCircle, HelpCircle,
+  CreditCard, User, Zap, Code, Layers, Shield, Database, Brain, MessageCircle, HelpCircle, ClipboardList,
 } from 'lucide-react'
 import { useProgress } from '../context/ProgressContext'
 import { getTopics } from '../api'
 import Logo from './Logo'
 
-type Panel = 'chat' | 'courses' | 'quiz' | 'progress' | 'certificates' | 'pricing' | 'profile'
+type Panel = 'chat' | 'courses' | 'quiz' | 'progress' | 'certificates' | 'pricing' | 'profile' | 'assignments'
 
 interface Props {
   open: boolean
@@ -21,6 +21,7 @@ const NAV_ITEMS: { id: Panel; icon: React.ReactNode; label: string }[] = [
   { id: 'chat',         icon: <MessageSquare size={16} />, label: 'AI Tutor' },
   { id: 'courses',      icon: <BookOpen size={16} />,      label: 'Courses' },
   { id: 'quiz',         icon: <Trophy size={16} />,        label: 'Quiz' },
+  { id: 'assignments',  icon: <ClipboardList size={16} />, label: 'Assignments' },
   { id: 'progress',     icon: <BarChart2 size={16} />,     label: 'Progress' },
   { id: 'certificates', icon: <Award size={16} />,         label: 'Certificates' },
   { id: 'pricing',      icon: <CreditCard size={16} />,    label: 'Plans' },

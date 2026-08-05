@@ -3,14 +3,14 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   Menu, MessageSquare, BookOpen, Trophy, BarChart2, Award,
   CreditCard, User, LogOut, Copy, Link2, Lock, TrendingUp,
-  ChevronDown, X, Zap,
+  ChevronDown, X, Zap, ClipboardList,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useProgress } from '../context/ProgressContext'
 import { getProfile } from '../api'
 import Logo from './Logo'
 
-type Panel = 'chat' | 'courses' | 'quiz' | 'progress' | 'certificates' | 'pricing' | 'profile'
+type Panel = 'chat' | 'courses' | 'quiz' | 'progress' | 'certificates' | 'pricing' | 'profile' | 'assignments'
 
 interface Props {
   panel: Panel
@@ -24,6 +24,7 @@ const TABS: { id: Panel; icon: React.ReactNode; label: string }[] = [
   { id: 'chat',         icon: <MessageSquare size={13} />, label: 'AI Tutor' },
   { id: 'courses',      icon: <BookOpen size={13} />,      label: 'Courses' },
   { id: 'quiz',         icon: <Trophy size={13} />,        label: 'Quiz' },
+  { id: 'assignments',  icon: <ClipboardList size={13} />, label: 'Tasks' },
   { id: 'progress',     icon: <BarChart2 size={13} />,     label: 'Progress' },
   { id: 'certificates', icon: <Award size={13} />,         label: 'Certs' },
   { id: 'pricing',      icon: <CreditCard size={13} />,    label: 'Plans' },

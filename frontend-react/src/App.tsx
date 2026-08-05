@@ -18,6 +18,7 @@ import FeedbackModal from './components/FeedbackModal'
 import ReferralModal from './components/ReferralModal'
 import OnboardingModal from './components/OnboardingModal'
 import EnquiryModal from './components/EnquiryModal'
+import AssignmentsPanel from './components/AssignmentsPanel'
 import Logo from './components/Logo'
 import { useAuth } from './context/AuthContext'
 import { useProgress } from './context/ProgressContext'
@@ -49,10 +50,10 @@ import PromptEngineeringPage      from './pages/courses/PromptEngineering'
 import AiPromptEngineeringPage    from './pages/courses/AiPromptEngineering'
 import MachineLearningPage        from './pages/courses/MachineLearning'
 
-type Panel = 'chat' | 'courses' | 'quiz' | 'progress' | 'certificates' | 'pricing' | 'profile'
+type Panel = 'chat' | 'courses' | 'quiz' | 'progress' | 'certificates' | 'pricing' | 'profile' | 'assignments'
 
 /** Panels that require the user to be signed in. */
-const PROTECTED_PANELS: Panel[] = ['courses', 'quiz', 'progress', 'certificates', 'profile']
+const PROTECTED_PANELS: Panel[] = ['courses', 'quiz', 'progress', 'certificates', 'profile', 'assignments']
 
 export default function App() {
   const { user, loading, pendingAuthAction } = useAuth()
@@ -218,6 +219,7 @@ export default function App() {
                 {panel === 'certificates' && <CertificatesPanel />}
                 {panel === 'pricing'      && <PricingPanel />}
                 {panel === 'profile'      && <ProfilePanel />}
+                {panel === 'assignments'  && <AssignmentsPanel />}
               </motion.div>
             </AnimatePresence>
           </div>
