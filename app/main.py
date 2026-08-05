@@ -267,7 +267,13 @@ async def chat(request: ChatRequest, req: Request,
     history_messages = [{"role": m.role, "content": m.content} for m in request.history]
     if not history_messages and sb_enabled() and request.conversation_id and not request.conversation_id.startswith("local_"):
         try:
-            sb_history = sb_load_messages(request.conversation_id, limit=6)
+            # Run in thread executor — sb_load_messages is synchronous (httpx/supabase-py)
+            # Running it directly would block the uvicorn event loop.
+            import asyncio as _asyncio
+            loop = _asyncio.get_running_loop()
+            sb_history = await loop.run_in_executor(
+                None, lambda: sb_load_messages(request.conversation_id, limit=6)
+            )
             history_messages = [{"role": m["role"], "content": m["content"]} for m in sb_history]
         except Exception:
             pass  # non-fatal — continue without history
@@ -1520,10 +1526,10 @@ async def start_course(learner_id: str, course_name: str,
             last_exc = exc
             exc_type = type(exc).__name__.lower()
             if any(k in exc_type for k in ("ratelimit", "timeout", "serviceunavailable")):
-                import asyncio as _aio
-                await _aio.sleep(1)   # brief pause before retry
+                import asyncio as _asyncio_retry
+                await _asyncio_retry.sleep(1)
                 continue
-            break   # non-transient — don't retry
+            break
 
     if content is None:
         logger.error("Course start LLM error after retries: %s", last_exc)
@@ -1589,8 +1595,8 @@ async def next_course_step(learner_id: str,
             last_exc2 = exc2
             exc_type2 = type(exc2).__name__.lower()
             if any(k in exc_type2 for k in ("ratelimit", "timeout", "serviceunavailable")):
-                import asyncio as _aio2
-                await _aio2.sleep(1)
+                import asyncio as _asyncio_retry2
+                await _asyncio_retry2.sleep(1)
                 continue
             break
 
@@ -3661,8 +3667,17 @@ async def admin_learner_history(learner_id: str, request: Request) -> dict:
     validate_learner_id(learner_id)
     history  = get_prompt_history(learner_id, 50)
     attempts = get_quiz_attempts(learner_id, 50)
-    # Also pull from Supabase if available
-    sb_msgs = sb_load_messages(f"local_{learner_id}", limit=50) if sb_enabled() else []
+    # Pull from Supabase non-blocking via thread executor
+    sb_msgs: list = []
+    if sb_enabled():
+        try:
+            import asyncio as _aio_adm
+            loop = _aio_adm.get_running_loop()
+            sb_msgs = await loop.run_in_executor(
+                None, lambda: sb_load_messages(f"local_{learner_id}", limit=50)
+            )
+        except Exception:
+            pass
     return {"learner_id": learner_id,
             "prompt_history": history,
             "supabase_messages": sb_msgs,
@@ -3686,7 +3701,11 @@ async def list_conversations(learner_id: str,
     if user.learner_id != learner_id:
         raise HTTPException(status_code=403, detail="You can only view your own conversations.")
     if sb_enabled():
-        convs = sb_load_all_conversations(learner_id)
+        import asyncio as _aio_conv
+        loop = _aio_conv.get_running_loop()
+        convs = await loop.run_in_executor(
+            None, lambda: sb_load_all_conversations(learner_id)
+        )
         return {"learner_id": learner_id, "conversations": convs,
                 "source": "supabase", "total": len(convs)}
     # Fallback: group SQLite history by day
@@ -3709,7 +3728,11 @@ async def get_conversation(learner_id: str, conversation_id: str,
     if user.learner_id != learner_id:
         raise HTTPException(status_code=403, detail="You can only view your own conversations.")
     if sb_enabled():
-        messages = sb_load_messages(conversation_id, limit=min(limit, 100))
+        import asyncio as _aio_msg
+        loop = _aio_msg.get_running_loop()
+        messages = await loop.run_in_executor(
+            None, lambda: sb_load_messages(conversation_id, limit=min(limit, 100))
+        )
         return {"conversation_id": conversation_id,
                 "learner_id": learner_id,
                 "messages": messages,
