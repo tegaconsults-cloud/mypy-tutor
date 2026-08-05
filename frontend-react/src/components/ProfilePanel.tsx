@@ -3,10 +3,20 @@ import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
 import { User, MapPin, Globe, Lock, Camera, LogOut, ExternalLink, Mail, Trash2, AlertTriangle } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { getProfile, saveProfile, forgotPassword, deleteAccount, API_BASE } from '../api'
+import { useProgress } from '../context/ProgressContext'
+import { getProfile, saveProfile, forgotPassword, deleteAccount, getInvoices, API_BASE } from '../api'
+
+const TIER_LABELS: Record<string, { label: string; color: string }> = {
+  free:  { label: 'Free Plan',            color: '#E0A300'  },
+  tier1: { label: 'Beginner Bundle',       color: '#60a5fa'  },
+  tier2: { label: 'Intermediate Bundle',   color: '#c4b5fd'  },
+  tier3: { label: 'Advanced Bundle',       color: '#34d399'  },
+  tier4: { label: 'Premium Bundle',        color: '#f9a8d4'  },
+}
 
 export default function ProfilePanel() {
   const { user, signOut } = useAuth()
+  const { progress }      = useProgress()
   const [name,     setName]     = useState('')
   const [bio,      setBio]      = useState('')
   const [location, setLocation] = useState('')
@@ -23,6 +33,10 @@ export default function ProfilePanel() {
   const lid      = user?.learner_id || 'default'
   const isGoogle = localStorage.getItem('mpt_auth_type') === 'google'
 
+  // Resolve current tier from live progress context
+  const currentTier = progress?.tier ?? 'free'
+  const tierInfo = TIER_LABELS[currentTier] ?? TIER_LABELS.free
+
   useEffect(() => {
     if (!user) return
     setName(user.name || ''); setPhotoUrl(user.picture || '')
@@ -33,7 +47,8 @@ export default function ProfilePanel() {
       setWebsite(d.website || '')
       setPhotoUrl(d.photo_url || user.picture || '')
     })
-    fetch(`${API_BASE}/invoices/${lid}`).then(r => r.ok ? r.json() : null).then(d => {
+    // Fetch invoices with auth token (getInvoices sends bearer header)
+    getInvoices(lid).then(d => {
       if (d?.invoices) setInvoices(d.invoices)
     }).catch(() => {})
   }, [user])
@@ -108,7 +123,10 @@ export default function ProfilePanel() {
           <div className="flex-1 min-w-0">
             <div className="font-bold text-base text-white truncate">{name || user.email.split('@')[0]}</div>
             <div className="text-xs truncate" style={{ color: '#4d6080' }}>{user.email}</div>
-            <span className="badge badge-navy text-[10px] mt-1.5">Free Plan</span>
+            <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold mt-1.5"
+              style={{ background: `${tierInfo.color}18`, color: tierInfo.color, border: `1px solid ${tierInfo.color}44` }}>
+              {tierInfo.label}
+            </span>
           </div>
           <button onClick={signOut} className="btn btn-danger btn-sm shrink-0">
             <LogOut size={13} /> Sign Out
@@ -197,10 +215,26 @@ export default function ProfilePanel() {
                 style={{ borderColor: 'rgba(13,71,161,0.15)' }}>
                 <span style={{ color: '#94a3b8' }}>{inv.plan}</span>
                 <span className="font-semibold text-white">₦{Number(inv.amount).toLocaleString()}</span>
-                <a href={`${API_BASE}/invoice/${inv.id}`} target="_blank" rel="noopener"
-                  className="flex items-center gap-1 text-xs transition-colors" style={{ color: '#E0A300' }}>
+                <button
+                  onClick={async () => {
+                    // Fetch invoice HTML with auth header (can't use <a> for auth-protected routes)
+                    try {
+                      const token = localStorage.getItem('mypy_tutor_session') || ''
+                      const r = await fetch(`${API_BASE}/invoice/${inv.id}`, {
+                        headers: token ? { Authorization: `Bearer ${token}` } : {},
+                      })
+                      if (!r.ok) { alert('Could not load invoice.'); return }
+                      const html = await r.text()
+                      const blob = new Blob([html], { type: 'text/html' })
+                      const url  = URL.createObjectURL(blob)
+                      window.open(url, '_blank', 'noopener,noreferrer')
+                      setTimeout(() => URL.revokeObjectURL(url), 30000)
+                    } catch { /* ignore */ }
+                  }}
+                  className="flex items-center gap-1 text-xs transition-colors cursor-pointer"
+                  style={{ color: '#E0A300', background: 'none', border: 'none', padding: 0 }}>
                   View <ExternalLink size={10} />
-                </a>
+                </button>
               </div>
             ))}
           </div>

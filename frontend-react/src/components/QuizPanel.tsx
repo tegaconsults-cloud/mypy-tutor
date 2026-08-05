@@ -6,10 +6,25 @@ import { generateQuiz, submitQuizAnswer, getTopics } from '../api'
 import { useAuth } from '../context/AuthContext'
 import { useProgress } from '../context/ProgressContext'
 
+// Group topics by category for a cleaner dropdown
+const TOPIC_GROUPS: Record<string, string[]> = {
+  'Python Basics':        ['Python Intro','Python Syntax','Python Variables','Python Data Types','Python Numbers','Python Strings','Python Booleans','Python Operators','String Methods','String Formatting','String Slicing'],
+  'Collections':          ['Python Lists','List Methods','List Comprehension','Python Tuples','Python Sets','Python Dictionaries','Dictionary Methods'],
+  'Control Flow':         ['If Else','While Loops','For Loops','Python Range','Break and Continue','Python Functions','Lambda Functions','Python Recursion','Python Decorators','Python Closures'],
+  'OOP':                  ['Python OOP','Classes and Objects','Python Inheritance','Python Polymorphism','Python Encapsulation'],
+  'Modules & Libraries':  ['Python Modules','Python JSON','Python RegEx','Python Math','File Handling','Try Except','Custom Exceptions','Async Await','Threading'],
+  'NumPy':                ['NumPy Intro','NumPy Creating Arrays','NumPy Array Indexing','NumPy Array Slicing','NumPy Array Shape','NumPy Normal Distribution','NumPy ufunc Intro'],
+  'Pandas':               ['Pandas Intro','Pandas DataFrames','Pandas Read CSV','Pandas Cleaning Data','Pandas Correlations','Pandas Plotting'],
+  'DSA':                  ['DSA Intro','Stacks','Queues','Linked Lists','Hash Tables','Binary Trees','Graphs','Bubble Sort','Quick Sort','Merge Sort'],
+  'Machine Learning':     ['Machine Learning Intro','Supervised Learning','Linear Regression','Logistic Regression','Decision Trees','Random Forest','K-Nearest Neighbours','Neural Networks','Deep Learning','Model Evaluation','scikit-learn','Natural Language Processing','Transfer Learning','Gradient Boosting'],
+  'AI & Prompting':       ['Prompt Engineering','Zero-shot Prompting','Few-shot Prompting','Chain-of-thought Prompting','AI Integration','LangChain','Embeddings','AI Agents','RAG'],
+  'Databases & APIs':     ['MySQL','MongoDB','Flask','FastAPI','REST APIs'],
+}
+
 export default function QuizPanel() {
   const { user }    = useAuth()
   const { refresh } = useProgress()
-  const [topics, setTopics]     = useState<string[]>([])
+  const [serverTopics, setServerTopics] = useState<string[]>([])
   const [topic, setTopic]       = useState('')
   const [question, setQuestion] = useState('')
   const [options, setOptions]   = useState<string[]>([])
@@ -17,30 +32,48 @@ export default function QuizPanel() {
   const [selected, setSelected] = useState<string | null>(null)
   const [loading, setLoading]   = useState(false)
   const [streak, setStreak]     = useState(0)
+  const [quizError, setQuizError] = useState('')
 
   const level     = localStorage.getItem('mypy_tutor_level') || 'beginner'
   const learnerId = user?.learner_id || 'default'
 
-  useEffect(() => { getTopics().then(d => setTopics(d.topics || [])) }, [])
+  useEffect(() => {
+    getTopics().then(d => setServerTopics(d.topics || [])).catch(() => {})
+  }, [])
+
+  // Build merged topic groups: start with static groups, add any server topics not already grouped
+  const groupedTopics = { ...TOPIC_GROUPS }
+  const allGrouped = new Set(Object.values(TOPIC_GROUPS).flat())
+  const ungrouped = serverTopics.filter(t => !allGrouped.has(t))
+  if (ungrouped.length > 0) groupedTopics['Other Topics'] = ungrouped
 
   const generate = async () => {
     if (!topic) return
-    setLoading(true); setResult(null); setSelected(null); setQuestion(''); setOptions([])
+    setLoading(true); setResult(null); setSelected(null)
+    setQuestion(''); setOptions([]); setQuizError('')
     try {
       const data = await generateQuiz(learnerId, topic, level)
       setQuestion(data.question); setOptions(data.options)
-    } catch { alert('Could not load quiz. Try again.') }
-    finally { setLoading(false) }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Could not load quiz'
+      setQuizError(msg.toLowerCase().includes('503') || msg.toLowerCase().includes('warming')
+        ? 'Sir. Tega is warming up — please try again in a moment.'
+        : 'Could not generate quiz. Try again.')
+    } finally { setLoading(false) }
   }
 
   const submit = async (answer: string) => {
     if (selected) return
     setSelected(answer)
-    const data = await submitQuizAnswer(learnerId, topic, level, question, answer)
-    setResult(data)
-    if (data.correct) setStreak(s => s + 1)
-    else setStreak(0)
-    if (user) refresh(user.learner_id)
+    try {
+      const data = await submitQuizAnswer(learnerId, topic, level, question, answer)
+      setResult(data)
+      if (data.correct) setStreak(s => s + 1)
+      else setStreak(0)
+      if (user) refresh(user.learner_id)
+    } catch (_) {
+      // Non-fatal — show optimistic result
+    }
   }
 
   return (
@@ -75,7 +108,11 @@ export default function QuizPanel() {
       <div className="flex gap-2">
         <select value={topic} onChange={e => setTopic(e.target.value)} className="flex-1 h-11">
           <option value="">— Pick a topic —</option>
-          {topics.map(t => <option key={t} value={t}>{t}</option>)}
+          {Object.entries(groupedTopics).map(([group, topicList]) => (
+            <optgroup key={group} label={group}>
+              {topicList.map(t => <option key={t} value={t}>{t}</option>)}
+            </optgroup>
+          ))}
         </select>
         <button onClick={generate} disabled={loading || !topic} className="btn btn-primary px-5 h-11">
           {loading
@@ -83,6 +120,15 @@ export default function QuizPanel() {
             : <><Brain size={15} /> Generate</>}
         </button>
       </div>
+
+      {/* Inline error (replaces alert()) */}
+      {quizError && (
+        <div className="rounded-xl px-4 py-3 flex items-center gap-3"
+          style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)' }}>
+          <span className="text-sm flex-1" style={{ color: '#fca5a5' }}>⚠️ {quizError}</span>
+          <button onClick={() => setQuizError('')} className="text-xs" style={{ color: '#4d6080' }}>✕</button>
+        </div>
+      )}
 
       {/* Question */}
       <AnimatePresence mode="wait">

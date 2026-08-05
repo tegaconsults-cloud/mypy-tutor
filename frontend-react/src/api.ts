@@ -359,3 +359,62 @@ export async function deleteAccount(password: string) {
   if (!r.ok) throw new Error(data.detail || data.error || 'Account deletion failed')
   return data
 }
+
+// ── Assignments ───────────────────────────────────────────────────────────
+
+export async function generateAssignment(learnerId: string, topic: string) {
+  const r = await fetch(url(`/assignments/generate?learner_id=${learnerId}&topic=${encodeURIComponent(topic)}`), {
+    method: 'POST',
+    headers: bearerHeaders(),
+  })
+  const data = await r.json()
+  if (!r.ok) throw new Error(data.detail || data.error || 'Failed to generate assignment')
+  return data
+}
+
+export async function submitAssignment(assignmentId: string, learnerId: string, submission: string) {
+  const r = await fetch(url(`/assignments/${assignmentId}/submit`), {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ learner_id: learnerId, submission }),
+  })
+  const data = await r.json()
+  if (!r.ok) throw new Error(data.detail || data.error || 'Submission failed')
+  return data
+}
+
+export async function reviewAssignment(assignmentId: string, learnerId: string) {
+  const r = await fetch(url(`/assignments/${assignmentId}/review?learner_id=${learnerId}`), {
+    method: 'POST',
+    headers: bearerHeaders(),
+  })
+  const data = await r.json()
+  if (!r.ok) throw new Error(data.detail || data.error || 'Review failed')
+  return data
+}
+
+export async function getAssignments(learnerId: string) {
+  const r = await fetch(url(`/assignments/${learnerId}`), {
+    headers: bearerHeaders(),
+  })
+  if (!r.ok) return null
+  return r.json()
+}
+
+// ── Learning history ──────────────────────────────────────────────────────
+
+export async function getLearningHistory(learnerId: string, limit = 20) {
+  const r = await fetch(url(`/history/${learnerId}?limit=${limit}`), {
+    headers: bearerHeaders(),
+  })
+  if (!r.ok) return null
+  return r.json()
+}
+
+export async function getQuizHistory(learnerId: string, limit = 50) {
+  const r = await fetch(url(`/history/${learnerId}/quiz?limit=${limit}`), {
+    headers: bearerHeaders(),
+  })
+  if (!r.ok) return null
+  return r.json()
+}
