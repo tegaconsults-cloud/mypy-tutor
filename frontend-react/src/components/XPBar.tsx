@@ -1,11 +1,11 @@
-import React from 'react'
-import { motion } from 'framer-motion'
+import React, { memo } from 'react'
 import { Zap, Star } from 'lucide-react'
 import { useProgress } from '../context/ProgressContext'
 
 const THRESHOLDS: Record<string, number> = { beginner: 200, intermediate: 500, advanced: 9999 }
 
-export default function XPBar() {
+// Memoised — only re-renders when progress object reference changes
+const XPBar = memo(function XPBar() {
   const { progress } = useProgress()
 
   if (!progress) return (
@@ -22,7 +22,6 @@ export default function XPBar() {
     <div className="flex items-center gap-3 px-4 py-1.5 shrink-0"
       style={{ background: 'rgba(6,13,28,0.9)', borderBottom: '1px solid rgba(13,71,161,0.15)' }}>
 
-      {/* XP */}
       <div className="flex items-center gap-1.5 shrink-0">
         <Zap size={12} style={{ color: '#E0A300' }} />
         <span className="text-xs font-bold" style={{ color: '#E0A300' }}>
@@ -32,19 +31,18 @@ export default function XPBar() {
         <span className="badge badge-blue text-[10px]">{levelLabel}</span>
       </div>
 
-      {/* Progress bar */}
+      {/* CSS transition — no framer-motion overhead for a simple width change */}
       <div className="flex-1 h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(13,71,161,0.2)' }}>
-        <motion.div className="h-full rounded-full"
-          style={{ background: 'linear-gradient(90deg,#0D47A1,#E0A300)' }}
-          initial={{ width: 0 }}
-          animate={{ width: `${pct}%` }}
-          transition={{ duration: 0.8, ease: 'easeOut' }}
-        />
+        <div className="h-full rounded-full"
+          style={{
+            background: 'linear-gradient(90deg,#0D47A1,#E0A300)',
+            width: `${pct}%`,
+            transition: 'width 0.6s ease-out',
+          }} />
       </div>
 
       <span className="text-[10px] shrink-0" style={{ color: '#4d6080' }}>{Math.round(pct)}%</span>
 
-      {/* Badges */}
       {badges.length > 0 && (
         <div className="flex items-center gap-1 shrink-0">
           <Star size={11} style={{ color: '#E0A300' }} />
@@ -55,4 +53,6 @@ export default function XPBar() {
       )}
     </div>
   )
-}
+})
+
+export default XPBar

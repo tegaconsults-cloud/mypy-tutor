@@ -1,5 +1,4 @@
-import React from 'react'
-import { motion } from 'framer-motion'
+import React, { memo } from 'react'
 import { MessageSquare, BookOpen, Trophy, BarChart2, CreditCard } from 'lucide-react'
 
 type Panel = 'chat' | 'courses' | 'quiz' | 'progress' | 'certificates' | 'pricing'
@@ -14,7 +13,8 @@ const TABS: { id: Panel; icon: React.ReactNode; label: string }[] = [
 
 interface Props { panel: Panel; onPanelChange: (p: Panel) => void }
 
-export default function BottomNav({ panel, onPanelChange }: Props) {
+// Memoised — no framer-motion layout recalcs, pure CSS active state
+const BottomNav = memo(function BottomNav({ panel, onPanelChange }: Props) {
   return (
     <nav className="bottom-nav safe-bottom shrink-0 px-1"
       style={{
@@ -26,19 +26,22 @@ export default function BottomNav({ panel, onPanelChange }: Props) {
         const isActive = panel === t.id
         return (
           <button key={t.id} onClick={() => onPanelChange(t.id)}
-            className="flex flex-col items-center gap-0.5 flex-1 py-2 px-1 rounded-xl transition-all duration-150 relative"
+            className="flex flex-col items-center gap-0.5 flex-1 py-2 px-1 rounded-xl relative"
             style={{
               color: isActive ? '#E0A300' : '#4d6080',
               minHeight: 52,
+              transition: 'color 0.15s ease',
             }}>
-            {isActive && (
-              <motion.div layoutId="bottom-indicator"
-                className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full"
-                style={{ background: '#E0A300' }}
-                transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-              />
-            )}
-            <span className={`transition-transform duration-150 ${isActive ? 'scale-110' : ''}`}>
+            {/* Active indicator — CSS only, no layout recalculation */}
+            <span
+              style={{
+                position: 'absolute', top: 0, left: '50%',
+                transform: 'translateX(-50%)',
+                width: 32, height: 2, borderRadius: 99,
+                background: isActive ? '#E0A300' : 'transparent',
+                transition: 'background 0.15s ease',
+              }} />
+            <span style={{ transform: isActive ? 'scale(1.1)' : 'scale(1)', transition: 'transform 0.15s ease' }}>
               {t.icon}
             </span>
             <span className="text-[9px] font-semibold tracking-wide">{t.label}</span>
@@ -47,4 +50,6 @@ export default function BottomNav({ panel, onPanelChange }: Props) {
       })}
     </nav>
   )
-}
+})
+
+export default BottomNav

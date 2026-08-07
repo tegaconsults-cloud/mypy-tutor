@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { memo, useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Menu, MessageSquare, BookOpen, Trophy, BarChart2, Award,
@@ -44,26 +44,23 @@ const TIER_META: Record<string, { label: string; color: string; bg: string; bord
   tier3: { label: 'Elite',            color: '#34d399', bg: 'rgba(16,185,129,0.15)',   border: 'rgba(16,185,129,0.35)' },
 }
 
-export default function Header({ panel, onPanelChange, onMenuClick, onAuthClick, onReferralClick }: Props) {
+export default memo(function Header({ panel, onPanelChange, onMenuClick, onAuthClick, onReferralClick }: Props) {
   const { user, signOut } = useAuth()
-  const { progress, refresh } = useProgress()
+  const { progress } = useProgress()
   const [dropOpen, setDropOpen] = useState(false)
   const [level, setLevel] = useState(localStorage.getItem('mypy_tutor_level') || 'beginner')
   const [copyMsg, setCopyMsg] = useState('')
   const [profilePic, setProfilePic] = useState('')
   const dropRef = useRef<HTMLDivElement>(null)
+  const picFetchedFor = useRef<string>('')  // avoid duplicate profile fetches
 
-  // Fetch progress whenever the user is available so the tier badge is live
+  // Resolve profile picture once per user change
   useEffect(() => {
-    if (user) refresh(user.learner_id)
-  }, [user]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Resolve profile picture: auth context (Google/GitHub) → profile API (email users) → initials
-  useEffect(() => {
-    if (!user) { setProfilePic(''); return }
-    // 1. Use picture from auth context if present (Google/GitHub users)
+    if (!user) { setProfilePic(''); picFetchedFor.current = ''; return }
     if (user.picture) { setProfilePic(user.picture); return }
-    // 2. Fetch from profile API — email-auth users who uploaded a photo
+    // Only fetch from API if we haven't fetched for this learner yet
+    if (picFetchedFor.current === user.learner_id) return
+    picFetchedFor.current = user.learner_id
     getProfile(user.learner_id).then(d => {
       if (d?.photo_url) setProfilePic(d.photo_url)
     }).catch(() => {})
@@ -283,4 +280,4 @@ export default function Header({ panel, onPanelChange, onMenuClick, onAuthClick,
       </div>
     </header>
   )
-}
+})

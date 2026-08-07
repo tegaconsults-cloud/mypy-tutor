@@ -40,9 +40,13 @@ interface Props {
   onClose: () => void
 }
 
-// Voices preference (use Nigerian/African English if available)
+// Cache best voice — getVoices() is expensive, call once after voices load
+let _cachedVoice: SpeechSynthesisVoice | null | undefined = undefined
+
 function getBestVoice(): SpeechSynthesisVoice | null {
+  if (_cachedVoice !== undefined) return _cachedVoice
   const voices = speechSynthesis.getVoices()
+  if (!voices.length) { _cachedVoice = null; return null }
   const preferred = [
     voices.find(v => v.name.toLowerCase().includes('nigeria')),
     voices.find(v => v.lang === 'en-NG'),
@@ -51,7 +55,13 @@ function getBestVoice(): SpeechSynthesisVoice | null {
     voices.find(v => v.lang === 'en-US' && v.name.toLowerCase().includes('male')),
     voices.find(v => v.lang.startsWith('en')),
   ]
-  return preferred.find(Boolean) ?? null
+  _cachedVoice = preferred.find(Boolean) ?? null
+  return _cachedVoice
+}
+
+// Invalidate cache when voices list changes (async load in some browsers)
+if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+  speechSynthesis.onvoiceschanged = () => { _cachedVoice = undefined }
 }
 
 function speak(text: string, onEnd?: () => void) {

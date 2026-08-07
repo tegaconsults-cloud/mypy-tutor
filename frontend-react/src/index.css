@@ -167,6 +167,7 @@
   }
   .card-hover {
     transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    will-change: transform;
   }
   .card-hover:hover {
     transform: translateY(-3px);
@@ -317,9 +318,22 @@
   .scrollbar-thin::-webkit-scrollbar { width: 4px; }
   .scrollbar-none::-webkit-scrollbar { display: none; }
   .scrollbar-none { scrollbar-width: none; }
-  .touch-scroll { -webkit-overflow-scrolling: touch; }
+
+  /* Performance: GPU-composited scrolling, no scroll chaining */
+  .touch-scroll {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    /* Promote scrollable areas to their own compositor layer */
+    will-change: transform;
+    /* Contain layout + style so inner changes don't bubble up to root */
+    contain: layout style;
+  }
+
   .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
   .font-league { font-family: 'League Spartan', sans-serif !important; }
+
+  /* Prevent backdrop-filter repaints from affecting sibling elements */
+  .glass-layer { isolation: isolate; }
 }
 
 /* ── Keyframes ──────────────────────────────────────────────────────── */

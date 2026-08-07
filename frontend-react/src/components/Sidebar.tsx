@@ -5,7 +5,6 @@ import {
   CreditCard, User, Zap, Code, Layers, Shield, Database, Brain, MessageCircle, HelpCircle, ClipboardList,
 } from 'lucide-react'
 import { useProgress } from '../context/ProgressContext'
-import { getTopics } from '../api'
 import Logo from './Logo'
 
 type Panel = 'chat' | 'courses' | 'quiz' | 'progress' | 'certificates' | 'pricing' | 'profile' | 'assignments'
@@ -39,11 +38,6 @@ const QUICK_ASK = [
 
 export default function Sidebar({ open, onClose, onPanelChange, onAuthClick: _onAuthClick }: Props) {
   const { progress } = useProgress()
-  const [, setTopics] = useState<string[]>([])
-
-  useEffect(() => {
-    getTopics().then(d => setTopics((d && d.topics) ? d.topics : []))
-  }, [])
 
   const sendAsk = (msg: string) => {
     window.dispatchEvent(new CustomEvent('sidebar-ask', { detail: msg }))

@@ -208,10 +208,7 @@ export default function App() {
             <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)}
               onPanelChange={gotoPanel} onAuthClick={openAuth} />
 
-            <AnimatePresence mode="wait">
-              <motion.div key={panel} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                transition={{ duration: 0.12 }}
-                className="flex-1 flex flex-col overflow-hidden">
+            <div className="flex-1 flex flex-col overflow-hidden">
                 {panel === 'chat'         && <ChatPanel onAuthClick={openAuth} />}
                 {panel === 'courses'      && <CoursesPanel />}
                 {panel === 'quiz'         && <QuizPanel />}
@@ -220,8 +217,7 @@ export default function App() {
                 {panel === 'pricing'      && <PricingPanel />}
                 {panel === 'profile'      && <ProfilePanel />}
                 {panel === 'assignments'  && <AssignmentsPanel />}
-              </motion.div>
-            </AnimatePresence>
+              </div>
           </div>
 
           <BottomNav panel={panel as 'chat'|'courses'|'quiz'|'progress'|'certificates'|'pricing'}

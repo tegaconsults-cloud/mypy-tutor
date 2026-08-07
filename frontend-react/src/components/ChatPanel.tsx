@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
@@ -222,7 +222,7 @@ export default function ChatPanel({ onAuthClick }: Props) {
           </motion.div>
         )}
 
-        {/* Message list */}
+        {/* Message list — initial={false} prevents re-animation of existing messages */}
         <AnimatePresence initial={false}>
           {messages.map((msg, i) => (
             <motion.div key={i}
