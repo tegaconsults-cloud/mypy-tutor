@@ -51,6 +51,8 @@ services:
       - key: DB_PATH
         sync: false
       # Observability
+      - key: RESEND_API_KEY
+        sync: false          # Get from resend.com/api-keys
       - key: SENTRY_DSN
         sync: false          # Get from sentry.io → Project → Settings → Client Keys
       # Python optimisations for low-memory deployment
