@@ -47,6 +47,7 @@ export default function ReferralModal({ onClose }: Props) {
 
   useEffect(() => {
     if (!user) return
+    const lid = user.learner_id
     setLoading(true)
     Promise.all([
       getReferral(lid),
@@ -58,7 +59,7 @@ export default function ReferralModal({ onClose }: Props) {
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [user])
+  }, [user?.learner_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const code     = data?.code || '...'
   // Build a deep-link that auto-fills the referral code at signup

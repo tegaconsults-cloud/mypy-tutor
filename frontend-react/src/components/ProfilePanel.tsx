@@ -30,7 +30,7 @@ export default function ProfilePanel() {
   const [deletePassword, setDeletePassword] = useState('')
   const [deleteError,    setDeleteError]    = useState('')
 
-  const lid      = user?.learner_id || 'default'
+  const lid      = user?.learner_id ?? 'default'
   const isGoogle = localStorage.getItem('mpt_auth_type') === 'google'
 
   // Resolve current tier from live progress context
@@ -39,6 +39,7 @@ export default function ProfilePanel() {
 
   useEffect(() => {
     if (!user) return
+    const lid = user.learner_id
     setName(user.name || ''); setPhotoUrl(user.picture || '')
     getProfile(lid).then(d => {
       if (!d) return
@@ -51,7 +52,7 @@ export default function ProfilePanel() {
     getInvoices(lid).then(d => {
       if (d?.invoices) setInvoices(d.invoices)
     }).catch(() => {})
-  }, [user])
+  }, [user?.learner_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = async () => {
     setSaving(true); setMsg('')

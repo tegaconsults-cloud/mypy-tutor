@@ -8,7 +8,7 @@ export default function ProgressPanel() {
   const { user } = useAuth()
   const { progress, refresh } = useProgress()
 
-  useEffect(() => { if (user) refresh(user.learner_id, true) }, [user])
+  useEffect(() => { if (user) refresh(user.learner_id, true) }, [user?.learner_id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!progress) return (
     <div className="flex-1 flex items-center justify-center p-8 text-center">

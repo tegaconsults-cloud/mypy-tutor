@@ -18,7 +18,7 @@ import {
   X, ChevronRight, ChevronLeft, Volume2, VolumeX, Send,
   CheckCircle, BookOpen, Zap, Trophy, RotateCcw, Loader2,
 } from 'lucide-react'
-import { startCourse, nextCourseStep } from '../api'
+// CoursePlayer uses direct fetch() calls to API_BASE for course steps
 import { useAuth } from '../context/AuthContext'
 import { useProgress } from '../context/ProgressContext'
 
