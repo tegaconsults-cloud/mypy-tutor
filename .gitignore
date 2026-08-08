@@ -55,6 +55,7 @@ mypytutor.db
 # Frontend — lives in its own repo (tegaconsults-cloud/mypytutor)
 # Never track in the backend repo
 frontend/
+frontend-react/
 
 # Temp build/fix scripts
 _*.py
