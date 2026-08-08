@@ -13,15 +13,16 @@ export default defineConfig({
         manualChunks(id) {
           if (!id.includes('node_modules')) return
 
-          // React core — must come before generic vendor catch-all
-          if (id.includes('/react-dom/') || id.includes('/react/index') || id.includes('/scheduler/')) {
-            return 'vendor-react'
-          }
-          // Framer Motion
-          if (id.includes('framer-motion')) {
+          // React + ReactDOM + scheduler MUST stay in one chunk together.
+          // Splitting them causes "Cannot read __SECRET_INTERNALS" because
+          // react-dom/client and react would resolve to different instances.
+          // Keep them all in the catch-all 'vendor' chunk (no explicit entry).
+
+          // Framer Motion — large, changes rarely
+          if (id.includes('framer-motion') || id.includes('motion-dom') || id.includes('motion-utils')) {
             return 'vendor-motion'
           }
-          // Syntax highlighter + prism language definitions (the big one)
+          // Syntax highlighter + prism — the heaviest single dep
           if (
             id.includes('react-syntax-highlighter') ||
             id.includes('/prismjs/') ||
@@ -29,7 +30,7 @@ export default defineConfig({
           ) {
             return 'vendor-syntax'
           }
-          // Lucide icons
+          // Lucide icons — tree-shaken but still sizable
           if (id.includes('lucide-react')) {
             return 'vendor-icons'
           }
@@ -45,7 +46,7 @@ export default defineConfig({
           ) {
             return 'vendor-markdown'
           }
-          // Everything else (react-router-dom, etc.)
+          // Everything else: react, react-dom, react-router-dom, scheduler, etc.
           return 'vendor'
         },
       },
