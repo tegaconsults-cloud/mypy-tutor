@@ -1,98 +1,76 @@
-# MyPy Tutor
+# MyPy Tutor — Backend
 
-MyPy Tutor is an AI-powered Python learning platform that combines a conversational tutor, structured courses, quizzes, progress tracking, and certification-oriented features.
+AI-powered Python learning platform. FastAPI backend deployed on Render.
+
+**Frontend repo:** [tegaconsults-cloud/mypytutor](https://github.com/tegaconsults-cloud/mypytutor) (React/Vite — deployed on Vercel at [mypytutor.com.ng](https://mypytutor.com.ng))
 
 ## What the product does
 
-- AI tutor chat for Python questions and coding help
-- Guided learning paths for beginners, course-based study, interview prep, and quizzes
-- Learner progress tracking with XP, badges, and knowledge-gap insights
-- Authentication, profiles, and premium features such as referrals, coupons, and access codes
-- Certificate generation and feedback/survey flows
+- AI tutor chat for Python questions and coding help (Groq LLM — Llama 3.3 70B)
+- 16 structured courses from Python Fundamentals to Machine Learning
+- Quizzes, assignments, XP, badges, and knowledge-gap tracking
+- Email + Google + GitHub auth, referral programme, Paystack payments
+- Certificate generation (Basic / Advanced / Executive Masters)
+
+## Repo layout
+
+```
+app/          FastAPI routes, auth, LLM, courses, DB, email
+static/       Admin dashboard HTML, icons, robots.txt, sitemap, SW
+docs/         Supabase SQL schemas and migration scripts
+tests/        Pytest test suite
+requirements.txt      Production dependencies
+requirements-dev.txt  Dev/test dependencies
+render.yaml           Render deployment config
+```
 
 ## Tech stack
 
-### Backend
-- Python
-- FastAPI
-- Pydantic
-- SQLite for local persistence
-- Supabase integration for cloud-backed features
-
-### Frontend
-- React + TypeScript
-- Vite
-- Tailwind CSS
-- Framer Motion
-
-## Project layout
-
-- app/ — FastAPI backend, auth, LLM integration, course logic, and database access
-- frontend-react/ — active React/Vite frontend used for the main experience
-- frontend/ — legacy/static frontend assets
-- static/ — static site files and assets
-- docs/ — SQL and migration notes
-- tests/ — backend test coverage
+- **Python 3.11** / FastAPI / Uvicorn
+- **SQLite** (local, WAL mode) + **Supabase** (cloud dual-write)
+- **Groq API** — Llama 3.3 70B (smart) / Llama 3.1 8B (fast)
+- **Resend** (primary) + Gmail SMTP (fallback) for email
 
 ## Local development
 
-### 1) Create and activate a virtual environment
-
-Windows powershell:
+### 1. Virtual environment
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-```
-
-### 2) Install dependencies
-
-```powershell
 pip install -r requirements.txt -r requirements-dev.txt
 ```
 
-### 3) Configure environment variables
-
-Copy [.env.example](.env.example) to .env and fill in the required values, especially:
-
-- GROQ_API_KEY
-- SESSION_SECRET
-- GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET
-- EMAIL_* values if email auth is enabled
-
-### 4) Run the backend
+### 2. Environment variables
 
 ```powershell
-uvicorn app.main:app --reload
+Copy-Item .env.example .env
+# Edit .env — set GROQ_API_KEY, SESSION_SECRET, GOOGLE_CLIENT_ID, etc.
 ```
 
-### 5) Run the frontend
+### 3. Run the backend
 
 ```powershell
-cd frontend-react
+uvicorn app.main:app --reload --port 8000
+```
+
+The API is now at `http://localhost:8000`. See `/health` to confirm.
+
+### 4. Run the frontend (separate repo)
+
+```powershell
+cd ..\mypytutor-frontend   # or clone tegaconsults-cloud/mypytutor
 npm install
 npm run dev
 ```
 
-## Frontend strategy
-
-The canonical frontend for active development is [frontend-react](frontend-react). The other frontend folders are retained as legacy or alternative assets and should not be treated as the main target for new work.
-
-## Deployment notes
-
-The backend is designed to work with Render-style deployments and supports environment-based configuration. For production, ensure the required secret values are set in the deployment environment.
-
-## Quality checks
-
-Run backend tests:
+## Tests
 
 ```powershell
 pytest -q
 ```
 
-Run the frontend build:
+## Deployment
 
-```powershell
-cd frontend-react
-npm run build
-```
+Backend → Render (config in `render.yaml`)
+Frontend → Vercel (auto-deploys from `tegaconsults-cloud/mypytutor`)
