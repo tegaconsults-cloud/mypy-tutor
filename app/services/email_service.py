@@ -103,7 +103,8 @@ def _dispatch_async(to: str, subject: str, html: str, text: str,
 
 # ── HTML shell ──────────────────────────────────────────────────────────────
 def _shell(body_html: str, preview: str = "") -> str:
-    app  = _app_url()
+    api  = _app_url()       # backend — serves logo image and API endpoints
+    site = _frontend_url()  # custom domain — all user-facing links
     supp = _support_email()
     pv   = ('<div style="display:none;max-height:0;overflow:hidden;">' + preview + "</div>") if preview else ""
     return (
@@ -124,7 +125,7 @@ def _shell(body_html: str, preview: str = "") -> str:
         "<div style='display:inline-flex;align-items:center;gap:12px;'>"
         "<div style='width:56px;height:56px;border-radius:50%;overflow:hidden;background:#fff;"
         "border:3px solid rgba(224,163,0,0.5);box-shadow:0 0 20px rgba(13,71,161,0.5);'>"
-        "<img src='" + app + "/static/icons/mypytutor_logo.jpg' alt='MyPy Tutor'"
+        "<img src='" + api + "/static/icons/mypytutor_logo.jpg' alt='MyPy Tutor'"
         " width='56' height='56' style='display:block;width:56px;height:56px;object-fit:cover;'/>"
         "</div>"
         "<span style='font-family:Segoe UI,Arial,sans-serif;'>"
@@ -148,7 +149,7 @@ def _shell(body_html: str, preview: str = "") -> str:
         "Teamsamikoko Global Academy &middot; Reg No: 3508656</p>"
         "<p style='color:rgba(255,255,255,0.5);font-size:0.68rem;font-style:italic;margin:0 0 8px;'>"
         "&ldquo;Africa's Best AI, Python &amp; Machine Learning Tutor&rdquo;</p>"
-        "<a href='" + app + "' style='color:#90c4ff;font-size:0.72rem;text-decoration:none;'>"
+        "<a href='" + site + "' style='color:#90c4ff;font-size:0.72rem;text-decoration:none;'>"
         "mypytutor.com.ng</a> &middot; "
         "<a href='mailto:" + supp + "' style='color:#90c4ff;font-size:0.72rem;text-decoration:none;'>"
         + supp + "</a>"
@@ -186,7 +187,7 @@ def _hr() -> str:
 # ── 1. Welcome ───────────────────────────────────────────────────────────────
 def send_welcome_email(name: str, email: str) -> None:
     first = name.split()[0] if name else "Learner"
-    app   = _app_url()
+    app   = _frontend_url()
     features = (
         "<strong style='color:" + PRIMARY + ";'>What is waiting for you:</strong><br/>"
         "&#129302;&nbsp;<strong>Sir. Tega AI Tutor</strong> &mdash; ask anything, get instant explanations<br/>"
@@ -267,7 +268,7 @@ def send_password_reset_email(name: str, email: str, reset_url: str) -> None:
 def send_course_completion_email(name: str, email: str, course_name: str,
                                   xp_earned: int = 0) -> None:
     first = name.split()[0] if name else "Learner"
-    app   = _app_url()
+    app   = _frontend_url()
     xp_str = ("You earned <strong style='color:" + GOLD + ";'>" + str(xp_earned) + " XP</strong>!"
                if xp_earned else "")
     next_steps = (
@@ -295,19 +296,24 @@ def send_course_completion_email(name: str, email: str, course_name: str,
 
 # ── 5. Certificate ────────────────────────────────────────────────────────────
 def send_certificate_email(name: str, email: str, cert_level: str, cert_id: str) -> None:
-    first       = name.split()[0] if name else "Learner"
-    app         = _app_url()
-    verify_url  = app + "/verify/" + cert_id
-    cert_url    = (app + "/certificate/" + cert_level
-                   + "?name=" + name.replace(" ", "%20") + "&admin_view=false")
-    label       = cert_level.title()
+    first        = name.split()[0] if name else "Learner"
+    # cert view → FRONTEND_URL (custom domain, e.g. mypytutor.com.ng)
+    # verify endpoint → APP_URL  (backend API, e.g. mypytutor.onrender.com)
+    frontend     = _frontend_url()
+    api          = _app_url()
+    verify_url   = api + "/verify/" + cert_id
+    # Certificate view link goes to the frontend so the user sees the branded site
+    cert_url     = (frontend + "/certificate/" + cert_level
+                    + "?name=" + name.replace(" ", "%20") + "&admin_view=false")
+    label        = cert_level.title()
     details = (
         "<strong>Certificate Details</strong><br/>"
         "&#127885;&nbsp;Level: <strong>" + label + "</strong><br/>"
         "&#128218;&nbsp;Certificate ID: <code style='background:#e2e8f0;padding:2px 6px;"
         "border-radius:4px;'>" + cert_id + "</code><br/>"
         "&#9989;&nbsp;Issuer: Teamsamikoko Global Academy (Reg No: 3508656)<br/>"
-        "&#128279;&nbsp;Verify: <a href='" + verify_url + "'>" + verify_url + "</a>"
+        "&#128279;&nbsp;Verify: <a href='" + verify_url + "' style='color:#16A34A;word-break:break-all;'>"
+        + verify_url + "</a>"
     )
     body = (
         "<p style='color:#1e293b;margin:0 0 12px;'>Dear <strong>" + first + "</strong>,</p>"
@@ -321,26 +327,28 @@ def send_certificate_email(name: str, email: str, cert_level: str, cert_id: str)
         + "<div style='text-align:center;margin:24px 0;'>"
           "<a href='" + cert_url + "' style='display:inline-block;background:linear-gradient(135deg,"
           + GOLD + "," + "#C98B00" + ");color:#fff;text-decoration:none;font-weight:700;"
-          "font-size:0.95rem;padding:14px 36px;border-radius:10px;margin-right:10px;'>"
+          "font-size:0.95rem;padding:14px 36px;border-radius:10px;margin-right:10px;"
+          "margin-bottom:10px;'>"
           "&#127891; View Certificate</a>"
           "<a href='" + verify_url + "' style='display:inline-block;background:" + PRIMARY + ";"
           "color:#fff;text-decoration:none;font-weight:700;font-size:0.95rem;"
-          "padding:14px 36px;border-radius:10px;'>&#9989; Verify Online</a></div>"
+          "padding:14px 36px;border-radius:10px;margin-bottom:10px;'>&#9989; Verify Online</a></div>"
         + "<p style='color:#64748b;font-size:0.85rem;'>Well done on this achievement!<br/>"
           "<strong style='color:" + PRIMARY + ";'>The MyPy Tutor Team</strong></p>"
     )
     html = _shell(body, "Your " + label + " Python Certificate is ready!")
     text = ("Dear " + first + ",\n\nYour " + label + " Certificate (ID: " + cert_id
-            + ") is ready.\nView: " + cert_url + "\nVerify: " + verify_url
+            + ") is ready.\n\nView: " + cert_url
+            + "\nVerify: " + verify_url
             + "\n\nIssued by Teamsamikoko Global Academy - Reg No: 3508656\n\n-- MyPy Tutor Team")
-    _dispatch_async(email, "Your " + label + " Certificate is Ready!", html, text, "certificate")
+    _dispatch_async(email, "Your " + label + " Certificate is Ready! &#127891;", html, text, "certificate")
 
 # ── 6. Payment receipt ────────────────────────────────────────────────────────
 def send_payment_receipt_email(name: str, email: str, amount: float,
                                 plan: str, payment_id: str,
                                 currency: str = "NGN") -> None:
     first = name.split()[0] if name else "Learner"
-    app   = _app_url()
+    app   = _frontend_url()
     from datetime import datetime as _dt
     date_str = _dt.utcnow().strftime("%d %B %Y")
     plan_labels = {
@@ -395,7 +403,7 @@ def send_payment_receipt_email(name: str, email: str, amount: float,
 def send_subscription_email(name: str, email: str, event: str,
                              plan: str, details: str = "") -> None:
     first = name.split()[0] if name else "Learner"
-    app   = _app_url()
+    app   = _frontend_url()
     emojis = {"upgraded": "&#127881;", "downgraded": "&#11015;", "cancelled": "&#10060;",
                "renewed": "&#9989;", "expiring_soon": "&#9200;"}
     icon  = emojis.get(event, "&#8505;")
@@ -424,7 +432,7 @@ def send_subscription_email(name: str, email: str, event: str,
 def send_learning_reminder(name: str, email: str, streak_days: int = 0,
                             suggested_topic: str = "") -> None:
     first = name.split()[0] if name else "Learner"
-    app   = _app_url()
+    app   = _frontend_url()
     streak_html = ("<p style='color:" + GOLD + ";font-weight:700;font-size:1.1rem;margin:0 0 12px;'>"
                    "&#128293; " + str(streak_days) + "-day streak &mdash; keep it going!</p>"
                    if streak_days > 1 else "")
@@ -455,7 +463,7 @@ def send_learning_reminder(name: str, email: str, streak_days: int = 0,
 # ── 9. XP milestone ───────────────────────────────────────────────────────────
 def send_xp_milestone_email(name: str, email: str, xp: int, level: str) -> None:
     first = name.split()[0] if name else "Learner"
-    app   = _app_url()
+    app   = _frontend_url()
     stats = ("&#127885;&nbsp;Total XP: <strong style='color:" + GOLD + ";font-size:1.1rem;'>"
              + "{:,}".format(xp) + " XP</strong><br/>"
              "&#128202;&nbsp;Level: <strong>" + level.title() + "</strong>")
@@ -481,7 +489,7 @@ def send_weekly_progress_email(name: str, email: str, xp_this_week: int,
                                 lessons_done: int, streak_days: int,
                                 top_topic: str = "") -> None:
     first = name.split()[0] if name else "Learner"
-    app   = _app_url()
+    app   = _frontend_url()
     stats = (
         "&#11088;&nbsp;XP this week: <strong style='color:" + GOLD + ";'>"
         + "{:,}".format(xp_this_week) + "</strong><br/>"
@@ -508,7 +516,7 @@ def send_weekly_progress_email(name: str, email: str, xp_this_week: int,
 def send_product_update_email(name: str, email: str, subject: str,
                                body_html: str, target_label: str = "All Users") -> None:
     first   = name.split()[0] if name else "Learner"
-    app     = _app_url()
+    app   = _frontend_url()
     support = _support_email()
     # CAN-SPAM / GDPR compliant: every bulk email must include an unsubscribe option.
     # We use a mailto: unsubscribe link pointing to support so the team can honour it.
@@ -565,7 +573,7 @@ def send_admin_notification(subject: str, body: str) -> None:
     if not admin_email:
         logger.warning("[email] ADMIN_EMAIL not set — skipping admin notification: %s", subject)
         return
-    app     = _app_url()
+    app     = _frontend_url()
     content = (
         "<h2 style='color:#DC2626;font-size:1.1rem;margin:0 0 12px;'>&#9888; Admin Notification</h2>"
         + _box("<strong>" + subject + "</strong><br/><br/>" + body.replace("\n", "<br/>"),
@@ -591,7 +599,7 @@ def send_enquiry_email(name: str, email: str, category: str,
     """
     support    = _support_email()   # support@mypytutor.com.ng
     admin_dest = _e("ADMIN_EMAIL", support)   # real inbox: tega.com.ng@gmail.com
-    app        = _app_url()
+    app   = _frontend_url()
 
     # ── Email to support inbox (admin receives this) ──────────────────────
     admin_body = (

@@ -3490,7 +3490,7 @@ def _render_invoice(inv: dict) -> str:
     </p>
   </div>
   <div class="ftr">
-    <p>MyPy Tutor · mypytutor.onrender.com</p>
+    <p>MyPy Tutor · mypytutor.com.ng</p>
     <p style="margin-top:4px">TeamTega Technologies Limited · Teamsamikoko Global Academy</p>
     <p style="margin-top:4px;font-style:italic">"Learn Smarter. Code Better. Build the Future."</p>
   </div>
