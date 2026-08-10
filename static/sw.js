@@ -8,7 +8,7 @@
  *  - Cross-origin requests (Google, CDN, analytics) → PASS THROUGH (never cache)
  */
 
-const CACHE_VERSION = 'mypy-tutor-v10';
+const CACHE_VERSION = 'mypy-tutor-v11';
 const OFFLINE_URL   = '/';
 
 // Only pre-cache files we KNOW exist in the build output.
@@ -26,7 +26,7 @@ const API_PREFIXES = [
   '/health', '/exercise', '/feedback', '/auth', '/certificate',
   '/courses', '/referral', '/coupons', '/invoices', '/conversations',
   '/assignments', '/lessons', '/admin', '/webhooks', '/supabase',
-  '/history', '/learner',
+  '/history', '/learner', '/verify', '/tts', '/payments',
 ];
 
 // Domains the SW must NEVER intercept — pass straight through to the browser

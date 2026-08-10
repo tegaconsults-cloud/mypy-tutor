@@ -196,6 +196,10 @@ _allowed_origins = list(filter(None, [
     "https://www.mypytutor.com.ng",
     "http://localhost:8000",
     "http://127.0.0.1:8000",
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
 ])) or ["*"]
 
 app.add_middleware(SecurityMiddleware)
@@ -791,7 +795,7 @@ async def auth_signup(request: EmailSignUpWithCode) -> dict:
 
     response = {"ok": True, "message": message}
     if code_type == "access" and code_rec:
-        tier_labels = {"tier1": "Pro Learner", "tier2": "Career Builder", "tier3": "Elite"}
+        tier_labels = {"tier1": "Beginner Bundle", "tier2": "Intermediate Bundle", "tier3": "Advanced Bundle", "tier4": "Premium Bundle"}
         response["code_accepted"]   = True
         response["code_type"]       = "access"
         response["tier_on_confirm"] = tier_labels.get(code_rec["tier"], code_rec["tier"])
@@ -1559,9 +1563,15 @@ async def start_course(learner_id: str, course_name: str,
             detail="Sir. Tega is warming up. Please wait a moment and try again.",
         )
 
+    xp, badge = record_lesson(learner_id, step.title, step.intent)
     return {
-        "course": course_name, "step": step.step,
-        "title": step.title, "total_steps": len(course.steps), "content": content,
+        "course":      course_name,
+        "step":        step.step,
+        "title":       step.title,
+        "total_steps": len(course.steps),
+        "content":     content,
+        "xp_gained":   xp,
+        "badge":       badge,
     }
 
 
@@ -3586,7 +3596,7 @@ async def admin_generate_access_code(body: _AccessCodeSend, request: Request) ->
         expires_at=expires_at,
     )
 
-    tier_labels = {"tier1": "Pro Learner", "tier2": "Career Builder", "tier3": "Elite"}
+    tier_labels = {"tier1": "Beginner Bundle", "tier2": "Intermediate Bundle", "tier3": "Advanced Bundle", "tier4": "Premium Bundle"}
     tier_label  = tier_labels.get(body.tier, body.tier)
     app_url     = _os.getenv("APP_URL", "https://mypytutor.onrender.com")
 
@@ -4239,126 +4249,6 @@ async def delete_account(body: _DeleteAccountRequest,
         "message": "Your account has been permanently deleted. We're sorry to see you go.",
         "summary": summary,
     }
-
-
-# ---------------------------------------------------------------------------
-# FIX: GitHub OAuth
-# ---------------------------------------------------------------------------
-
-@app.get("/auth/github/login")
-async def auth_github_login() -> JSONResponse:
-    """Redirect to GitHub OAuth consent screen."""
-    from fastapi.responses import RedirectResponse
-    import urllib.parse
-    client_id = _os.getenv("GITHUB_CLIENT_ID", "")
-    app_url   = _os.getenv("APP_URL", "https://mypytutor.onrender.com")
-    if not client_id:
-        return RedirectResponse(url=f"{_os.getenv('FRONTEND_URL', _os.getenv('APP_URL', 'https://mypytutor.onrender.com'))}/?auth=error&msg=GitHub+Sign-In+not+configured")
-    params = urllib.parse.urlencode({
-        "client_id":    client_id,
-        "redirect_uri": f"{app_url}/auth/github/callback",
-        "scope":        "read:user user:email",
-        "state":        "mypytutor",
-    })
-    return RedirectResponse(url=f"https://github.com/login/oauth/authorize?{params}")
-
-
-@app.get("/auth/github/callback")
-async def auth_github_callback(code: str = None, error: str = None,
-                                state: str = None) -> JSONResponse:
-    """Handle GitHub OAuth callback — exchange code for token, get user info."""
-    from fastapi.responses import RedirectResponse
-    import json as _json
-
-    app_url       = _os.getenv("APP_URL", "https://mypytutor.onrender.com")
-    frontend_url  = _os.getenv("FRONTEND_URL", app_url)
-    client_id     = _os.getenv("GITHUB_CLIENT_ID", "")
-    client_secret = _os.getenv("GITHUB_CLIENT_SECRET", "")
-
-    if error or not code:
-        return RedirectResponse(url=f"{frontend_url}/?auth=error&msg=GitHub+sign-in+was+cancelled")
-
-    try:
-        import httpx as _httpx
-        async with _httpx.AsyncClient(timeout=10) as hc:
-            # Exchange code for access token
-            token_res = await hc.post(
-                "https://github.com/login/oauth/access_token",
-                headers={"Accept": "application/json"},
-                data={"client_id": client_id, "client_secret": client_secret, "code": code},
-            )
-            token_data = token_res.json()
-            access_token = token_data.get("access_token", "")
-            if not access_token:
-                return RedirectResponse(url=f"{frontend_url}/?auth=error&msg=GitHub+token+exchange+failed")
-
-            # Fetch user info
-            user_res = await hc.get(
-                "https://api.github.com/user",
-                headers={"Authorization": f"Bearer {access_token}", "Accept": "application/vnd.github+json"},
-            )
-            gh_user = user_res.json()
-
-            # Fetch primary email if not public
-            email = gh_user.get("email") or ""
-            if not email:
-                email_res = await hc.get(
-                    "https://api.github.com/user/emails",
-                    headers={"Authorization": f"Bearer {access_token}"},
-                )
-                emails = email_res.json()
-                primary = next((e for e in emails if e.get("primary") and e.get("verified")), None)
-                email = primary["email"] if primary else f"gh_{gh_user['id']}@github.local"
-
-        # Create or load user
-        learner_id = f"gh_{gh_user['id']}"
-        name       = gh_user.get("name") or gh_user.get("login") or email.split("@")[0]
-        picture    = gh_user.get("avatar_url", "")
-
-        # Upsert into auth store (same pattern as Google)
-        from app.auth import _users, UserAccount, create_session_token as _cst
-        if learner_id not in _users:
-            _users[learner_id] = UserAccount(
-                learner_id=learner_id, email=email,
-                name=name, picture=picture, google_sub=""
-            )
-        else:
-            _users[learner_id].name    = name
-            _users[learner_id].picture = picture
-
-        token = _cst(learner_id)
-        # Non-blocking Supabase mirror
-        import threading as _thr_gh2
-        _thr_gh2.Thread(target=sb_upsert_profile, args=(learner_id, email, name), daemon=False).start()
-        log_activity(learner_id, "auth:github", f"login for {email}")
-
-        # Persist picture to user_profiles so it survives restarts
-        if picture:
-            try:
-                from app.db import get_db as _gdb
-                with _gdb() as _conn:
-                    with _conn.cursor() as _cur:
-                        _cur.execute("""
-                            INSERT INTO user_profiles (learner_id, display_name, photo_url)
-                            VALUES (%s, %s, %s)
-                            ON CONFLICT(learner_id) DO UPDATE SET
-                              photo_url    = EXCLUDED.photo_url,
-                              display_name = CASE WHEN EXCLUDED.display_name <> '' THEN EXCLUDED.display_name
-                                                  ELSE user_profiles.display_name END
-                        """, (learner_id, name or "", picture))
-            except Exception:
-                pass
-
-        import urllib.parse as _up
-        user_data = _up.quote(_json.dumps({
-            "token": token, "learner_id": learner_id,
-            "name": name, "email": email, "picture": picture,
-        }))
-        return RedirectResponse(url=f"{frontend_url}/?auth=google_success&user={user_data}")
-
-    except Exception as exc:
-        logger.error("GitHub OAuth callback error: %s", exc)
-        return RedirectResponse(url=f"{frontend_url}/?auth=error&msg=GitHub+sign-in+failed")
 
 
 # ---------------------------------------------------------------------------
