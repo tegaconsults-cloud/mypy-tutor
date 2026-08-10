@@ -512,10 +512,13 @@ async def send_announcement(target: str, subject: str, body_text: str) -> int:
 
     # ── Source 1: learner_profiles — all users, carries email + tier ─────────────
     try:
+        import psycopg2.extras as _pge
         with _gdb() as conn:
-            rows = conn.execute(
-                "SELECT learner_id, email, display_name, tier FROM learner_profiles"
-            ).fetchall()
+            with conn.cursor(cursor_factory=_pge.RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT learner_id, email, display_name, tier FROM learner_profiles"
+                )
+                rows = cur.fetchall()
         for r in rows:
             lid   = (r["learner_id"] or "").strip()
             email = (r["email"] or "").lower().strip()
@@ -528,10 +531,13 @@ async def send_announcement(target: str, subject: str, body_text: str) -> int:
 
     # ── Source 2: email_accounts — confirmed users, carries proper full name ──────
     try:
+        import psycopg2.extras as _pge
         with _gdb() as conn:
-            rows = conn.execute(
-                "SELECT learner_id, email, name FROM email_accounts WHERE confirmed=1"
-            ).fetchall()
+            with conn.cursor(cursor_factory=_pge.RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT learner_id, email, name FROM email_accounts WHERE confirmed=1"
+                )
+                rows = cur.fetchall()
         for r in rows:
             lid   = (r["learner_id"] or "").strip()
             email = (r["email"] or "").lower().strip()
