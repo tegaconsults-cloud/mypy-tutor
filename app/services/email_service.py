@@ -678,3 +678,68 @@ def send_enquiry_email(name: str, email: str, category: str,
     )
     _dispatch_async(email, "Your MyPy Tutor support request was received",
                     receipt_html, receipt_text, "enquiry_receipt")
+
+
+# ── 13. Re-engagement (7-day inactivity) ─────────────────────────────────────
+def send_reengagement_email(name: str, email: str, days_inactive: int,
+                             last_topic: str = "", xp: int = 0) -> None:
+    """
+    Send a personalised re-engagement email to a learner who has been inactive
+    for 7+ days.  Called by the nightly background job in main.py.
+    """
+    first    = name.split()[0] if name else "Learner"
+    site     = _frontend_url()
+    days_str = str(days_inactive)
+
+    streak_loss = (
+        "<p style='color:#DC2626;font-weight:700;font-size:0.9rem;margin:0 0 12px;'>"
+        "&#9200; You haven't visited in <strong>" + days_str + " days</strong> — "
+        "don't let your progress fade!</p>"
+    )
+    topic_hint = (
+        "<p style='color:#475569;line-height:1.7;margin:0 0 16px;'>"
+        "&#128204; Pick up where you left off: "
+        "<strong>" + last_topic + "</strong></p>"
+        if last_topic else
+        "<p style='color:#475569;line-height:1.7;margin:0 0 16px;'>"
+        "Sir. Tega is ready to teach you something new today.</p>"
+    )
+    xp_note = (
+        "<p style='color:#475569;margin:0 0 16px;'>"
+        "You already have <strong style='color:#E0A300;'>" + "{:,}".format(xp) + " XP</strong> — "
+        "keep building on that foundation!</p>"
+        if xp else ""
+    )
+    tips = (
+        "&#128218;&nbsp;Ask Sir. Tega any Python question<br/>"
+        "&#127919;&nbsp;Take a 2-minute quiz to warm up<br/>"
+        "&#128200;&nbsp;Check your progress dashboard<br/>"
+        "&#127942;&nbsp;Work toward your next certificate"
+    )
+    body = (
+        "<p style='color:#1e293b;margin:0 0 12px;'>Hi <strong>" + first + "</strong>,</p>"
+        + streak_loss
+        + "<h2 style='color:" + PRIMARY + ";font-size:1.2rem;margin:0 0 12px;'>"
+          "&#128013; Sir. Tega misses you!</h2>"
+        + topic_hint
+        + xp_note
+        + _box("<strong>Jump back in:</strong><br/>" + tips)
+        + _cta("&#128640; Resume Learning Now", site)
+        + "<p style='color:#64748b;font-size:0.82rem;'>"
+          "Even 10 minutes a day builds mastery.<br/>"
+          "<strong style='color:" + PRIMARY + ";'>The MyPy Tutor Team</strong></p>"
+        + "<p style='color:#94a3b8;font-size:0.7rem;margin-top:16px;'>"
+          "To stop receiving reminders, reply to this email with 'unsubscribe'.</p>"
+    )
+    html = _shell(body, "Sir. Tega misses you! Come back and keep learning Python.")
+    text = (
+        "Hi " + first + ",\n\n"
+        "You haven't visited MyPy Tutor in " + days_str + " days.\n"
+        + ("Last topic: " + last_topic + "\n" if last_topic else "")
+        + ("Your XP: " + "{:,}".format(xp) + "\n" if xp else "")
+        + "\nResume learning: " + site
+        + "\n\n-- The MyPy Tutor Team"
+    )
+    _dispatch_async(email,
+                    "Sir. Tega misses you! &#128013; Come back to MyPy Tutor",
+                    html, text, "reengagement")

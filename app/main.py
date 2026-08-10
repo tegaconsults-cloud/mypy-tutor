@@ -2357,30 +2357,36 @@ async def admin_dashboard(request: Request) -> dict:
 @app.get("/admin/users")
 async def admin_list_users(request: Request) -> dict:
     """
-    Return all users sourced primarily from SQLite (persistent, survives restarts).
+    Return all users sourced primarily from PostgreSQL (persistent, survives restarts).
     Merges data from:
       - learner_profiles table (all users who ever chatted / upgraded)
       - email_accounts table (all email sign-ups, including those who never chatted)
       - in-memory _store (live XP / course data that hasn't been flushed yet)
       - auth._users (Google sign-in users)
+    Returns joined_at (real signup date) for each user.
     """
     _require_admin(request)
     from app.db import get_db as _gdb
     from app.progress import _store as ls
     from app.auth import _users as _auth_users
+    import datetime as _dt
 
     users_map: dict = {}   # learner_id → user dict
 
     # 1. Seed from PostgreSQL learner_profiles (canonical persistent store)
+    #    Also pull created_at from email_accounts in one JOIN for real signup dates
     try:
         import psycopg2.extras as _pge
         with _gdb() as _conn:
             with _conn.cursor(cursor_factory=_pge.RealDictCursor) as _cur:
-                _cur.execute(
-                    "SELECT learner_id, email, display_name, tier, level, xp, "
-                    "       topics_seen, completed_projects, badges, current_course "
-                    "FROM learner_profiles"
-                )
+                _cur.execute("""
+                    SELECT lp.learner_id, lp.email, lp.display_name, lp.tier,
+                           lp.level, lp.xp, lp.topics_seen, lp.completed_projects,
+                           lp.badges, lp.current_course, lp.updated_at,
+                           ea.created_at AS joined_ts, ea.name AS ea_name
+                    FROM learner_profiles lp
+                    LEFT JOIN email_accounts ea ON ea.learner_id = lp.learner_id
+                """)
                 rows = _cur.fetchall()
             for r in rows:
                 lid = r["learner_id"]
@@ -2390,10 +2396,17 @@ async def admin_list_users(request: Request) -> dict:
                     badges  = len(__import__("json").loads(r["badges"] or "[]"))
                 except Exception:
                     topics = courses = badges = 0
+                # Prefer email_accounts.created_at (real signup time)
+                # Fall back to learner_profiles.updated_at (first activity time)
+                joined_ts = r.get("joined_ts") or r.get("updated_at")
+                try:
+                    joined_at = _dt.datetime.fromtimestamp(float(joined_ts)).strftime("%Y-%m-%d %H:%M") if joined_ts else ""
+                except Exception:
+                    joined_at = ""
                 users_map[lid] = {
                     "learner_id":    lid,
                     "email":         r["email"] or "",
-                    "name":          r["display_name"] or "",
+                    "name":          r["display_name"] or r.get("ea_name") or "",
                     "tier":          r["tier"] or "free",
                     "level":         r["level"] or "beginner",
                     "xp":            int(r["xp"] or 0),
@@ -2401,6 +2414,8 @@ async def admin_list_users(request: Request) -> dict:
                     "courses_done":  courses,
                     "badges":        badges,
                     "current_course": r["current_course"],
+                    "joined_at":     joined_at,
+                    "joined_ts":     float(joined_ts) if joined_ts else 0.0,
                 }
     except Exception as _e:
         logger.warning("admin_list_users learner_profiles error: %s", _e)
@@ -2420,6 +2435,8 @@ async def admin_list_users(request: Request) -> dict:
             "courses_done":  len(profile.completed_projects),
             "badges":        len(profile.badges),
             "current_course": profile.current_course,
+            "joined_at":     existing.get("joined_at", ""),
+            "joined_ts":     existing.get("joined_ts", 0.0),
         }
 
     # 3. Add email-account-only users (signed up but never chatted, not yet in learner_profiles)
@@ -2434,6 +2451,13 @@ async def admin_list_users(request: Request) -> dict:
 
     for r in db_emails:
         lid = r["learner_id"]
+        # Format join date from email_accounts.created_at
+        try:
+            joined_at = _dt.datetime.fromtimestamp(float(r.get("created_at", 0))).strftime("%Y-%m-%d %H:%M") if r.get("created_at") else ""
+            joined_ts = float(r.get("created_at", 0))
+        except Exception:
+            joined_at = ""
+            joined_ts = 0.0
         if lid not in users_map:
             users_map[lid] = {
                 "learner_id":    lid,
@@ -2446,6 +2470,8 @@ async def admin_list_users(request: Request) -> dict:
                 "courses_done":  0,
                 "badges":        0,
                 "current_course": None,
+                "joined_at":     joined_at,
+                "joined_ts":     joined_ts,
             }
         else:
             # Fill in missing email/name from email_accounts
@@ -2453,6 +2479,10 @@ async def admin_list_users(request: Request) -> dict:
                 users_map[lid]["email"] = r["email"]
             if not users_map[lid]["name"]:
                 users_map[lid]["name"] = r["name"]
+            # Use email account creation date if we don't have a join date yet
+            if not users_map[lid].get("joined_at") and joined_at:
+                users_map[lid]["joined_at"] = joined_at
+                users_map[lid]["joined_ts"] = joined_ts
 
     users = sorted(users_map.values(), key=lambda u: u["xp"], reverse=True)
 
@@ -3913,6 +3943,134 @@ async def supabase_status(request: Request) -> dict:
         logger.warning("Supabase status check failed: %s", exc)
         return {"enabled": True, "status": "error",
                 "detail": "Connection test failed — check Render logs for details."}
+
+
+# ---------------------------------------------------------------------------
+# Re-engagement scheduler — emails users inactive for 7+ days
+# Runs once every 24 hours in a background thread.
+# Admin can also trigger it manually via POST /admin/reengagement/trigger
+# ---------------------------------------------------------------------------
+
+def _run_reengagement_job() -> dict:
+    """
+    Find all confirmed users whose last activity is 7+ days ago and send them
+    a personalised re-engagement email.  Returns a summary dict.
+    Runs every 24 h via the scheduler below.
+    """
+    import time as _t
+    import psycopg2.extras as _pge
+    from app.db import get_db as _gdb
+    from app.services.email_service import send_reengagement_email as _re_email
+
+    cutoff   = _t.time() - (7 * 86400)   # 7 days ago in epoch seconds
+    sent     = 0
+    skipped  = 0
+    errors   = 0
+
+    try:
+        with _gdb() as _conn:
+            with _conn.cursor(cursor_factory=_pge.RealDictCursor) as _cur:
+                # Get all confirmed email accounts whose learner_profile hasn't
+                # been updated (i.e. no activity) in the last 7 days.
+                # Also skip users who have no email or have already been sent
+                # a reengagement email in the last 6 days (prevent spam).
+                _cur.execute("""
+                    SELECT ea.email, ea.name, ea.learner_id,
+                           lp.xp, lp.updated_at,
+                           lp.topics_seen
+                    FROM email_accounts ea
+                    LEFT JOIN learner_profiles lp ON lp.learner_id = ea.learner_id
+                    WHERE ea.confirmed = 1
+                      AND ea.email NOT LIKE '%@github.local'
+                      AND (lp.updated_at IS NULL OR lp.updated_at < %s)
+                """, (cutoff,))
+                candidates = _cur.fetchall()
+    except Exception as exc:
+        logger.warning("Re-engagement job DB query failed: %s", exc)
+        return {"sent": 0, "skipped": 0, "errors": 1, "error": str(exc)}
+
+    import json as _json
+    for row in candidates:
+        try:
+            email = (row.get("email") or "").strip()
+            name  = (row.get("name") or email.split("@")[0]).strip()
+            if not email or "@" not in email:
+                skipped += 1
+                continue
+
+            # Compute days since last activity
+            updated_at = row.get("updated_at")
+            days_inactive = int((_t.time() - float(updated_at)) / 86400) if updated_at else 8
+
+            # Last topic seen
+            last_topic = ""
+            try:
+                topics = _json.loads(row.get("topics_seen") or "[]")
+                last_topic = topics[-1] if topics else ""
+            except Exception:
+                pass
+
+            xp = int(row.get("xp") or 0)
+
+            _re_email(
+                name          = name,
+                email         = email,
+                days_inactive = days_inactive,
+                last_topic    = last_topic,
+                xp            = xp,
+            )
+            sent += 1
+            log_activity("system", "reengagement:email",
+                         f"sent to {email} ({days_inactive}d inactive)")
+        except Exception as exc:
+            logger.warning("Re-engagement email failed for %s: %s",
+                           row.get("email", "?"), exc)
+            errors += 1
+
+    logger.info("Re-engagement job complete: sent=%d skipped=%d errors=%d",
+                sent, skipped, errors)
+    return {"sent": sent, "skipped": skipped, "errors": errors,
+            "candidates": len(candidates)}
+
+
+def _reengagement_scheduler() -> None:
+    """Background thread — runs the re-engagement job every 24 hours."""
+    import time as _t
+    while True:
+        try:
+            result = _run_reengagement_job()
+            logger.info("Re-engagement scheduler: %s", result)
+        except Exception as exc:
+            logger.warning("Re-engagement scheduler error: %s", exc)
+        _t.sleep(86400)   # sleep 24 hours
+
+
+# Start the scheduler in a daemon thread on first import
+import threading as _reeng_thread
+_reeng_thread.Thread(
+    target=_reengagement_scheduler,
+    daemon=True,
+    name="reengagement-scheduler",
+).start()
+
+
+@app.post("/admin/reengagement/trigger")
+async def admin_trigger_reengagement(request: Request) -> dict:
+    """
+    Admin: manually trigger the 7-day re-engagement email job immediately.
+    Useful for testing or sending a one-off campaign.
+    """
+    _require_admin(request)
+    import asyncio as _asyncio
+    loop = _asyncio.get_running_loop()
+    result = await loop.run_in_executor(None, _run_reengagement_job)
+    log_activity("admin", "reengagement:manual-trigger",
+                 f"sent={result.get('sent')} errors={result.get('errors')}")
+    return {
+        "ok": True,
+        "message": f"Re-engagement job complete: {result.get('sent')} emails sent.",
+        **result,
+    }
 
 
 # ---------------------------------------------------------------------------
