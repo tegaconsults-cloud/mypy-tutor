@@ -94,9 +94,28 @@ def generate_certificate_html(
     level: str,
     cert_id: str,
     issue_date: str | None = None,
+    course_name: str | None = None,
 ) -> str:
     """Generate a premium printable HTML certificate. Three distinct designs."""
     cfg = CERT_CONFIGS.get(level, CERT_CONFIGS["basic"])
+
+    # Override subtitle and skills dynamically if a specific course is provided
+    if course_name:
+        try:
+            from app.courses import COURSES
+            course_obj = COURSES.get(course_name)
+            if course_obj:
+                # Build subtitle from course description
+                desc = course_obj.description
+                display = desc.split(" — ")[0] if " — " in desc else course_name.replace("-", " ").title()
+                cfg = dict(cfg)   # shallow copy so we don't mutate global
+                cfg["subtitle"] = display
+                # Build skills from course step titles (first 6 steps)
+                step_titles = [s.title for s in course_obj.steps[:6]]
+                if step_titles:
+                    cfg["skills"] = step_titles
+        except Exception:
+            pass  # fall back to level defaults
     date_str = issue_date or datetime.utcnow().strftime("%B %d, %Y")
     name_safe = html.escape(learner_name)
 
@@ -222,10 +241,11 @@ def generate_certificate_html(
   /* ═══ WATERMARK ═══ */
   .wm{{
     position:absolute;top:50%;left:50%;
-    transform:translate(-50%,-50%) rotate(-20deg);
-    font-family:'Cinzel',serif;font-size:6rem;font-weight:700;
-    color:{WM_C};opacity:0.035;white-space:nowrap;
-    pointer-events:none;user-select:none;letter-spacing:0.15em;
+    transform:translate(-50%,-50%);
+    width:420px;height:420px;
+    background:url("{MPT_LOGO_URI}") center/contain no-repeat;
+    opacity:0.055;
+    pointer-events:none;user-select:none;
     z-index:0;
   }}
 
@@ -374,7 +394,7 @@ def generate_certificate_html(
 <body>
 <div class="page">
 <div class="frame">
-  <div class="wm">TEAMSAMIKOKO</div>
+  <div class="wm"></div>
   <span class="corner c-tl">{CORNER}</span>
   <span class="corner c-tr">{CORNER}</span>
   <span class="corner c-bl">{CORNER}</span>
@@ -427,7 +447,7 @@ def generate_certificate_html(
       <div class="meta">
         <b>Certificate ID:</b> {cert_id}<br/>
         <b>Issue Date:</b> {date_str}<br/>
-        <b>Platform:</b> MyPy Tutor · mypytutor.onrender.com<br/>
+        <b>Platform:</b> MyPy Tutor · mypytutor.com.ng<br/>
         <b>Examination:</b> {cfg.get('exam_details', cfg['ribbon_text'])}
       </div>
 

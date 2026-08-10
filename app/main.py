@@ -1,4 +1,4 @@
-"""
+﻿"""
 FastAPI application — MyPy Tutor (secured).
 Security layer: rate limiting, input validation, security headers, sanitised errors.
 """
@@ -1113,9 +1113,9 @@ async def get_certificate(
 
     if not admin_view and not tier_ok and not courses_ok:
         tier_names = {
-            "basic":     "Beginner Bundle (₦8,000) or complete all 4 beginner courses",
-            "advanced":  "Intermediate Bundle (₦15,000) or complete all 7 courses",
-            "executive": "Elite Bundle (₦35,000) or complete all advanced courses",
+            "basic":     "Beginner Bundle (₦30,000) or complete all 4 beginner courses",
+            "advanced":  "Intermediate Bundle (₦60,000) or complete all 7 courses",
+            "executive": "Elite Bundle (₦100,000) or complete all advanced courses",
         }
         return HTMLResponse(
             content=f"""<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Certificate Locked</title>
@@ -1146,7 +1146,12 @@ async def get_certificate(
         args=(cert_id, learner_id, clean_name, level),
         daemon=False,
     ).start()
-    html_doc   = generate_certificate_html(learner_name=clean_name, level=level, cert_id=cert_id)
+    html_doc   = generate_certificate_html(
+        learner_name=clean_name,
+        level=level,
+        cert_id=cert_id,
+        course_name=profile.current_course or (profile.completed_projects[-1] if profile.completed_projects else None),
+    )
 
     # Send certificate email via email_service (non-blocking)
     try:
@@ -1499,7 +1504,7 @@ async def start_course(learner_id: str, course_name: str,
         category = meta.get("category", "Course")
         tier_needed = "tier1" if "tier1" in allowed_tiers else \
                       "tier2" if "tier2" in allowed_tiers else "tier3"
-        tier_names = {"tier1": "Beginner Bundle (₦8,000)", "tier2": "Intermediate Bundle (₦15,000)", "tier3": "Elite Bundle (₦35,000)"}
+        tier_names = {"tier1": "Beginner Bundle (₦30,000)", "tier2": "Intermediate Bundle (₦60,000)", "tier3": "Advanced Bundle (₦100,000)"}
         return JSONResponse(status_code=402, content={
             "error":              "upgrade_required",
             "course_name":        course_name,
@@ -1623,6 +1628,66 @@ async def next_course_step(learner_id: str,
         "step": step.step, "title": step.title,
         "total_steps": len(course.steps), "content": content,
         "xp_gained": xp, "badge": badge,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Course — previous lesson (re-deliver the previous step without advancing)
+# ---------------------------------------------------------------------------
+
+@app.post("/course/prev")
+async def prev_course_step(learner_id: str,
+                           user=Depends(get_current_user)) -> dict:
+    """Go back one step in the current course without losing progress."""
+    validate_learner_id(learner_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to continue your course.")
+    if user.learner_id != learner_id:
+        raise HTTPException(status_code=403, detail="You can only manage your own courses.")
+
+    profile = get_profile(learner_id)
+    if not profile.current_course:
+        raise HTTPException(status_code=400, detail="No active course. Start a course first.")
+
+    course = get_course(profile.current_course)
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found.")
+
+    # Step back — minimum is step 1
+    if profile.current_course_step > 1:
+        from app.progress import save_profile as _sp
+        profile.current_course_step -= 1
+        _sp(profile)
+
+    step_idx = profile.current_course_step - 1
+    if step_idx < 0 or step_idx >= len(course.steps):
+        step_idx = 0
+
+    step = course.steps[step_idx]
+    system_prompt = build_system_prompt(step.intent, topic=step.title, level=profile.level)
+    messages = [{"role": "user", "content": f"Teach me: {step.description}"}]
+
+    content = None
+    for _attempt in range(2):
+        try:
+            content = get_completion(system_prompt, messages, intent="course")
+            break
+        except Exception as exc:
+            exc_type = type(exc).__name__.lower()
+            if any(k in exc_type for k in ("ratelimit", "timeout", "serviceunavailable")):
+                import asyncio as _asyncio_prev
+                await _asyncio_prev.sleep(1)
+                continue
+            break
+
+    if content is None:
+        raise HTTPException(status_code=503, detail="Sir. Tega is warming up. Please try again.")
+
+    return {
+        "completed": False, "course": course.name,
+        "step": step.step, "title": step.title,
+        "total_steps": len(course.steps), "content": content,
+        "xp_gained": 0, "badge": None,
     }
 
 # ---------------------------------------------------------------------------
@@ -1906,14 +1971,18 @@ async def paystack_webhook(request: Request) -> dict:
 
             if not tier:
                 # Infer tier from amount using canonical bundle prices:
-                # Premium/Advanced ₦100,000 | Intermediate ₦60,000 | Beginner ₦30,000
-                # Certificate fees: exec-cert ₦100k | adv-cert ₦60k | basic-cert ₦30k
+                # Premium ₦100,000 (tier4) | Advanced ₦100,000 (tier3) | Intermediate ₦60,000 (tier2) | Beginner ₦30,000 (tier1)
+                # When amount is ₦100k and plan_meta is empty, default to tier3 (Advanced Bundle)
+                # tier4 requires explicit "premium bundle" in plan name
                 if amount_ngn >= 90000:
-                    tier = "tier4"   # Premium Bundle ₦100,000 (also Executive Masters cert)
+                    if "premium" in plan_meta:
+                        tier = "tier4"   # Premium Bundle ₦100,000 — all 16 courses
+                    else:
+                        tier = "tier3"   # Advanced Bundle ₦100,000 — 14 courses
                 elif amount_ngn >= 50000:
-                    tier = "tier2"   # Intermediate Bundle ₦60,000 (also Advanced cert)
+                    tier = "tier2"   # Intermediate Bundle ₦60,000
                 elif amount_ngn >= 25000:
-                    tier = "tier1"   # Beginner Bundle ₦30,000 (also Basic cert)
+                    tier = "tier1"   # Beginner Bundle ₦30,000
 
             # ── TYPE 3: Prompt plan (parallel check) ─────────────────────
             prompt_plan = _PAYSTACK_PROMPT_PLAN.get(plan_meta)
@@ -4417,6 +4486,47 @@ async def get_payment_metadata(learner_id: str,
             ],
         }
     }
+
+
+# ---------------------------------------------------------------------------
+# TTS — text-to-speech via browser Web Speech API (zero extra dependencies)
+# Returns clean plain-text for the frontend to speak using speechSynthesis.
+# Falls back gracefully: if Groq summarisation fails, echoes the raw text.
+# ---------------------------------------------------------------------------
+
+@app.post("/tts/prepare")
+async def tts_prepare(request: Request) -> dict:
+    """
+    Prepare text for browser TTS.
+    Strips markdown, code blocks and excess whitespace so the browser's
+    speechSynthesis reads naturally.  No audio file is generated server-side —
+    the frontend calls window.speechSynthesis.speak() with the returned text.
+    """
+    import re as _re_tts
+    body = await request.json()
+    raw_text: str = body.get("text", "")
+    if not raw_text or not raw_text.strip():
+        raise HTTPException(status_code=400, detail="No text provided.")
+
+    # Strip markdown code fences
+    text = _re_tts.sub(r"```[\s\S]*?```", " [code block] ", raw_text)
+    # Strip inline code
+    text = _re_tts.sub(r"`[^`]+`", lambda m: m.group(0)[1:-1], text)
+    # Strip markdown bold/italic/headings
+    text = _re_tts.sub(r"[*_]{1,3}(.+?)[*_]{1,3}", r"\1", text)
+    text = _re_tts.sub(r"^#{1,6}\s+", "", text, flags=_re_tts.MULTILINE)
+    # Strip links [label](url) → label
+    text = _re_tts.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", text)
+    # Collapse excess whitespace
+    text = _re_tts.sub(r"\n{3,}", "\n\n", text)
+    text = _re_tts.sub(r"[ \t]{2,}", " ", text)
+    text = text.strip()
+
+    # Truncate to ~3000 chars so speech stays manageable
+    if len(text) > 3000:
+        text = text[:2997] + "..."
+
+    return {"text": text, "char_count": len(text)}
 
 
 # ---------------------------------------------------------------------------
