@@ -1,0 +1,63 @@
+services:
+  - type: web
+    name: mypy-tutor
+    runtime: python
+    plan: free                    # Render free tier: 512MB RAM, 0.1 CPU
+    buildCommand: pip install --no-cache-dir -r requirements.txt
+    # Single worker — free tier only has 0.1 CPU, multiple workers thrash
+    # --timeout 120 — Groq LLM can take up to 30s, with retries up to 60s
+    # --keep-alive 5 — keep connections alive briefly to avoid reconnect overhead
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --timeout-keep-alive 5
+    healthCheckPath: /health
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: EMAIL_HOST
+        value: smtp.gmail.com
+      - key: EMAIL_PORT
+        value: "587"
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASS
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: APP_URL
+        value: https://mypytutor.onrender.com
+      - key: FRONTEND_URL
+        value: https://mypytutor.com.ng
+      - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: DB_PATH
+        sync: false
+      # Observability
+      - key: RESEND_API_KEY
+        sync: false          # Get from resend.com/api-keys
+      - key: SENTRY_DSN
+        sync: false          # Get from sentry.io → Project → Settings → Client Keys
+      # Python optimisations for low-memory deployment
+      - key: PYTHONOPTIMIZE
+        value: "1"              # removes assert statements and docstrings from .pyc
+      - key: PYTHONDONTWRITEBYTECODE
+        value: "1"              # skip .pyc files — saves disk I/O on ephemeral fs
+    autoDeploy: true

@@ -1,0 +1,25 @@
+# ── Core web framework ────────────────────────────────────────────────────
+fastapi==0.115.5
+uvicorn==0.32.1
+starlette==0.41.3
+python-multipart==0.0.9
+
+# ── AI / LLM ──────────────────────────────────────────────────────────────
+groq==1.4.0
+httpx==0.28.0          # used by GitHub OAuth, Resend API, Google tokeninfo
+
+# ── Auth / Security ───────────────────────────────────────────────────────
+bcrypt==4.2.1
+itsdangerous==2.2.0
+
+# ── Data validation ───────────────────────────────────────────────────────
+pydantic==2.13.4
+
+# ── Supabase cloud persistence ────────────────────────────────────────────
+supabase>=2.11.0
+
+# ── Observability — Sentry error tracking (free tier) ────────────────────
+sentry-sdk[fastapi]==2.19.2
+
+# ── Environment ───────────────────────────────────────────────────────────
+python-dotenv==1.0.1
