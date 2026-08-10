@@ -110,17 +110,18 @@ def record_message_feedback(fb: MessageFeedback) -> None:
     )
     _ratings.append(r)
 
-    # Persist to SQLite so feedback survives Render restarts
+    # Persist to PostgreSQL so feedback survives restarts
     try:
         from app.db import get_db as _gdb
         with _gdb() as _conn:
-            _conn.execute(
-                "INSERT INTO feedback_ratings (learner_id, rating, intent, topic, comment) "
-                "VALUES (?,?,?,?,?)",
-                (fb.learner_id, fb.rating, fb.intent or '', fb.topic or '', fb.comment or '')
-            )
+            with _conn.cursor() as _cur:
+                _cur.execute(
+                    "INSERT INTO feedback_ratings (learner_id, rating, intent, topic, comment) "
+                    "VALUES (%s,%s,%s,%s,%s)",
+                    (fb.learner_id, fb.rating, fb.intent or '', fb.topic or '', fb.comment or '')
+                )
     except Exception as exc:
-        logger.debug("Feedback SQLite save failed (non-fatal): %s", exc)
+        logger.debug("Feedback DB save failed (non-fatal): %s", exc)
 
     emoji   = "👍" if fb.rating == "up" else "👎"
     ts      = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
@@ -154,19 +155,20 @@ def record_survey(fb: SurveyFeedback) -> None:
     )
     _surveys.append(s)
 
-    # Persist to SQLite so surveys survive Render restarts
+    # Persist to PostgreSQL so surveys survive restarts
     try:
         from app.db import get_db as _gdb
         with _gdb() as _conn:
-            _conn.execute(
-                "INSERT INTO feedback_surveys "
-                "(learner_id, overall, clarity, helpfulness, suggestion, would_recommend) "
-                "VALUES (?,?,?,?,?,?)",
-                (fb.learner_id, fb.overall, fb.clarity, fb.helpfulness,
-                 fb.suggestion or '', int(fb.would_recommend))
-            )
+            with _conn.cursor() as _cur:
+                _cur.execute(
+                    "INSERT INTO feedback_surveys "
+                    "(learner_id, overall, clarity, helpfulness, suggestion, would_recommend) "
+                    "VALUES (%s,%s,%s,%s,%s,%s)",
+                    (fb.learner_id, fb.overall, fb.clarity, fb.helpfulness,
+                     fb.suggestion or '', int(fb.would_recommend))
+                )
     except Exception as exc:
-        logger.debug("Survey SQLite save failed (non-fatal): %s", exc)
+        logger.debug("Survey DB save failed (non-fatal): %s", exc)
 
     stars   = "⭐" * fb.overall
     ts      = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")

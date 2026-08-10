@@ -15,6 +15,9 @@ itsdangerous==2.2.0
 # ── Data validation ───────────────────────────────────────────────────────
 pydantic==2.13.4
 
+# ── PostgreSQL database ───────────────────────────────────────────────────
+psycopg2-binary==2.9.10
+
 # ── Supabase cloud persistence ────────────────────────────────────────────
 supabase>=2.11.0
 

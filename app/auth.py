@@ -218,13 +218,16 @@ def get_or_create_user(google_payload: dict) -> UserAccount:
             try:
                 from app.db import get_db as _gdb2
                 with _gdb2() as _conn2:
-                    _conn2.execute("""
-                        INSERT INTO user_profiles (learner_id, display_name, photo_url)
-                        VALUES (?, ?, ?)
-                        ON CONFLICT(learner_id) DO UPDATE SET
-                          photo_url = CASE WHEN excluded.photo_url != '' THEN excluded.photo_url ELSE user_profiles.photo_url END,
-                          display_name = CASE WHEN excluded.display_name != '' THEN excluded.display_name ELSE user_profiles.display_name END
-                    """, (learner_id, name or "", picture))
+                    with _conn2.cursor() as _cur2:
+                        _cur2.execute("""
+                            INSERT INTO user_profiles (learner_id, display_name, photo_url)
+                            VALUES (%s, %s, %s)
+                            ON CONFLICT(learner_id) DO UPDATE SET
+                              photo_url    = CASE WHEN EXCLUDED.photo_url <> '' THEN EXCLUDED.photo_url
+                                                  ELSE user_profiles.photo_url END,
+                              display_name = CASE WHEN EXCLUDED.display_name <> '' THEN EXCLUDED.display_name
+                                                  ELSE user_profiles.display_name END
+                        """, (learner_id, name or "", picture))
             except Exception:
                 pass
     except Exception:
@@ -269,12 +272,15 @@ def get_user_by_id(learner_id: str) -> Optional[UserAccount]:
             # Determine picture: Google users have it in Supabase profiles table
             picture = ""
             try:
+                import psycopg2.extras as _pge
                 from app.db import get_db as _gdb
                 with _gdb() as _conn:
-                    row = _conn.execute(
-                        "SELECT photo_url FROM user_profiles WHERE learner_id=?",
-                        (learner_id,)
-                    ).fetchone()
+                    with _conn.cursor(cursor_factory=_pge.RealDictCursor) as _cur:
+                        _cur.execute(
+                            "SELECT photo_url FROM user_profiles WHERE learner_id=%s",
+                            (learner_id,)
+                        )
+                        row = _cur.fetchone()
                     if row:
                         picture = row["photo_url"] or ""
             except Exception:

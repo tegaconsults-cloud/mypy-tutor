@@ -111,19 +111,20 @@ def add_payment(user_email: str, user_name: str, amount: float,
         method=method,
         notes=notes,
     )
-    # Persist to SQLite first
+    # Persist to PostgreSQL first
     try:
         from app.db import get_db as _gdb
         with _gdb() as conn:
-            conn.execute(
-                "INSERT OR IGNORE INTO payments "
-                "(id,user_email,user_name,amount,currency,plan,method,status,notes) "
-                "VALUES (?,?,?,?,?,?,?,?,?)",
-                (p.id, p.user_email, p.user_name, p.amount, p.currency,
-                 p.plan, p.method, p.status, p.notes)
-            )
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO payments "
+                    "(id,user_email,user_name,amount,currency,plan,method,status,notes) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(id) DO NOTHING",
+                    (p.id, p.user_email, p.user_name, p.amount, p.currency,
+                     p.plan, p.method, p.status, p.notes)
+                )
     except Exception as e:
-        logger.warning("add_payment SQLite write failed: %s", e)
+        logger.warning("add_payment DB write failed: %s", e)
         _payments.append(p)  # fallback to memory only
     else:
         _payments.append(p)  # also keep in memory for this session
@@ -131,21 +132,21 @@ def add_payment(user_email: str, user_name: str, amount: float,
 
 
 def confirm_payment(payment_id: str) -> bool:
-    # Update SQLite
+    # Update PostgreSQL
     try:
         from app.db import get_db as _gdb
         with _gdb() as conn:
-            cur = conn.execute(
-                "UPDATE payments SET status='confirmed' WHERE id=?", (payment_id,)
-            )
-            if cur.rowcount > 0:
-                # Also update in-memory cache
-                for p in _payments:
-                    if p.id == payment_id:
-                        p.status = "confirmed"
-                return True
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE payments SET status='confirmed' WHERE id=%s", (payment_id,)
+                )
+                if cur.rowcount > 0:
+                    for p in _payments:
+                        if p.id == payment_id:
+                            p.status = "confirmed"
+                    return True
     except Exception as e:
-        logger.warning("confirm_payment SQLite failed: %s", e)
+        logger.warning("confirm_payment DB failed: %s", e)
     # Fallback: update in memory only
     for p in _payments:
         if p.id == payment_id:
@@ -155,18 +156,18 @@ def confirm_payment(payment_id: str) -> bool:
 
 
 def get_payments() -> list[dict]:
-    """Return all payments from SQLite (persistent). Falls back to in-memory."""
+    """Return all payments from PostgreSQL. Falls back to in-memory."""
     try:
+        import psycopg2.extras
         from app.db import get_db as _gdb
         import datetime as _dt
         with _gdb() as conn:
-            rows = conn.execute(
-                "SELECT * FROM payments ORDER BY created_at DESC"
-            ).fetchall()
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute("SELECT * FROM payments ORDER BY created_at DESC")
+                rows = cur.fetchall()
         result = []
         for r in rows:
             d = dict(r)
-            # Convert unix timestamp to ISO string for the frontend
             try:
                 d["created_at"] = _dt.datetime.fromtimestamp(float(d["created_at"])).isoformat()
             except Exception:
@@ -174,7 +175,7 @@ def get_payments() -> list[dict]:
             result.append(d)
         return result
     except Exception as e:
-        logger.warning("get_payments SQLite failed, using memory: %s", e)
+        logger.warning("get_payments DB failed, using memory: %s", e)
         result = []
         for p in sorted(_payments, key=lambda x: x.created_at, reverse=True):
             result.append({
@@ -187,28 +188,32 @@ def get_payments() -> list[dict]:
 
 
 def get_revenue_summary() -> dict:
-    """Compute revenue summary from SQLite payments table."""
+    """Compute revenue summary from PostgreSQL payments table."""
     try:
+        import psycopg2.extras
         from app.db import get_db as _gdb
         today = date.today().isoformat()
         with _gdb() as conn:
-            row = conn.execute(
-                "SELECT COALESCE(SUM(amount),0), COUNT(*) FROM payments WHERE status='confirmed'"
-            ).fetchone()
-            total_rev   = float(row[0] or 0)
-            confirmed   = int(row[1] or 0)
-            pending     = conn.execute(
-                "SELECT COUNT(*) FROM payments WHERE status='pending'"
-            ).fetchone()[0]
-            total_pmts  = conn.execute("SELECT COUNT(*) FROM payments").fetchone()[0]
-            today_rev   = conn.execute(
-                "SELECT COALESCE(SUM(amount),0) FROM payments "
-                "WHERE status='confirmed' AND DATE(created_at,'unixepoch')=?", (today,)
-            ).fetchone()[0]
-            plan_rows = conn.execute(
-                "SELECT plan, SUM(amount) FROM payments WHERE status='confirmed' GROUP BY plan"
-            ).fetchall()
-            by_plan = {r[0]: float(r[1]) for r in plan_rows}
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT COALESCE(SUM(amount),0), COUNT(*) FROM payments WHERE status='confirmed'"
+                )
+                row = cur.fetchone()
+                total_rev = float(row[0] or 0)
+                confirmed = int(row[1] or 0)
+                cur.execute("SELECT COUNT(*) FROM payments WHERE status='pending'")
+                pending = cur.fetchone()[0]
+                cur.execute("SELECT COUNT(*) FROM payments")
+                total_pmts = cur.fetchone()[0]
+                cur.execute(
+                    "SELECT COALESCE(SUM(amount),0) FROM payments "
+                    "WHERE status='confirmed' AND DATE(to_timestamp(created_at))=%s", (today,)
+                )
+                today_rev = cur.fetchone()[0]
+                cur.execute(
+                    "SELECT plan, SUM(amount) FROM payments WHERE status='confirmed' GROUP BY plan"
+                )
+                by_plan = {r[0]: float(r[1]) for r in cur.fetchall()}
         return {
             "total_revenue": total_rev,
             "today_revenue": float(today_rev or 0),
@@ -218,7 +223,7 @@ def get_revenue_summary() -> dict:
             "by_plan": by_plan,
         }
     except Exception as e:
-        logger.warning("get_revenue_summary SQLite failed: %s", e)
+        logger.warning("get_revenue_summary DB failed: %s", e)
         confirmed_list = [p for p in _payments if p.status == "confirmed"]
         total = sum(p.amount for p in confirmed_list)
         return {
@@ -251,12 +256,14 @@ def invite_team_member(email: str, name: str, role: str = "team") -> TeamMember:
     try:
         from app.db import get_db as _gdb
         with _gdb() as conn:
-            conn.execute(
-                "INSERT OR IGNORE INTO team_members (email,name,role) VALUES (?,?,?)",
-                (email.lower(), name, role)
-            )
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO team_members (email,name,role) VALUES (%s,%s,%s) "
+                    "ON CONFLICT(email) DO NOTHING",
+                    (email.lower(), name, role)
+                )
     except Exception as e:
-        logger.warning("invite_team_member SQLite failed: %s", e)
+        logger.warning("invite_team_member DB failed: %s", e)
     # Also update in-memory
     for m in _team:
         if m.email.lower() == email.lower():
@@ -267,14 +274,17 @@ def invite_team_member(email: str, name: str, role: str = "team") -> TeamMember:
 
 
 def get_team() -> list[dict]:
-    """Return team members from SQLite."""
+    """Return team members from PostgreSQL."""
     try:
+        import psycopg2.extras
         from app.db import get_db as _gdb
         with _gdb() as conn:
-            rows = conn.execute("SELECT * FROM team_members ORDER BY invited_at DESC").fetchall()
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute("SELECT * FROM team_members ORDER BY invited_at DESC")
+                rows = cur.fetchall()
         return [dict(r) for r in rows]
     except Exception as e:
-        logger.warning("get_team SQLite failed: %s", e)
+        logger.warning("get_team DB failed: %s", e)
         return [{"email": m.email, "name": m.name, "role": m.role, "status": m.status} for m in _team]
 
 
@@ -310,13 +320,14 @@ def create_task(title: str, description: str, assigned_to: str,
     try:
         from app.db import get_db as _gdb
         with _gdb() as conn:
-            conn.execute(
-                "INSERT OR IGNORE INTO tasks (id,title,description,assigned_to,priority,status,due_date) "
-                "VALUES (?,?,?,?,?,?,?)",
-                (t.id, t.title, t.description, t.assigned_to, t.priority, t.status, t.due_date)
-            )
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO tasks (id,title,description,assigned_to,priority,status,due_date) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s) ON CONFLICT(id) DO NOTHING",
+                    (t.id, t.title, t.description, t.assigned_to, t.priority, t.status, t.due_date)
+                )
     except Exception as e:
-        logger.warning("create_task SQLite failed: %s", e)
+        logger.warning("create_task DB failed: %s", e)
     _tasks.append(t)
     return t
 
@@ -325,16 +336,17 @@ def update_task_status(task_id: str, status: str) -> bool:
     try:
         from app.db import get_db as _gdb
         with _gdb() as conn:
-            cur = conn.execute(
-                "UPDATE tasks SET status=? WHERE id=?", (status, task_id)
-            )
-            if cur.rowcount > 0:
-                for t in _tasks:
-                    if t.id == task_id:
-                        t.status = status
-                return True
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE tasks SET status=%s WHERE id=%s", (status, task_id)
+                )
+                if cur.rowcount > 0:
+                    for t in _tasks:
+                        if t.id == task_id:
+                            t.status = status
+                    return True
     except Exception as e:
-        logger.warning("update_task_status SQLite failed: %s", e)
+        logger.warning("update_task_status DB failed: %s", e)
     for t in _tasks:
         if t.id == task_id:
             t.status = status
@@ -343,12 +355,15 @@ def update_task_status(task_id: str, status: str) -> bool:
 
 
 def get_tasks() -> list[dict]:
-    """Return tasks from SQLite."""
+    """Return tasks from PostgreSQL."""
     try:
+        import psycopg2.extras
         from app.db import get_db as _gdb
         import datetime as _dt
         with _gdb() as conn:
-            rows = conn.execute("SELECT * FROM tasks ORDER BY created_at DESC").fetchall()
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute("SELECT * FROM tasks ORDER BY created_at DESC")
+                rows = cur.fetchall()
         result = []
         for r in rows:
             d = dict(r)
@@ -359,7 +374,7 @@ def get_tasks() -> list[dict]:
             result.append(d)
         return result
     except Exception as e:
-        logger.warning("get_tasks SQLite failed: %s", e)
+        logger.warning("get_tasks DB failed: %s", e)
         return [{"id": t.id, "title": t.title, "description": t.description,
                  "assigned_to": t.assigned_to, "priority": t.priority,
                  "status": t.status, "due_date": t.due_date} for t in _tasks]
@@ -447,23 +462,25 @@ def _save_announcement_db(subject: str, target: str, sent_to: int) -> None:
     try:
         from app.db import get_db as _gdb
         with _gdb() as conn:
-            conn.execute(
-                "INSERT INTO announcements (subject,target,sent_to) VALUES (?,?,?)",
-                (subject, target, sent_to)
-            )
+            with conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO announcements (subject,target,sent_to) VALUES (%s,%s,%s)",
+                    (subject, target, sent_to)
+                )
     except Exception as e:
         logger.warning("save_announcement_db failed: %s", e)
 
 
 def get_announcements() -> list[dict]:
-    """Return announcements from SQLite, falling back to in-memory."""
+    """Return announcements from PostgreSQL, falling back to in-memory."""
     try:
+        import psycopg2.extras
         from app.db import get_db as _gdb
         import datetime as _dt
         with _gdb() as conn:
-            rows = conn.execute(
-                "SELECT * FROM announcements ORDER BY id DESC LIMIT 100"
-            ).fetchall()
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute("SELECT * FROM announcements ORDER BY id DESC LIMIT 100")
+                rows = cur.fetchall()
         result = []
         for r in rows:
             d = dict(r)

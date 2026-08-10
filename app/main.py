@@ -497,15 +497,18 @@ async def auth_me(user=Depends(require_user)) -> AuthResponse:
     picture = user.picture or ""
     if not picture:
         try:
+            import psycopg2.extras as _pge
             from app.db import get_db as _gdb
             with _gdb() as _conn:
-                row = _conn.execute(
-                    "SELECT photo_url FROM user_profiles WHERE learner_id=?",
-                    (user.learner_id,)
-                ).fetchone()
+                with _conn.cursor(cursor_factory=_pge.RealDictCursor) as _cur:
+                    _cur.execute(
+                        "SELECT photo_url FROM user_profiles WHERE learner_id=%s",
+                        (user.learner_id,)
+                    )
+                    row = _cur.fetchone()
                 if row and row["photo_url"]:
                     picture = row["photo_url"]
-                    user.picture = picture  # update in-memory cache
+                    user.picture = picture
         except Exception:
             pass
     profile = get_user_profile_db(user.learner_id)
@@ -660,13 +663,16 @@ async def auth_github_callback(code: str = None, error: str = None,
             try:
                 from app.db import get_db as _gdb
                 with _gdb() as _conn:
-                    _conn.execute("""
-                        INSERT INTO user_profiles (learner_id, display_name, photo_url)
-                        VALUES (?, ?, ?)
-                        ON CONFLICT(learner_id) DO UPDATE SET
-                          photo_url    = CASE WHEN excluded.photo_url != '' THEN excluded.photo_url ELSE user_profiles.photo_url END,
-                          display_name = CASE WHEN excluded.display_name != '' THEN excluded.display_name ELSE user_profiles.display_name END
-                    """, (learner_id, name or "", picture))
+                    with _conn.cursor() as _cur:
+                        _cur.execute("""
+                            INSERT INTO user_profiles (learner_id, display_name, photo_url)
+                            VALUES (%s, %s, %s)
+                            ON CONFLICT(learner_id) DO UPDATE SET
+                              photo_url    = CASE WHEN EXCLUDED.photo_url <> '' THEN EXCLUDED.photo_url
+                                                  ELSE user_profiles.photo_url END,
+                              display_name = CASE WHEN EXCLUDED.display_name <> '' THEN EXCLUDED.display_name
+                                                  ELSE user_profiles.display_name END
+                        """, (learner_id, name or "", picture))
             except Exception:
                 pass
         # Non-blocking Supabase mirror
@@ -1001,31 +1007,32 @@ async def submit_enquiry(body: _EnquiryRequest) -> dict:
     if not _re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", body.email):
         raise HTTPException(status_code=400, detail="Invalid email address.")
 
-    # Persist to SQLite
+    # Persist to PostgreSQL
     try:
         from app.db import get_db as _gdb
         with _gdb() as _conn:
-            _conn.execute("""
-                CREATE TABLE IF NOT EXISTS enquiries (
-                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                    learner_id  TEXT DEFAULT '',
-                    name        TEXT NOT NULL,
-                    email       TEXT NOT NULL,
-                    category    TEXT NOT NULL,
-                    subject     TEXT NOT NULL,
-                    message     TEXT NOT NULL,
-                    status      TEXT DEFAULT 'open',
-                    created_at  REAL DEFAULT (unixepoch())
+            with _conn.cursor() as _cur:
+                _cur.execute("""
+                    CREATE TABLE IF NOT EXISTS enquiries (
+                        id          SERIAL PRIMARY KEY,
+                        learner_id  TEXT DEFAULT '',
+                        name        TEXT NOT NULL,
+                        email       TEXT NOT NULL,
+                        category    TEXT NOT NULL,
+                        subject     TEXT NOT NULL,
+                        message     TEXT NOT NULL,
+                        status      TEXT DEFAULT 'open',
+                        created_at  DOUBLE PRECISION DEFAULT EXTRACT(EPOCH FROM NOW())
+                    )
+                """)
+                _cur.execute(
+                    "INSERT INTO enquiries (learner_id,name,email,category,subject,message) "
+                    "VALUES (%s,%s,%s,%s,%s,%s)",
+                    (body.learner_id, body.name, body.email,
+                     body.category, body.subject, body.message)
                 )
-            """)
-            _conn.execute(
-                "INSERT INTO enquiries (learner_id,name,email,category,subject,message) "
-                "VALUES (?,?,?,?,?,?)",
-                (body.learner_id, body.name, body.email,
-                 body.category, body.subject, body.message)
-            )
     except Exception as _e:
-        logger.debug("Enquiry SQLite save failed (non-fatal): %s", _e)
+        logger.debug("Enquiry DB save failed (non-fatal): %s", _e)
 
     # Send email to support inbox + confirmation to user
     try:
@@ -1181,13 +1188,16 @@ async def verify_certificate(cert_id: str) -> HTMLResponse:
 
     record = None
     try:
+        import psycopg2.extras as _pge
         from app.db import get_db as _gdb
         with _gdb() as _conn:
-            row = _conn.execute(
-                "SELECT * FROM certificates WHERE cert_id=?", (cert_id,)
-            ).fetchone()
-        if row:
-            record = dict(row)
+            with _conn.cursor(cursor_factory=_pge.RealDictCursor) as _cur:
+                _cur.execute(
+                    "SELECT * FROM certificates WHERE cert_id=%s", (cert_id,)
+                )
+                row = _cur.fetchone()
+            if row:
+                record = dict(row)
     except Exception as exc:
         logger.warning("Cert verify DB error: %s", exc)
 
@@ -1821,28 +1831,27 @@ async def paystack_webhook(request: Request) -> dict:
             try:
                 from app.db import get_db as _gdb_idem
                 with _gdb_idem() as _idem_conn:
-                    # Create the processed_webhooks table if it doesn't exist
-                    _idem_conn.execute("""
-                        CREATE TABLE IF NOT EXISTS processed_webhooks (
-                            reference TEXT PRIMARY KEY,
-                            processed_at REAL DEFAULT (unixepoch())
+                    with _idem_conn.cursor() as _idem_cur:
+                        _idem_cur.execute("""
+                            CREATE TABLE IF NOT EXISTS processed_webhooks (
+                                reference    TEXT PRIMARY KEY,
+                                processed_at DOUBLE PRECISION DEFAULT EXTRACT(EPOCH FROM NOW())
+                            )
+                        """)
+                        _idem_cur.execute(
+                            "SELECT 1 FROM processed_webhooks WHERE reference=%s",
+                            (reference,)
                         )
-                    """)
-                    existing = _idem_conn.execute(
-                        "SELECT 1 FROM processed_webhooks WHERE reference=?",
-                        (reference,)
-                    ).fetchone()
-                    if existing:
-                        logger.info("Paystack webhook: duplicate reference %s — skipped", reference)
-                        return {"ok": True}
-                    # Mark as processed BEFORE doing any upgrades
-                    _idem_conn.execute(
-                        "INSERT INTO processed_webhooks (reference) VALUES (?)",
-                        (reference,)
-                    )
+                        existing = _idem_cur.fetchone()
+                        if existing:
+                            logger.info("Paystack webhook: duplicate reference %s — skipped", reference)
+                            return {"ok": True}
+                        _idem_cur.execute(
+                            "INSERT INTO processed_webhooks (reference) VALUES (%s)",
+                            (reference,)
+                        )
             except Exception as _idem_exc:
                 logger.warning("Webhook idempotency check failed (proceeding): %s", _idem_exc)
-                # Non-fatal: if we can't check, proceed but log the risk
 
         # Get learner_id from email
         from app.db import load_email_account
@@ -1923,13 +1932,14 @@ async def paystack_webhook(request: Request) -> dict:
                 try:
                     from app.db import get_db as _gdb2
                     with _gdb2() as _pc:
-                        _pc.execute("""
-                            INSERT INTO learner_profiles (learner_id, tier)
-                            VALUES (?, ?)
-                            ON CONFLICT(learner_id) DO UPDATE SET
-                              prompt_plan    = excluded.tier,
-                              updated_at     = unixepoch()
-                        """, (learner_id, prompt_plan))
+                        with _pc.cursor() as _pcc:
+                            _pcc.execute("""
+                                INSERT INTO learner_profiles (learner_id, tier, prompt_plan)
+                                VALUES (%s, %s, %s)
+                                ON CONFLICT(learner_id) DO UPDATE SET
+                                  prompt_plan = EXCLUDED.prompt_plan,
+                                  updated_at  = EXTRACT(EPOCH FROM NOW())
+                            """, (learner_id, prompt_plan, prompt_plan))
                 except Exception:
                     pass  # non-fatal — in-memory reset still applied
                 log_activity(learner_id, "payment:prompt_plan",
@@ -1984,21 +1994,25 @@ async def paystack_webhook(request: Request) -> dict:
 
                 # Credit referral bonus
                 try:
+                    import psycopg2.extras as _pge2
                     from app.db import get_db as _gdb
                     with _gdb() as _conn:
-                        ref_use = _conn.execute(
-                            "SELECT code FROM referral_uses "
-                            "WHERE used_by_id=? OR used_by_email=? LIMIT 1",
-                            (learner_id, email)
-                        ).fetchone()
+                        with _conn.cursor(cursor_factory=_pge2.RealDictCursor) as _cur:
+                            _cur.execute(
+                                "SELECT code FROM referral_uses "
+                                "WHERE used_by_id=%s OR used_by_email=%s LIMIT 1",
+                                (learner_id, email)
+                            )
+                            ref_use = _cur.fetchone()
                     if ref_use:
                         _ref_code = ref_use["code"]
-                        bonus = round(amount_ngn * 0.15, 2)  # 15% bonus to referrer on payment
+                        bonus = round(amount_ngn * 0.15, 2)
                         with _gdb() as _conn:
-                            _conn.execute(
-                                "UPDATE referrals SET bonus_balance=bonus_balance+? WHERE code=?",
-                                (bonus, _ref_code)
-                            )
+                            with _conn.cursor() as _cur:
+                                _cur.execute(
+                                    "UPDATE referrals SET bonus_balance=bonus_balance+%s WHERE code=%s",
+                                    (bonus, _ref_code)
+                                )
                         logger.info("Credited ₦%s referral bonus (15%%) for code %s", bonus, _ref_code)
                 except Exception as rb_exc:
                     logger.debug("Referral bonus credit failed: %s", rb_exc)
@@ -2137,80 +2151,86 @@ async def admin_dashboard(request: Request) -> dict:
     wat_today    = _dt.date.today().isoformat()   # already computed above
 
     try:
+        import psycopg2.extras as _pge
         from app.db import get_db as _gdb, get_all_confirmed_emails, get_certificates_db
 
         with _gdb() as _conn:
-            # Total unique users: union of email_accounts + learner_profiles
-            email_count    = _conn.execute("SELECT COUNT(*) FROM email_accounts WHERE confirmed=1").fetchone()[0]
-            profile_count  = _conn.execute("SELECT COUNT(*) FROM learner_profiles").fetchone()[0]
-            total_users    = max(email_count, profile_count)
+            with _conn.cursor() as _cur:
+                from app.security import _wat_date_key
+                wat_date = _wat_date_key()
 
-            # Active today — prompt counter from persistent table
-            from app.security import _wat_date_key
-            wat_date = _wat_date_key()
-            active_today = _conn.execute(
-                "SELECT COUNT(DISTINCT key) FROM daily_prompt_counts WHERE date_str=? AND count>0",
-                (wat_date,)
-            ).fetchone()[0]
+                _cur.execute("SELECT COUNT(*) FROM email_accounts WHERE confirmed=1")
+                email_count = _cur.fetchone()[0]
+                _cur.execute("SELECT COUNT(*) FROM learner_profiles")
+                profile_count = _cur.fetchone()[0]
+                total_users = max(email_count, profile_count)
 
-            # Users by tier — from SQLite
-            tier_counts: dict = {}
-            for tier in ["free", "tier1", "tier2", "tier3"]:
-                n = _conn.execute(
-                    "SELECT COUNT(*) FROM learner_profiles WHERE tier=?", (tier,)
-                ).fetchone()[0]
-                tier_counts[tier] = n
+                _cur.execute(
+                    "SELECT COUNT(DISTINCT key) FROM daily_prompt_counts WHERE date_str=%s AND count>0",
+                    (wat_date,)
+                )
+                active_today = _cur.fetchone()[0]
 
-            # Revenue from SQLite payments table
-            rev_rows = _conn.execute(
-                "SELECT SUM(amount), COUNT(*) FROM payments WHERE status='confirmed'"
-            ).fetchone()
-            total_revenue  = float(rev_rows[0] or 0)
-            confirmed_pmts = int(rev_rows[1] or 0)
-            pending_pmts   = _conn.execute(
-                "SELECT COUNT(*) FROM payments WHERE status='pending'"
-            ).fetchone()[0]
-            total_pmts = _conn.execute("SELECT COUNT(*) FROM payments").fetchone()[0]
+                tier_counts: dict = {}
+                for _tier in ["free", "tier1", "tier2", "tier3"]:
+                    _cur.execute(
+                        "SELECT COUNT(*) FROM learner_profiles WHERE tier=%s", (_tier,)
+                    )
+                    tier_counts[_tier] = _cur.fetchone()[0]
 
-            # Revenue by plan
-            plan_rows = _conn.execute(
-                "SELECT plan, SUM(amount) FROM payments WHERE status='confirmed' GROUP BY plan"
-            ).fetchall()
-            by_plan = {r[0]: float(r[1]) for r in plan_rows}
+                _cur.execute("SELECT SUM(amount), COUNT(*) FROM payments WHERE status='confirmed'")
+                rev_rows = _cur.fetchone()
+                total_revenue  = float(rev_rows[0] or 0)
+                confirmed_pmts = int(rev_rows[1] or 0)
 
-            # Revenue today
-            today_rev = _conn.execute(
-                "SELECT COALESCE(SUM(amount),0) FROM payments WHERE status='confirmed' AND DATE(created_at,'unixepoch')=?",
-                (today_str,)
-            ).fetchone()[0]
+                _cur.execute("SELECT COUNT(*) FROM payments WHERE status='pending'")
+                pending_pmts = _cur.fetchone()[0]
+                _cur.execute("SELECT COUNT(*) FROM payments")
+                total_pmts = _cur.fetchone()[0]
 
-            # Certificates
-            cert_count = _conn.execute("SELECT COUNT(*) FROM certificates").fetchone()[0]
+                _cur.execute(
+                    "SELECT plan, SUM(amount) FROM payments WHERE status='confirmed' GROUP BY plan"
+                )
+                by_plan = {r[0]: float(r[1]) for r in _cur.fetchall()}
 
-            # Tasks
-            task_total = _conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
-            task_open  = _conn.execute("SELECT COUNT(*) FROM tasks WHERE status='open'").fetchone()[0]
-            task_inprog= _conn.execute("SELECT COUNT(*) FROM tasks WHERE status='in_progress'").fetchone()[0]
-            task_done  = _conn.execute("SELECT COUNT(*) FROM tasks WHERE status='done'").fetchone()[0]
+                # PostgreSQL: convert epoch to date using to_timestamp()
+                _cur.execute(
+                    "SELECT COALESCE(SUM(amount),0) FROM payments "
+                    "WHERE status='confirmed' AND DATE(to_timestamp(created_at))=%s",
+                    (today_str,)
+                )
+                today_rev = _cur.fetchone()[0]
 
-            # Team size
-            team_size = _conn.execute("SELECT COUNT(*) FROM team_members").fetchone()[0]
+                _cur.execute("SELECT COUNT(*) FROM certificates")
+                cert_count = _cur.fetchone()[0]
 
-            # Withdrawal requests
-            wd_pending = _conn.execute(
-                "SELECT COUNT(*) FROM referral_withdrawals WHERE status='pending'"
-            ).fetchone()[0]
+                _cur.execute("SELECT COUNT(*) FROM tasks")
+                task_total = _cur.fetchone()[0]
+                _cur.execute("SELECT COUNT(*) FROM tasks WHERE status='open'")
+                task_open = _cur.fetchone()[0]
+                _cur.execute("SELECT COUNT(*) FROM tasks WHERE status='in_progress'")
+                task_inprog = _cur.fetchone()[0]
+                _cur.execute("SELECT COUNT(*) FROM tasks WHERE status='done'")
+                task_done = _cur.fetchone()[0]
 
-            # New users in last 24h
-            import time as _time
-            cutoff_24h = _time.time() - 86400
-            new_users_24h = _conn.execute(
-                "SELECT COUNT(*) FROM email_accounts WHERE confirmed=1 AND created_at>=?",
-                (cutoff_24h,)
-            ).fetchone()[0]
+                _cur.execute("SELECT COUNT(*) FROM team_members")
+                team_size = _cur.fetchone()[0]
+
+                _cur.execute(
+                    "SELECT COUNT(*) FROM referral_withdrawals WHERE status='pending'"
+                )
+                wd_pending = _cur.fetchone()[0]
+
+                import time as _time
+                cutoff_24h = _time.time() - 86400
+                _cur.execute(
+                    "SELECT COUNT(*) FROM email_accounts WHERE confirmed=1 AND created_at>=%s",
+                    (cutoff_24h,)
+                )
+                new_users_24h = _cur.fetchone()[0]
 
     except Exception as e:
-        logger.error("admin_dashboard SQLite error: %s", e)
+        logger.error("admin_dashboard DB error: %s", e)
         # Fallback to memory
         from app.progress import _store as _ls
         total_users   = len(_ls)
@@ -2266,14 +2286,17 @@ async def admin_list_users(request: Request) -> dict:
 
     users_map: dict = {}   # learner_id → user dict
 
-    # 1. Seed from SQLite learner_profiles (canonical persistent store)
+    # 1. Seed from PostgreSQL learner_profiles (canonical persistent store)
     try:
+        import psycopg2.extras as _pge
         with _gdb() as _conn:
-            rows = _conn.execute(
-                "SELECT learner_id, email, display_name, tier, level, xp, "
-                "       topics_seen, completed_projects, badges, current_course "
-                "FROM learner_profiles"
-            ).fetchall()
+            with _conn.cursor(cursor_factory=_pge.RealDictCursor) as _cur:
+                _cur.execute(
+                    "SELECT learner_id, email, display_name, tier, level, xp, "
+                    "       topics_seen, completed_projects, badges, current_course "
+                    "FROM learner_profiles"
+                )
+                rows = _cur.fetchall()
             for r in rows:
                 lid = r["learner_id"]
                 try:
@@ -2295,7 +2318,7 @@ async def admin_list_users(request: Request) -> dict:
                     "current_course": r["current_course"],
                 }
     except Exception as _e:
-        logger.warning("admin_list_users SQLite learner_profiles error: %s", _e)
+        logger.warning("admin_list_users learner_profiles error: %s", _e)
 
     # 2. Overlay live in-memory data (fresher XP/tier if not yet flushed)
     for lid, profile in ls.items():
@@ -2462,12 +2485,15 @@ async def admin_confirm_payment(payment_id: str, request: Request) -> dict:
         raise HTTPException(status_code=404, detail="Payment not found.")
     # Send payment receipt email via email_service (non-blocking)
     try:
+        import psycopg2.extras as _pge
         from app.db import get_db as _gdb
         with _gdb() as _conn:
-            row = _conn.execute(
-                "SELECT user_email, user_name, amount, plan, currency, id FROM payments WHERE id=?",
-                (payment_id,)
-            ).fetchone()
+            with _conn.cursor(cursor_factory=_pge.RealDictCursor) as _cur:
+                _cur.execute(
+                    "SELECT user_email, user_name, amount, plan, currency, id FROM payments WHERE id=%s",
+                    (payment_id,)
+                )
+                row = _cur.fetchone()
         if row:
             from app.services.email_service import send_payment_receipt_email as _svc_pay
             _svc_pay(
@@ -2634,12 +2660,13 @@ async def admin_referrals(request: Request) -> dict:
     """Admin: all referral codes with usage stats and bonus balances."""
     _require_admin(request)
     from app.db import get_db as _gdb, get_referral_uses
-    with _gdb() as _conn:
-        refs = _conn.execute(
-            "SELECT * FROM referrals ORDER BY uses DESC"
-        ).fetchall()
-    result = []
+    import psycopg2.extras as _pge
     import datetime as _dt
+    with _gdb() as _conn:
+        with _conn.cursor(cursor_factory=_pge.RealDictCursor) as _cur:
+            _cur.execute("SELECT * FROM referrals ORDER BY uses DESC")
+            refs = _cur.fetchall()
+    result = []
     for r in refs:
         d = dict(r)
         d["created_at_fmt"] = _dt.datetime.fromtimestamp(d["created_at"]).strftime("%Y-%m-%d")
@@ -3601,28 +3628,30 @@ async def admin_update_withdrawal(withdrawal_id: int, request: Request) -> dict:
 
 @app.get("/admin/enquiries")
 async def admin_enquiries_list(request: Request) -> dict:
-    """Admin: list all support enquiries from SQLite."""
+    """Admin: list all support enquiries."""
     _require_admin(request)
     import datetime as _dt
+    import psycopg2.extras as _pge
     try:
         from app.db import get_db as _gdb
         with _gdb() as _conn:
-            _conn.execute("""
-                CREATE TABLE IF NOT EXISTS enquiries (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    learner_id TEXT DEFAULT '',
-                    name TEXT NOT NULL,
-                    email TEXT NOT NULL,
-                    category TEXT NOT NULL,
-                    subject TEXT NOT NULL,
-                    message TEXT NOT NULL,
-                    status TEXT DEFAULT 'open',
-                    created_at REAL DEFAULT (unixepoch())
-                )
-            """)
-            rows = _conn.execute(
-                "SELECT * FROM enquiries ORDER BY id DESC LIMIT 500"
-            ).fetchall()
+            with _conn.cursor() as _cur:
+                _cur.execute("""
+                    CREATE TABLE IF NOT EXISTS enquiries (
+                        id          SERIAL PRIMARY KEY,
+                        learner_id  TEXT DEFAULT '',
+                        name        TEXT NOT NULL,
+                        email       TEXT NOT NULL,
+                        category    TEXT NOT NULL,
+                        subject     TEXT NOT NULL,
+                        message     TEXT NOT NULL,
+                        status      TEXT DEFAULT 'open',
+                        created_at  DOUBLE PRECISION DEFAULT EXTRACT(EPOCH FROM NOW())
+                    )
+                """)
+            with _conn.cursor(cursor_factory=_pge.RealDictCursor) as _cur:
+                _cur.execute("SELECT * FROM enquiries ORDER BY id DESC LIMIT 500")
+                rows = _cur.fetchall()
         result = []
         for r in rows:
             d = dict(r)
@@ -3647,11 +3676,12 @@ async def admin_resolve_enquiry(enquiry_id: int, request: Request) -> dict:
     try:
         from app.db import get_db as _gdb
         with _gdb() as _conn:
-            cur = _conn.execute(
-                "UPDATE enquiries SET status='resolved' WHERE id=?", (enquiry_id,)
-            )
-        if cur.rowcount == 0:
-            raise HTTPException(status_code=404, detail="Enquiry not found.")
+            with _conn.cursor() as _cur:
+                _cur.execute(
+                    "UPDATE enquiries SET status='resolved' WHERE id=%s", (enquiry_id,)
+                )
+                if _cur.rowcount == 0:
+                    raise HTTPException(status_code=404, detail="Enquiry not found.")
         log_activity("admin", "enquiry:resolved", f"id={enquiry_id}")
         return {"ok": True, "enquiry_id": enquiry_id}
     except HTTPException:
@@ -3938,10 +3968,11 @@ def _recover_from_supabase() -> None:
                     )
                     # Restore uses and bonus_balance
                     with _gdb() as _conn:
-                        _conn.execute(
-                            "UPDATE referrals SET uses=?, bonus_balance=? WHERE code=?",
-                            (rr.get("uses", 0), rr.get("bonus_balance", 0), code)
-                        )
+                        with _conn.cursor() as _cur:
+                            _cur.execute(
+                                "UPDATE referrals SET uses=%s, bonus_balance=%s WHERE code=%s",
+                                (rr.get("uses", 0), rr.get("bonus_balance", 0), code)
+                            )
                     recovered_refs += 1
             except Exception as rr_exc:
                 logger.debug("Referral code restore failed for %s: %s", code, rr_exc)
@@ -4226,18 +4257,20 @@ async def auth_github_callback(code: str = None, error: str = None,
         _thr_gh2.Thread(target=sb_upsert_profile, args=(learner_id, email, name), daemon=False).start()
         log_activity(learner_id, "auth:github", f"login for {email}")
 
-        # Persist picture to user_profiles so it survives Render restarts
+        # Persist picture to user_profiles so it survives restarts
         if picture:
             try:
                 from app.db import get_db as _gdb
                 with _gdb() as _conn:
-                    _conn.execute("""
-                        INSERT INTO user_profiles (learner_id, display_name, photo_url)
-                        VALUES (?, ?, ?)
-                        ON CONFLICT(learner_id) DO UPDATE SET
-                          photo_url = excluded.photo_url,
-                          display_name = CASE WHEN excluded.display_name != '' THEN excluded.display_name ELSE user_profiles.display_name END
-                    """, (learner_id, name or "", picture))
+                    with _conn.cursor() as _cur:
+                        _cur.execute("""
+                            INSERT INTO user_profiles (learner_id, display_name, photo_url)
+                            VALUES (%s, %s, %s)
+                            ON CONFLICT(learner_id) DO UPDATE SET
+                              photo_url    = EXCLUDED.photo_url,
+                              display_name = CASE WHEN EXCLUDED.display_name <> '' THEN EXCLUDED.display_name
+                                                  ELSE user_profiles.display_name END
+                        """, (learner_id, name or "", picture))
             except Exception:
                 pass
 

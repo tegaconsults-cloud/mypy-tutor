@@ -55,6 +55,8 @@ services:
         sync: false          # Get from resend.com/api-keys
       - key: SENTRY_DSN
         sync: false          # Get from sentry.io → Project → Settings → Client Keys
+      - key: DATABASE_URL
+        sync: false          # PostgreSQL connection string — get from Render PostgreSQL dashboard
       # Python optimisations for low-memory deployment
       - key: PYTHONOPTIMIZE
         value: "1"              # removes assert statements and docstrings from .pyc
