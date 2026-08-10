@@ -157,17 +157,23 @@ except ValueError as exc:
     raise
 
 from app.email_auth import _load_confirmed_from_db
-init_db()
-_load_confirmed_from_db()
-
+try:
+    init_db()
+    _load_confirmed_from_db()
+    logger.info("Database ready")
+except Exception as _db_exc:
+    logger.warning(
+        "Database not available at startup: %s — "
+        "set DATABASE_URL in Render → mypy-tutor → Environment. "
+        "App will start but DB-dependent features will error until it is set.",
+        _db_exc
+    )
 # Purge expired/used password reset tokens so the table doesn't grow unbounded
 try:
     from app.db import purge_expired_reset_tokens
     purge_expired_reset_tokens()
 except Exception:
     pass
-
-logger.info("Database ready")
 
 app = FastAPI(
     title="MyPy Tutor",
