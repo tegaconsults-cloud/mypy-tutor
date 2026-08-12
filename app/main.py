@@ -4034,15 +4034,17 @@ def _run_reengagement_job() -> dict:
 
 
 def _reengagement_scheduler() -> None:
-    """Background thread — runs the re-engagement job every 24 hours."""
+    """Background thread — runs the re-engagement job every 24 hours.
+    Waits 6 hours on first boot to let the server warm up and DB connect."""
     import time as _t
+    _t.sleep(6 * 3600)   # wait 6 h after boot before first run
     while True:
         try:
             result = _run_reengagement_job()
             logger.info("Re-engagement scheduler: %s", result)
         except Exception as exc:
             logger.warning("Re-engagement scheduler error: %s", exc)
-        _t.sleep(86400)   # sleep 24 hours
+        _t.sleep(86400)   # sleep 24 hours between runs
 
 
 # Start the scheduler in a daemon thread on first import
@@ -4092,18 +4094,21 @@ def _recover_from_supabase() -> None:
 
     Render free tier wipes the filesystem on every deploy.
     This function:
-    1. Pulls ALL email accounts from Supabase → writes to SQLite + in-memory
-    2. Pulls ALL learner progress from Supabase → writes to SQLite
-    3. Logs exactly what was recovered so we can debug
+    1. Pulls ALL email accounts from Supabase → writes to PostgreSQL + in-memory
+    2. Logs exactly what was recovered so we can debug
 
     Called AFTER init_db() and _load_confirmed_from_db().
     Safe to call even when Supabase is not configured (no-ops gracefully).
+    Now uses PostgreSQL as the primary store — learner_progress recovery
+    is skipped (already in PostgreSQL). Only email accounts and referral
+    codes need Supabase recovery.
     """
+    import time as _t
+    _t.sleep(10)  # Give uvicorn 10s to fully start before making any network calls
+
     from app.supabase_client import sb_enabled, get_supabase
-    from app.db import (get_all_learners, save_profile_db,
-                        save_email_account, get_all_confirmed_emails)
+    from app.db import save_email_account, get_all_confirmed_emails
     from app.email_auth import _confirmed, _by_id
-    import json
 
     if not sb_enabled():
         logger.info("Supabase not configured — skipping cloud recovery")
@@ -4114,9 +4119,14 @@ def _recover_from_supabase() -> None:
         return
 
     # ── Step 1: Recover email accounts ──────────────────────────────────────
-    # Always pull from Supabase regardless of SQLite state.
-    # This ensures fresh deploys recover all users immediately.
+    # Pull from Supabase only accounts not already in PostgreSQL.
     try:
+        # Get emails already in our PostgreSQL DB to skip duplicates
+        try:
+            existing = {r["email"] for r in get_all_confirmed_emails()}
+        except Exception:
+            existing = set()
+
         res = sb.table("email_accounts") \
                 .select("email,learner_id,full_name,password_hash,confirmed") \
                 .eq("confirmed", True) \
@@ -4130,64 +4140,33 @@ def _recover_from_supabase() -> None:
             pw    = acct.get("password_hash", "")
             if not email or not lid:
                 continue
-            # Only add if not already in memory (avoid overwriting active session)
+            # Add to memory cache regardless
             if email not in _confirmed:
                 user = {"name": name, "email": email,
                         "learner_id": lid, "password_hash": pw, "token": ""}
                 _confirmed[email] = user
                 _by_id[lid]       = user
-                # Repopulate SQLite
+            # Only write to PostgreSQL if not already there
+            if email not in existing:
                 try:
                     save_email_account(email=email, name=name, learner_id=lid,
                                        password_hash=pw, token="", confirmed=True)
+                    new_count += 1
                 except Exception:
                     pass
-                new_count += 1
         if accounts:
-            logger.info("Supabase recovery: %d email accounts (%d new to memory)",
+            logger.info("Supabase recovery: %d email accounts (%d new to PostgreSQL)",
                         len(accounts), new_count)
     except Exception as exc:
         logger.warning("Supabase email recovery failed: %s", exc)
 
-    # ── Step 2: Recover learner progress ────────────────────────────────────
-    # Always restore from Supabase — Supabase is the source of truth.
-    # Do NOT skip based on local_ids: the email account row was just
-    # written above, so local_ids would contain it but with zero progress.
-    try:
-        res = sb.table("learner_progress").select("*").limit(1000).execute()
-        progress_rows = res.data or []
-        restored = 0
-        for row in progress_rows:
-            lid = row.get("learner_id", "")
-            if not lid:
-                continue
-            try:
-                save_profile_db(lid, {
-                    "tier":               row.get("tier", "free"),
-                    "level":              row.get("level", "beginner"),
-                    "xp":                 row.get("xp", 0),
-                    "badges":             json.loads(row.get("badges") or "[]"),
-                    "topics_seen":        json.loads(row.get("topics_seen") or "[]"),
-                    "topic_progress":     json.loads(row.get("topic_progress") or "{}"),
-                    "current_course":     row.get("current_course"),
-                    "current_course_step":row.get("current_course_step", 0),
-                    "completed_projects": json.loads(row.get("completed_projects") or "[]"),
-                    "daily_prompts_used": 0,
-                    "last_prompt_date":   "",
-                    "email":              row.get("email", ""),
-                    "display_name":       row.get("display_name", ""),
-                })
-                restored += 1
-            except Exception as row_exc:
-                logger.debug("Progress row restore failed for %s: %s", lid, row_exc)
-        if restored:
-            logger.info("Supabase recovery: %d learner progress records restored", restored)
-    except Exception as exc:
-        logger.warning("Supabase progress recovery failed: %s", exc)
+    # ── Step 2: Learner progress ─────────────────────────────────────────────
+    # Skipped — PostgreSQL is now the primary store. Progress is already there.
+    # No need to pull from Supabase on every boot.
 
     # ── Step 3: Recover referral codes ──────────────────────────────────────
-    # User-generated referral codes live in SQLite but that's wiped on restart.
-    # We store them in Supabase referral_codes table and recover on boot.
+    # User-generated referral codes live in PostgreSQL.
+    # Recover any that exist in Supabase but not yet in PostgreSQL.
     try:
         res = sb.table("referral_codes") \
                 .select("code,owner_id,owner_email,max_uses,reward_tier,uses,bonus_balance") \
@@ -4200,7 +4179,7 @@ def _recover_from_supabase() -> None:
                 continue
             try:
                 from app.db import create_referral_code as _crc, get_referral_code as _grc, get_db as _gdb
-                # Only insert if not already present in SQLite
+                # Only insert if not already present in PostgreSQL
                 if not _grc(code):
                     _crc(
                         code=code,
@@ -4225,12 +4204,12 @@ def _recover_from_supabase() -> None:
         logger.debug("Supabase referral code recovery failed (non-fatal): %s", exc)
 
 
-# Run recovery in a background thread — never blocks the first incoming request.
-# Uses a non-daemon thread so it finishes before process exits on SIGTERM.
+# Run recovery in a background thread.
+# daemon=True — never blocks Render's uvicorn worker from completing startup.
 import threading as _startup_threading
 _startup_threading.Thread(
     target=_recover_from_supabase,
-    daemon=False,
+    daemon=True,
     name="startup-recovery",
 ).start()
 
