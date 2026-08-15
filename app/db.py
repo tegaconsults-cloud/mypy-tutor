@@ -287,6 +287,7 @@ def init_db() -> None:
                 used_by_id    TEXT DEFAULT '',
                 used          INTEGER DEFAULT 0,
                 expires_at    DOUBLE PRECISION DEFAULT 0,
+                discount_pct  INTEGER DEFAULT 0,
                 created_at    DOUBLE PRECISION DEFAULT EXTRACT(EPOCH FROM NOW())
             )""")
 
@@ -382,6 +383,17 @@ def init_db() -> None:
                 cur.execute(sql)
 
             logger.info("PostgreSQL database initialised")
+
+            # ── Safe column migrations for existing databases ─────────────
+            # These are no-ops if the column already exists.
+            _col_migrations = [
+                "ALTER TABLE access_codes ADD COLUMN IF NOT EXISTS discount_pct INTEGER DEFAULT 0",
+            ]
+            for _sql in _col_migrations:
+                try:
+                    cur.execute(_sql)
+                except Exception:
+                    pass  # column already exists or unsupported syntax
 
     except Exception as _init_exc:
         logger.error(
@@ -1140,13 +1152,13 @@ def get_all_invoices_db() -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def create_access_code(code: str, tier: str, sent_to_email: str = "",
-                        expires_at: float = 0) -> None:
+                        expires_at: float = 0, discount_pct: int = 0) -> None:
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO access_codes (code,tier,sent_to_email,expires_at) "
-                "VALUES (%s,%s,%s,%s) ON CONFLICT(code) DO NOTHING",
-                (code.upper(), tier, sent_to_email.lower(), expires_at)
+                "INSERT INTO access_codes (code,tier,sent_to_email,expires_at,discount_pct) "
+                "VALUES (%s,%s,%s,%s,%s) ON CONFLICT(code) DO NOTHING",
+                (code.upper(), tier, sent_to_email.lower(), expires_at, discount_pct)
             )
 
 

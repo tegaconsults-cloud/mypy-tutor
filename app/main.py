@@ -713,6 +713,64 @@ async def auth_github_callback(code: str = None, error: str = None,
 # Email auth routes
 # ---------------------------------------------------------------------------
 
+@app.post("/auth/validate-code")
+async def validate_code_endpoint(request: Request) -> dict:
+    """
+    Validate an access or referral code before signup.
+    Returns the tier, discount_pct, and a human-readable label so the
+    frontend can show 'Beginner Bundle unlocked!' or '5% discount applied'.
+    """
+    body = await request.json()
+    raw  = (body.get("code") or "").strip().upper()
+    if not raw:
+        return {"valid": False, "message": "Please enter a code."}
+
+    # Check access codes first
+    try:
+        code_rec = validate_access_code(raw)
+        if code_rec:
+            tier_labels = {
+                "tier1": "Beginner Bundle",
+                "tier2": "Intermediate Bundle",
+                "tier3": "Advanced Bundle",
+                "tier4": "Premium Bundle",
+            }
+            tier  = code_rec.get("tier", "")
+            disc  = int(code_rec.get("discount_pct") or 0)
+            label = tier_labels.get(tier, tier)
+            msg   = f"Access code valid! Grants {label} access"
+            if disc:
+                msg += f" with {disc}% discount"
+            msg += " on email confirmation."
+            return {
+                "valid":        True,
+                "code_type":    "access",
+                "tier":         tier,
+                "tier_label":   label,
+                "discount_pct": disc,
+                "message":      msg,
+            }
+    except Exception:
+        pass
+
+    # Check referral codes
+    try:
+        ref_rec = get_referral_code(raw)
+        if ref_rec and ref_rec.get("uses", 0) < ref_rec.get("max_uses", 50):
+            return {
+                "valid":        True,
+                "code_type":    "referral",
+                "tier":         None,
+                "tier_label":   None,
+                "discount_pct": 5,
+                "message":      "Referral code valid! You'll receive a 5% discount on your first purchase.",
+            }
+    except Exception:
+        pass
+
+    return {"valid": False, "message": "Invalid or expired code."}
+
+
 @app.post("/auth/signup")
 async def auth_signup(request: EmailSignUpWithCode) -> dict:
     """
@@ -759,8 +817,9 @@ async def auth_signup(request: EmailSignUpWithCode) -> dict:
     email_lower = request.email.lower()
     if access_code and code_type == "access" and code_rec:
         if email_lower in _pending:
-            _pending[email_lower]["access_code"] = access_code
-            _pending[email_lower]["access_tier"] = code_rec["tier"]
+            _pending[email_lower]["access_code"]    = access_code
+            _pending[email_lower]["access_tier"]    = code_rec["tier"]
+            _pending[email_lower]["access_disc_pct"] = int(code_rec.get("discount_pct") or 0)
         elif email_lower in _confirmed:
             # Auto-confirmed path — apply access code directly now
             try:
@@ -796,9 +855,14 @@ async def auth_signup(request: EmailSignUpWithCode) -> dict:
     response = {"ok": True, "message": message}
     if code_type == "access" and code_rec:
         tier_labels = {"tier1": "Beginner Bundle", "tier2": "Intermediate Bundle", "tier3": "Advanced Bundle", "tier4": "Premium Bundle"}
+        disc = int(code_rec.get("discount_pct") or 0)
         response["code_accepted"]   = True
         response["code_type"]       = "access"
         response["tier_on_confirm"] = tier_labels.get(code_rec["tier"], code_rec["tier"])
+        response["tier"]            = code_rec["tier"]
+        if disc:
+            response["discount_pct"] = disc
+            response["discount_msg"] = f"{disc}% discount applied to your account!"
     elif code_type == "referral":
         response["code_accepted"] = True
         response["code_type"]     = "referral"
@@ -3591,9 +3655,10 @@ async def admin_create_coupon(body: CouponCreate, request: Request) -> dict:
 # ---------------------------------------------------------------------------
 
 class _AccessCodeSend(_BM):
-    tier:          str   # "tier1" | "tier2" | "tier3"
+    tier:          str   # "tier1" | "tier2" | "tier3" | "tier4"
     sent_to_email: str   = ""
     expires_days:  int   = 30
+    discount_pct:  int   = 0   # 0–100 % discount to show user at signup
 
 
 @app.get("/admin/access-codes")
@@ -3612,8 +3677,10 @@ async def admin_generate_access_code(body: _AccessCodeSend, request: Request) ->
     The recipient enters this code at signup to get automatic tier access.
     """
     _require_admin(request)
-    if body.tier not in ("tier1", "tier2", "tier3"):
-        raise HTTPException(status_code=400, detail="Invalid tier. Use tier1, tier2, or tier3.")
+    if body.tier not in ("tier1", "tier2", "tier3", "tier4"):
+        raise HTTPException(status_code=400, detail="Invalid tier. Use tier1, tier2, tier3, or tier4.")
+    if not (0 <= body.discount_pct <= 100):
+        raise HTTPException(status_code=400, detail="discount_pct must be 0–100.")
 
     import secrets as _sec, time as _t
     code       = _sec.token_hex(4).upper()
@@ -3624,11 +3691,19 @@ async def admin_generate_access_code(body: _AccessCodeSend, request: Request) ->
         tier=body.tier,
         sent_to_email=body.sent_to_email.lower().strip(),
         expires_at=expires_at,
+        discount_pct=body.discount_pct,
     )
 
     tier_labels = {"tier1": "Beginner Bundle", "tier2": "Intermediate Bundle", "tier3": "Advanced Bundle", "tier4": "Premium Bundle"}
     tier_label  = tier_labels.get(body.tier, body.tier)
-    app_url     = _os.getenv("APP_URL", "https://mypytutor.onrender.com")
+    frontend_url = _os.getenv("FRONTEND_URL", _os.getenv("APP_URL", "https://mypytutor.com.ng"))
+
+    discount_line = (
+        f'<p style="color:#16A34A;font-weight:700;font-size:0.95rem;margin:6px 0 0;">'
+        f'&#127381; {body.discount_pct}% discount included with this code!</p>'
+        if body.discount_pct else ""
+    )
+    discount_text = f"\n{body.discount_pct}% discount included!" if body.discount_pct else ""
 
     email_sent = False
     if body.sent_to_email and "@" in body.sent_to_email:
@@ -3640,7 +3715,7 @@ async def admin_generate_access_code(body: _AccessCodeSend, request: Request) ->
 <table width="600" cellpadding="0" cellspacing="0"
        style="max-width:600px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;">
   <tr><td style="background:linear-gradient(135deg,#0d2b6e,#1a3f9a);padding:28px 36px;text-align:center;">
-    <div style="font-size:1.8rem;">🐍</div>
+    <div style="font-size:1.8rem;">&#128013;</div>
     <h1 style="color:#fff;font-size:1.3rem;margin:6px 0 0;">MyPy Tutor &mdash; Premium Access</h1>
   </td></tr>
   <tr><td style="padding:32px 36px;">
@@ -3653,18 +3728,19 @@ async def admin_generate_access_code(body: _AccessCodeSend, request: Request) ->
         <p style="font-size:2rem;font-weight:800;color:#0d2b6e;letter-spacing:0.12em;margin:0;">{code}</p>
         <p style="color:#4a5568;font-size:0.78rem;margin:8px 0 0;">
           Grants: <strong style="color:#0d2b6e;">{tier_label}</strong> &middot; Valid for {body.expires_days} days</p>
+        {discount_line}
       </div>
     </div>
     <ol style="margin:10px 0;padding-left:20px;color:#4a5568;font-size:0.88rem;line-height:1.8;">
-      <li>Go to <a href="{app_url}" style="color:#3182ce;">{app_url}</a></li>
+      <li>Go to <a href="{frontend_url}" style="color:#3182ce;">{frontend_url}</a></li>
       <li>Click <strong>Sign Up</strong> and enter your details</li>
       <li>Enter code <strong style="color:#0d2b6e;">{code}</strong> in the &ldquo;Access / Referral Code&rdquo; field</li>
       <li>Confirm your email &mdash; {tier_label} access is activated automatically!</li>
     </ol>
     <div style="text-align:center;margin-top:24px;">
-      <a href="{app_url}" style="background:#0d2b6e;color:#fff;text-decoration:none;
+      <a href="{frontend_url}" style="background:#0d2b6e;color:#fff;text-decoration:none;
          font-weight:700;padding:13px 32px;border-radius:8px;display:inline-block;font-size:0.95rem;">
-        🚀 Create My Account</a>
+        &#128640; Create My Account</a>
     </div>
   </td></tr>
   <tr><td style="background:#0d2b6e;padding:18px 36px;text-align:center;">
@@ -3677,8 +3753,8 @@ async def admin_generate_access_code(body: _AccessCodeSend, request: Request) ->
 </html>"""
             text = (
                 f"Your MyPy Tutor access code: {code}\n"
-                f"Tier: {tier_label} | Valid for {body.expires_days} days\n\n"
-                f"Sign up at {app_url} and enter this code to activate {tier_label} access.\n\n"
+                f"Tier: {tier_label} | Valid for {body.expires_days} days{discount_text}\n\n"
+                f"Sign up at {frontend_url} and enter this code to activate {tier_label} access.\n\n"
                 f"— MyPy Tutor Team"
             )
             _send_email_async(
@@ -3691,18 +3767,20 @@ async def admin_generate_access_code(body: _AccessCodeSend, request: Request) ->
             logger.warning("Access code email send failed: %s", exc)
 
     log_activity("admin", "access_code:generated",
-                 f"code={code} tier={body.tier} email={body.sent_to_email or 'none'}")
+                 f"code={code} tier={body.tier} discount={body.discount_pct}% email={body.sent_to_email or 'none'}")
 
     return {
-        "ok":         True,
-        "code":       code,
-        "tier":       body.tier,
-        "tier_label": tier_label,
-        "sent_to":    body.sent_to_email or None,
-        "email_sent": email_sent,
+        "ok":           True,
+        "code":         code,
+        "tier":         body.tier,
+        "tier_label":   tier_label,
+        "discount_pct": body.discount_pct,
+        "sent_to":      body.sent_to_email or None,
+        "email_sent":   email_sent,
         "expires_days": body.expires_days,
-        "message":    f"Access code {code} generated for {tier_label}."
-                      + (f" Sent to {body.sent_to_email}." if email_sent else ""),
+        "message":      f"Access code {code} generated for {tier_label}"
+                        + (f" with {body.discount_pct}% discount" if body.discount_pct else "")
+                        + ("." if not email_sent else f". Sent to {body.sent_to_email}."),
     }
 
 

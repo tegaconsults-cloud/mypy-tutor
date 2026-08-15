@@ -451,15 +451,21 @@ def confirm_email_token(token: str) -> tuple[bool, str]:
     # Apply access code tier AFTER confirmation — prevents pre-confirmation abuse
     access_code = user_data.get("access_code", "")
     access_tier = user_data.get("access_tier", "")
+    access_disc = int(user_data.get("access_disc_pct") or 0)
     if access_code and access_tier:
         try:
             from app.db import validate_access_code, redeem_access_code, upgrade_tier_db
+            from app.progress import apply_tier_upgrade
             code_rec = validate_access_code(access_code)
             if code_rec:
                 redeemed = redeem_access_code(access_code, email, user_data["learner_id"])
                 if redeemed:
                     upgrade_tier_db(user_data["learner_id"], access_tier)
-                    logger.info("Access code %s applied for %s → %s", access_code, email, access_tier)
+                    apply_tier_upgrade(user_data["learner_id"], access_tier)
+                    logger.info(
+                        "Access code %s applied for %s → %s (disc=%d%%)",
+                        access_code, email, access_tier, access_disc
+                    )
         except Exception as exc:
             logger.warning("Access code tier grant failed: %s", exc)
 
