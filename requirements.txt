@@ -1,22 +1,22 @@
 # ── Core web framework ────────────────────────────────────────────────────
-fastapi==0.115.5
-uvicorn==0.32.1
+fastapi==0.115.12
+uvicorn==0.34.0
 starlette==0.41.3
-python-multipart==0.0.9
+python-multipart==0.0.20
 
 # ── AI / LLM ──────────────────────────────────────────────────────────────
 groq==1.4.0
-httpx==0.28.0          # used by GitHub OAuth, Resend API, Google tokeninfo
+httpx==0.28.1          # used by GitHub OAuth, Resend API, Google tokeninfo
 
 # ── Auth / Security ───────────────────────────────────────────────────────
 bcrypt==4.2.1
 itsdangerous==2.2.0
 
 # ── Data validation ───────────────────────────────────────────────────────
-pydantic==2.13.4
+pydantic==2.10.4
 
 # ── PostgreSQL database ───────────────────────────────────────────────────
-psycopg2-binary==2.9.10
+psycopg2-binary==2.9.12
 
 # ── Supabase cloud persistence ────────────────────────────────────────────
 supabase>=2.11.0
@@ -26,3 +26,6 @@ sentry-sdk[fastapi]==2.19.2
 
 # ── Environment ───────────────────────────────────────────────────────────
 python-dotenv==1.0.1
+
+# ── PDF generation (invoice download) ────────────────────────────────────
+reportlab==4.2.5
