@@ -2004,8 +2004,26 @@ async def paystack_webhook(request: Request) -> dict:
         learner_id = acct["learner_id"] if acct else email
 
         # ── Determine payment type from metadata ─────────────────────────
-        plan_meta   = str(meta.get("plan", "") or meta.get("tier", "")).lower().strip()
-        course_meta = str(meta.get("course_name", "") or meta.get("course", "")).lower().strip()
+        plan_meta    = str(meta.get("plan", "") or meta.get("tier", "")).lower().strip()
+        course_meta  = str(meta.get("course_name", "") or meta.get("course", "")).lower().strip()
+        coupon_code  = str(meta.get("coupon_code", "") or meta.get("coupon", "")).upper().strip()
+
+        # ── Apply coupon savings if a coupon was attached to this payment ─
+        if coupon_code and learner_id and email:
+            try:
+                from app.db import validate_coupon_db, use_coupon_db
+                coupon = validate_coupon_db(coupon_code, plan_meta or "any")
+                if coupon:
+                    disc_pct  = int(coupon.get("discount_pct") or 0)
+                    disc_flat = float(coupon.get("discount_flat") or 0.0)
+                    savings   = disc_flat if disc_flat > 0 else round(amount_ngn * disc_pct / 100, 2)
+                    use_coupon_db(coupon_code, learner_id, email, savings)
+                    logger.info(
+                        "Paystack webhook: coupon %s applied for %s — savings ₦%.2f",
+                        coupon_code, email, savings
+                    )
+            except Exception as _coupon_exc:
+                logger.debug("Coupon apply in webhook failed (non-fatal): %s", _coupon_exc)
 
         # ── TYPE 1: Individual course purchase ────────────────────────────
         if course_meta and course_meta in (c.name for c in get_all_courses()):
@@ -3299,7 +3317,12 @@ async def lesson_resources(topic: str = "") -> dict:
 # ---------------------------------------------------------------------------
 
 @app.post("/coupons/validate")
-async def validate_coupon(body: CouponValidate) -> dict:
+async def validate_coupon(body: CouponValidate,
+                          user=Depends(get_current_user)) -> dict:
+    """
+    Validate a coupon code. Works authenticated or unauthenticated.
+    Unauthenticated calls get valid/invalid + discount info only (no use recorded).
+    """
     coupon = validate_coupon_db(body.code, body.plan)
     if not coupon:
         raise HTTPException(status_code=404, detail="Coupon is invalid, expired, or not applicable.")
@@ -3316,19 +3339,42 @@ async def validate_coupon(body: CouponValidate) -> dict:
 @app.post("/coupons/apply")
 async def apply_coupon(body: CouponValidate,
                        user=Depends(get_current_user)) -> dict:
+    """Apply a coupon to a learner. Requires authentication."""
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in to apply a coupon.")
     if not body.learner_id or not body.email:
         raise HTTPException(status_code=400, detail="learner_id and email required.")
     # Prevent recording a coupon use on behalf of another learner
-    if user is not None and user.learner_id != body.learner_id:
+    if user.learner_id != body.learner_id:
         raise HTTPException(status_code=403, detail="learner_id does not match your session.")
     coupon = validate_coupon_db(body.code, body.plan)
     if not coupon:
         raise HTTPException(status_code=404, detail="Coupon is invalid or exhausted.")
-    savings = coupon["discount_flat"] if coupon["discount_flat"] else 0.0
+
+    # Calculate real savings — handle both flat and percentage discounts
+    disc_pct   = int(coupon.get("discount_pct") or 0)
+    disc_flat  = float(coupon.get("discount_flat") or 0.0)
+    # For percentage coupons, savings is recorded as 0 until applied to an actual
+    # payment amount (the webhook will record the real value). For flat coupons
+    # we store the flat amount immediately.
+    savings = disc_flat if disc_flat > 0 else 0.0
+
     use_coupon_db(body.code, body.learner_id, body.email, savings)
-    log_activity(body.learner_id, "coupon:applied", f"code={body.code}")
-    return {"ok": True, "discount_pct": coupon["discount_pct"],
-            "discount_flat": coupon["discount_flat"], "message": "Coupon applied!"}
+    log_activity(body.learner_id, "coupon:applied", f"code={body.code} disc_pct={disc_pct}% disc_flat={disc_flat}")
+
+    msg = "Coupon applied!"
+    if disc_pct:
+        msg = f"Coupon applied! {disc_pct}% discount will be deducted at checkout."
+    elif disc_flat:
+        msg = f"Coupon applied! ₦{disc_flat:,.0f} discount will be deducted at checkout."
+
+    return {
+        "ok":            True,
+        "code":          coupon["code"],
+        "discount_pct":  disc_pct,
+        "discount_flat": disc_flat,
+        "message":       msg,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -4578,7 +4624,8 @@ async def get_payment_metadata(learner_id: str,
                                user=Depends(get_current_user)) -> dict:
     """
     Returns Paystack metadata for embedding in a payment link.
-    Requires auth — learner must be the owner to prevent email enumeration.
+    Includes learner_id, email, and any pending coupon code so the
+    webhook can apply the discount automatically on payment success.
     """
     validate_learner_id(learner_id)
     if user is None:
@@ -4587,14 +4634,41 @@ async def get_payment_metadata(learner_id: str,
         raise HTTPException(status_code=403, detail="You can only generate metadata for your own account.")
     lp    = get_profile(learner_id)
     email = lp.email or ""
+
+    # Check if this learner has an unused coupon recorded (applied but not yet
+    # consumed by a webhook). Pass it through to Paystack metadata so the
+    # webhook can credit the correct savings amount on charge.success.
+    coupon_code = ""
+    try:
+        import psycopg2.extras as _pge
+        from app.db import get_db as _gdb
+        with _gdb() as _conn:
+            with _conn.cursor(cursor_factory=_pge.RealDictCursor) as _cur:
+                _cur.execute(
+                    "SELECT code FROM coupon_uses WHERE learner_id=%s ORDER BY ts DESC LIMIT 1",
+                    (learner_id,)
+                )
+                row = _cur.fetchone()
+                if row:
+                    coupon_code = row["code"]
+    except Exception:
+        pass
+
+    custom_fields = [
+        {"display_name": "Learner ID",  "variable_name": "learner_id",  "value": learner_id},
+        {"display_name": "User Email",  "variable_name": "user_email",  "value": email},
+    ]
+    if coupon_code:
+        custom_fields.append(
+            {"display_name": "Coupon Code", "variable_name": "coupon_code", "value": coupon_code}
+        )
+
     return {
         "metadata": {
-            "learner_id": learner_id,
-            "email":      email,
-            "custom_fields": [
-                {"display_name": "Learner ID",  "variable_name": "learner_id",  "value": learner_id},
-                {"display_name": "User Email",  "variable_name": "user_email",  "value": email},
-            ],
+            "learner_id":  learner_id,
+            "email":       email,
+            "coupon_code": coupon_code,
+            "custom_fields": custom_fields,
         }
     }
 
