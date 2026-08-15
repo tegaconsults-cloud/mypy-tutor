@@ -6,16 +6,19 @@ python-multipart==0.0.20
 
 # ── AI / LLM ──────────────────────────────────────────────────────────────
 groq==1.4.0
-httpx==0.28.1          # used by GitHub OAuth, Resend API, Google tokeninfo
+httpx==0.28.1
 
 # ── Auth / Security ───────────────────────────────────────────────────────
 bcrypt==4.2.1
 itsdangerous==2.2.0
 
 # ── Data validation ───────────────────────────────────────────────────────
-pydantic==2.10.4
+# pydantic-core (pydantic's Rust engine) has no prebuilt wheel for Python 3.14.
+# Pinned to 2.9.2 which ships cp312 wheels for Linux x86_64.
+pydantic==2.9.2
 
 # ── PostgreSQL database ───────────────────────────────────────────────────
+# 2.9.10 has no py314 wheel; 2.9.12 ships cp312 + cp313 + cp314 wheels.
 psycopg2-binary==2.9.12
 
 # ── Supabase cloud persistence ────────────────────────────────────────────

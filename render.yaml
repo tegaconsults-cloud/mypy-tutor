@@ -2,6 +2,7 @@ services:
   - type: web
     name: mypy-tutor
     runtime: python
+    pythonVersion: "3.12.10"      # Pin to Python 3.12 — pydantic-core has no Py3.14 wheels
     plan: free                    # Render free tier: 512MB RAM, 0.1 CPU
     buildCommand: pip install --no-cache-dir -r requirements.txt
     # Single worker — free tier only has 0.1 CPU, multiple workers thrash
@@ -10,8 +11,6 @@ services:
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --timeout-keep-alive 5
     healthCheckPath: /health
     envVars:
-      - key: PYTHON_VERSION
-        value: "3.12.10"          # Pin to Python 3.12 — fully compatible with all packages
       - key: GROQ_API_KEY
         sync: false
       - key: SESSION_SECRET
