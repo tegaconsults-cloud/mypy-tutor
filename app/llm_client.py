@@ -11,15 +11,18 @@ if not _api_key:
         "GROQ_API_KEY is not set. Please add it to your .env file or environment."
     )
 
-_client = Groq(api_key=_api_key, timeout=28.0)  # 28s hard timeout — prevents hang on Render
+_client = Groq(api_key=_api_key, timeout=30.0)  # 30s hard timeout
 
-# Model routing:
-#   FAST  — llama-3.1-8b-instant   : quiz eval, exercise gen, course steps, general Q&A
-#           (low latency, deterministic, short output)
-#   SMART — llama-3.3-70b-versatile: concept explanations, debug, codegen
-#           (highest quality, used where depth and reasoning matter)
-_FAST_MODEL  = "llama-3.1-8b-instant"
-_SMART_MODEL = "llama-3.3-70b-versatile"
+# Model routing — updated August 2026 after Groq deprecated llama-3.x models:
+#   FAST  — openai/gpt-oss-20b   : quiz eval, exercise gen, course steps, general Q&A
+#            (replaces llama-3.1-8b-instant — low latency, ~1000 tok/s on LPU)
+#   SMART — openai/gpt-oss-120b  : concept explanations, debug, codegen
+#            (replaces llama-3.3-70b-versatile — flagship quality on Groq LPU)
+#
+# Note: llama-3.1-8b-instant and llama-3.3-70b-versatile were shut down by Groq
+# on August 16, 2026. These are the official Groq-recommended replacements.
+_FAST_MODEL  = "openai/gpt-oss-20b"
+_SMART_MODEL = "openai/gpt-oss-120b"
 
 # Intents that genuinely need deep reasoning — use SMART model
 # "course" removed: course steps are structured content, not open-ended reasoning
