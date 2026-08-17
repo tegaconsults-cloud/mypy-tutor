@@ -95,7 +95,7 @@ from app.db import (
     # invoices
     create_invoice_db, get_invoice_db, get_invoices_by_learner, get_all_invoices_db,
     # access codes
-    create_access_code, validate_access_code, redeem_access_code, get_all_access_codes,
+    create_access_code, validate_access_code, redeem_access_code,
     # user profiles
     update_user_profile_db, get_user_profile_db,
     # referral balance
@@ -2624,7 +2624,7 @@ async def admin_list_users(request: Request) -> dict:
                 users_map[lid]["joined_at"] = joined_at
                 users_map[lid]["joined_ts"] = joined_ts
 
-    users = sorted(users_map.values(), key=lambda u: u["xp"], reverse=True)
+    users = sorted(users_map.values(), key=lambda u: u.get("joined_ts", 0.0), reverse=True)
 
     return {
         "learner_profiles": users,
@@ -2796,32 +2796,41 @@ async def admin_invite_team(body: _TeamInvite, request: Request) -> dict:
     _require_admin(request)
     m = invite_team_member(body.email, body.name, body.role)
     try:
-        from app.email_auth import _send_email_async
-        _frontend_url = _os.getenv("FRONTEND_URL", _os.getenv("APP_URL", "https://mypytutor.com.ng"))
-        html = f"""<!DOCTYPE html>
-<html><body style="font-family:Arial,sans-serif;background:#0f1117;color:#e2e8f0;padding:32px;">
-<div style="max-width:520px;margin:0 auto;background:#0d1120;border-radius:16px;padding:32px;border:1px solid rgba(13,71,161,0.3);">
-  <div style="text-align:center;margin-bottom:24px">
-    <img src="{_frontend_url}/icons/mypytutor_logo.jpg" alt="MyPy Tutor" style="width:56px;height:56px;border-radius:50%;border:2px solid rgba(224,163,0,0.5);" />
-    <h2 style="color:#E0A300;margin:12px 0 4px;font-size:1.3rem;">MyPy Tutor</h2>
-    <p style="color:#4d6080;font-size:.78rem;margin:0">Powered by TeamTega Technologies Limited</p>
-  </div>
-  <h3 style="color:#93c5fd;margin-bottom:8px;">🎉 Team Invitation</h3>
-  <p style="color:#a0aec0;line-height:1.7;">Hi <strong style="color:#e2e8f0;">{body.name}</strong>,</p>
-  <p style="color:#a0aec0;line-height:1.7;margin-top:8px;">
-    You've been invited to join the <strong style="color:#e2e8f0;">MyPy Tutor</strong> team
-    as <strong style="color:#E0A300;">{body.role}</strong>.
-  </p>
-  <a href="{_frontend_url}" style="display:inline-block;margin-top:24px;background:#0D47A1;color:#fff;
-     padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:.95rem;">
-    🚀 Access the Platform
-  </a>
-  <p style="color:#4d6080;font-size:.75rem;margin-top:28px;">
-    MyPy Tutor · Teamsamikoko Global Academy · Powered by TeamTega Technologies Limited
-  </p>
-</div></body></html>"""
-        _send_email_async(body.email, "You're invited to join the MyPy Tutor team!", html,
-                          f"Hi {body.name}, you've been invited to the MyPy Tutor team as {body.role}.\n\nAccess the platform: {_frontend_url}")
+        from app.services.email_service import _dispatch_async, _shell, _cta, _box, PRIMARY, GOLD
+        frontend_url = _os.getenv("FRONTEND_URL", "https://mypytutor.com.ng")
+        role_label   = body.role.replace("_", " ").title()
+        body_html = (
+            f"<p style='color:#1e293b;margin:0 0 12px;'>Hi <strong>{body.name}</strong>,</p>"
+            f"<h2 style='color:{PRIMARY};font-size:1.2rem;margin:0 0 12px;'>&#127881; You've been invited to the MyPy Tutor Team!</h2>"
+            f"<p style='color:#475569;line-height:1.7;margin:0 0 16px;'>"
+            f"The admin has added you as a <strong style='color:{GOLD};'>{role_label}</strong> "
+            f"on the <strong>MyPy Tutor</strong> platform powered by TeamTega Technologies Limited.</p>"
+            + _box(
+                f"<strong>Your role:</strong> {role_label}<br/>"
+                f"<strong>Platform:</strong> MyPy Tutor Admin Dashboard<br/>"
+                f"<strong>Access:</strong> Sign in with this email address to manage assigned features.",
+                bg="#f0fdf4", border="#16A34A"
+            )
+            + _cta("&#128640; Access the Admin Dashboard", frontend_url)
+            + f"<p style='color:#64748b;font-size:0.82rem;margin:0;'>"
+              f"Questions? Reply to this email.<br/>"
+              f"<strong style='color:{PRIMARY};'>The MyPy Tutor Team</strong></p>"
+        )
+        html = _shell(body_html, f"You've been invited to the MyPy Tutor team as {role_label}.")
+        text = (
+            f"Hi {body.name},\n\n"
+            f"You've been invited to the MyPy Tutor team as {role_label}.\n\n"
+            f"Access the platform at: {frontend_url}\n\n"
+            f"Sign in with this email address to manage your assigned features.\n\n"
+            f"— The MyPy Tutor Team\nPowered by TeamTega Technologies Limited"
+        )
+        _dispatch_async(
+            body.email,
+            f"You're invited to join the MyPy Tutor team as {role_label}",
+            html, text,
+            "team_invite",
+        )
+        logger.info("Team invite email sent to %s (%s)", body.email, role_label)
     except Exception as e:
         logger.warning("Team invite email failed: %s", e)
     return {"ok": True, "member": {"email": m.email, "name": m.name, "role": m.role}}
@@ -3754,138 +3763,111 @@ async def admin_create_coupon(body: CouponCreate, request: Request) -> dict:
             "message": f"Coupon {body.code.upper()} created."}
 
 
-# ---------------------------------------------------------------------------
-# ACCESS CODE admin routes  (generate per-tier, optionally send via email)
-# ---------------------------------------------------------------------------
+@app.delete("/admin/coupons/{code}")
+async def admin_delete_coupon(code: str, request: Request) -> dict:
+    """Permanently delete a coupon code. Irreversible."""
+    _require_admin(request)
+    import re as _re6
+    if not _re6.match(r'^[A-Z0-9_\-]{2,32}$', code.upper()):
+        raise HTTPException(status_code=400, detail="Invalid coupon code format.")
+    try:
+        import psycopg2.extras as _pge
+        from app.db import get_db as _gdb
+        with _gdb() as _conn:
+            with _conn.cursor() as _cur:
+                _cur.execute("DELETE FROM coupons WHERE code=%s", (code.upper(),))
+                deleted = _cur.rowcount
+        if deleted == 0:
+            raise HTTPException(status_code=404, detail=f"Coupon '{code.upper()}' not found.")
+        log_activity("admin", "coupon:deleted", f"code={code.upper()}")
+        return {"ok": True, "code": code.upper(), "message": f"Coupon {code.upper()} deleted."}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("admin_delete_coupon error: %s", exc)
+        raise HTTPException(status_code=500, detail="Could not delete coupon.")
 
-class _AccessCodeSend(_BM):
-    tier:          str   # "tier1" | "tier2" | "tier3" | "tier4"
-    sent_to_email: str   = ""
-    expires_days:  int   = 30
-    discount_pct:  int   = 0   # 0–100 % discount to show user at signup
 
+@app.put("/admin/coupons/{code}/deactivate")
+async def admin_deactivate_coupon(code: str, request: Request) -> dict:
+    """Deactivate a coupon (soft disable — preserves usage history)."""
+    _require_admin(request)
+    try:
+        import psycopg2.extras as _pge
+        from app.db import get_db as _gdb
+        with _gdb() as _conn:
+            with _conn.cursor() as _cur:
+                _cur.execute(
+                    "UPDATE coupons SET active=0 WHERE code=%s",
+                    (code.upper(),)
+                )
+                updated = _cur.rowcount
+        if updated == 0:
+            raise HTTPException(status_code=404, detail=f"Coupon '{code.upper()}' not found.")
+        log_activity("admin", "coupon:deactivated", f"code={code.upper()}")
+        return {"ok": True, "code": code.upper(), "message": f"Coupon {code.upper()} deactivated."}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("admin_deactivate_coupon error: %s", exc)
+        raise HTTPException(status_code=500, detail="Could not deactivate coupon.")
+
+
+@app.put("/admin/coupons/{code}/activate")
+async def admin_activate_coupon(code: str, request: Request) -> dict:
+    """Re-activate a previously deactivated coupon."""
+    _require_admin(request)
+    try:
+        from app.db import get_db as _gdb
+        with _gdb() as _conn:
+            with _conn.cursor() as _cur:
+                _cur.execute(
+                    "UPDATE coupons SET active=1 WHERE code=%s",
+                    (code.upper(),)
+                )
+                updated = _cur.rowcount
+        if updated == 0:
+            raise HTTPException(status_code=404, detail=f"Coupon '{code.upper()}' not found.")
+        log_activity("admin", "coupon:activated", f"code={code.upper()}")
+        return {"ok": True, "code": code.upper(), "message": f"Coupon {code.upper()} activated."}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("admin_activate_coupon error: %s", exc)
+        raise HTTPException(status_code=500, detail="Could not activate coupon.")
+
+# ---------------------------------------------------------------------------
+# ACCESS CODE routes — DEPRECATED
+# Access codes have been removed. Use coupon codes for discounts and
+# referral codes for user rewards. Any existing access codes in the DB
+# will continue to be honoured at signup for backwards compatibility,
+# but the admin can no longer create new ones.
+# ---------------------------------------------------------------------------
 
 @app.get("/admin/access-codes")
 async def admin_list_access_codes(request: Request) -> dict:
-    """Return all admin-generated access codes."""
+    """Deprecated — access codes removed. Returns empty list."""
     _require_admin(request)
-    codes = get_all_access_codes()
-    return {"codes": codes, "total": len(codes)}
+    return {
+        "codes":      [],
+        "total":      0,
+        "deprecated": True,
+        "message":    "Access codes have been removed. Use Coupon Codes for discounts or Referral Codes for user rewards.",
+    }
 
 
 @app.post("/admin/access-codes/generate")
-async def admin_generate_access_code(body: _AccessCodeSend, request: Request) -> dict:
-    """
-    Generate an access code for a given tier.
-    Optionally send it to an email address.
-    The recipient enters this code at signup to get automatic tier access.
-    """
+async def admin_generate_access_code(request: Request) -> dict:
+    """Deprecated — access code generation removed."""
     _require_admin(request)
-    if body.tier not in ("tier1", "tier2", "tier3", "tier4"):
-        raise HTTPException(status_code=400, detail="Invalid tier. Use tier1, tier2, tier3, or tier4.")
-    if not (0 <= body.discount_pct <= 100):
-        raise HTTPException(status_code=400, detail="discount_pct must be 0–100.")
-
-    import secrets as _sec, time as _t
-    code       = _sec.token_hex(4).upper()
-    expires_at = _t.time() + body.expires_days * 86400
-
-    create_access_code(
-        code=code,
-        tier=body.tier,
-        sent_to_email=body.sent_to_email.lower().strip(),
-        expires_at=expires_at,
-        discount_pct=body.discount_pct,
+    raise HTTPException(
+        status_code=410,
+        detail=(
+            "Access codes have been removed. "
+            "Create a Coupon Code at /admin/coupons/create for discounts, "
+            "or share a Referral Code for user rewards."
+        ),
     )
-
-    tier_labels = {"tier1": "Beginner Bundle", "tier2": "Intermediate Bundle", "tier3": "Advanced Bundle", "tier4": "Premium Bundle"}
-    tier_label  = tier_labels.get(body.tier, body.tier)
-    frontend_url = _os.getenv("FRONTEND_URL", _os.getenv("APP_URL", "https://mypytutor.com.ng"))
-
-    discount_line = (
-        f'<p style="color:#16A34A;font-weight:700;font-size:0.95rem;margin:6px 0 0;">'
-        f'&#127381; {body.discount_pct}% discount included with this code!</p>'
-        if body.discount_pct else ""
-    )
-    discount_text = f"\n{body.discount_pct}% discount included!" if body.discount_pct else ""
-
-    email_sent = False
-    if body.sent_to_email and "@" in body.sent_to_email:
-        try:
-            from app.email_auth import _send_email_async
-            html = f"""<!DOCTYPE html>
-<html lang="en">
-<body style="font-family:Arial,Helvetica,sans-serif;background:#f4f6f9;padding:32px 16px;">
-<table width="600" cellpadding="0" cellspacing="0"
-       style="max-width:600px;margin:0 auto;background:#fff;border-radius:14px;overflow:hidden;">
-  <tr><td style="background:linear-gradient(135deg,#0d2b6e,#1a3f9a);padding:28px 36px;text-align:center;">
-    <div style="font-size:1.8rem;">&#128013;</div>
-    <h1 style="color:#fff;font-size:1.3rem;margin:6px 0 0;">MyPy Tutor &mdash; Premium Access</h1>
-  </td></tr>
-  <tr><td style="padding:32px 36px;">
-    <p style="color:#1a202c;font-size:1rem;">You have received a <strong>{tier_label}</strong>
-    access code for <strong>MyPy Tutor</strong>!</p>
-    <div style="text-align:center;margin:28px 0;">
-      <div style="background:#f0f7ff;border:2px dashed #3182ce;border-radius:12px;padding:20px;display:inline-block;">
-        <p style="color:#718096;font-size:0.8rem;margin:0 0 6px;text-transform:uppercase;letter-spacing:0.08em;">
-          Your Access Code</p>
-        <p style="font-size:2rem;font-weight:800;color:#0d2b6e;letter-spacing:0.12em;margin:0;">{code}</p>
-        <p style="color:#4a5568;font-size:0.78rem;margin:8px 0 0;">
-          Grants: <strong style="color:#0d2b6e;">{tier_label}</strong> &middot; Valid for {body.expires_days} days</p>
-        {discount_line}
-      </div>
-    </div>
-    <ol style="margin:10px 0;padding-left:20px;color:#4a5568;font-size:0.88rem;line-height:1.8;">
-      <li>Go to <a href="{frontend_url}" style="color:#3182ce;">{frontend_url}</a></li>
-      <li>Click <strong>Sign Up</strong> and enter your details</li>
-      <li>Enter code <strong style="color:#0d2b6e;">{code}</strong> in the &ldquo;Access / Referral Code&rdquo; field</li>
-      <li>Confirm your email &mdash; {tier_label} access is activated automatically!</li>
-    </ol>
-    <div style="text-align:center;margin-top:24px;">
-      <a href="{frontend_url}" style="background:#0d2b6e;color:#fff;text-decoration:none;
-         font-weight:700;padding:13px 32px;border-radius:8px;display:inline-block;font-size:0.95rem;">
-        &#128640; Create My Account</a>
-    </div>
-  </td></tr>
-  <tr><td style="background:#0d2b6e;padding:18px 36px;text-align:center;">
-    <p style="color:rgba(255,255,255,0.75);font-size:0.73rem;margin:0;">
-      MyPy Tutor &middot; Teamsamikoko Global Academy &middot; &ldquo;Learn Smarter. Code Better. Build the Future.&rdquo;
-    </p>
-  </td></tr>
-</table>
-</body>
-</html>"""
-            text = (
-                f"Your MyPy Tutor access code: {code}\n"
-                f"Tier: {tier_label} | Valid for {body.expires_days} days{discount_text}\n\n"
-                f"Sign up at {frontend_url} and enter this code to activate {tier_label} access.\n\n"
-                f"— MyPy Tutor Team"
-            )
-            _send_email_async(
-                body.sent_to_email,
-                f"Your MyPy Tutor Access Code — {tier_label}",
-                html, text,
-            )
-            email_sent = True
-        except Exception as exc:
-            logger.warning("Access code email send failed: %s", exc)
-
-    log_activity("admin", "access_code:generated",
-                 f"code={code} tier={body.tier} discount={body.discount_pct}% email={body.sent_to_email or 'none'}")
-
-    return {
-        "ok":           True,
-        "code":         code,
-        "tier":         body.tier,
-        "tier_label":   tier_label,
-        "discount_pct": body.discount_pct,
-        "sent_to":      body.sent_to_email or None,
-        "email_sent":   email_sent,
-        "expires_days": body.expires_days,
-        "message":      f"Access code {code} generated for {tier_label}"
-                        + (f" with {body.discount_pct}% discount" if body.discount_pct else "")
-                        + ("." if not email_sent else f". Sent to {body.sent_to_email}."),
-    }
 
 
 @app.get("/admin/invoices")
