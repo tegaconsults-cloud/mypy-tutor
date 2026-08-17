@@ -489,6 +489,17 @@ def confirm_email_token(token: str) -> tuple[bool, str]:
         except Exception as exc:
             logger.warning("Referral code redemption failed (non-fatal): %s", exc)
 
+    # Persist coupon code to DB so /payments/metadata can return it at checkout
+    coupon_code = user_data.get("coupon_code", "")
+    if coupon_code:
+        try:
+            from app.db import use_coupon_db as _ucdb
+            # Record with 0 savings now — real savings calculated by webhook on payment
+            _ucdb(coupon_code, user_data["learner_id"], email, 0.0)
+            logger.info("Coupon code %s linked to %s (savings credited on payment)", coupon_code, email)
+        except Exception as exc:
+            logger.warning("Coupon code record failed (non-fatal): %s", exc)
+
     # Mirror to Supabase — survives Render ephemeral restarts
     try:
         from app.supabase_client import sb_upsert_email_account, sb_delete_pending_confirmation

@@ -768,6 +768,31 @@ async def validate_code_endpoint(request: Request) -> dict:
     except Exception:
         pass
 
+    # Check coupon codes — these are applied at checkout, not signup
+    try:
+        coupon = validate_coupon_db(raw, "any")
+        if coupon:
+            disc_pct  = int(coupon.get("discount_pct") or 0)
+            disc_flat = float(coupon.get("discount_flat") or 0.0)
+            uses_left = coupon["max_uses"] - coupon["uses"]
+            if disc_pct:
+                msg = f"Coupon valid! {disc_pct}% discount will be applied at checkout. ({uses_left} uses left)"
+            elif disc_flat:
+                msg = f"Coupon valid! \u20a6{disc_flat:,.0f} off will be applied at checkout. ({uses_left} uses left)"
+            else:
+                msg = f"Coupon valid! Discount will be applied at checkout."
+            return {
+                "valid":         True,
+                "code_type":     "coupon",
+                "tier":          None,
+                "tier_label":    None,
+                "discount_pct":  disc_pct,
+                "discount_flat": disc_flat,
+                "message":       msg,
+            }
+    except Exception:
+        pass
+
     return {"valid": False, "message": "Invalid or expired code."}
 
 
@@ -786,7 +811,8 @@ async def auth_signup(request: EmailSignUpWithCode) -> dict:
     access_code = request.access_code.strip().upper() if request.access_code else ""
     code_rec      = None   # access code record
     referral_rec  = None   # referral code record
-    code_type     = None   # "access" | "referral"
+    coupon_rec    = None   # coupon record
+    code_type     = None   # "access" | "referral" | "coupon"
 
     if access_code:
         code_rec = validate_access_code(access_code)
@@ -798,9 +824,17 @@ async def auth_signup(request: EmailSignUpWithCode) -> dict:
             if referral_rec and referral_rec.get("uses", 0) < referral_rec.get("max_uses", 50):
                 code_type = "referral"
             else:
-                # Invalid code — don't block signup, just warn
-                logger.info("Unrecognised code at signup: %s — proceeding without reward", access_code)
-                access_code = ""  # clear so we don't try to apply it
+                # Try as a coupon code — valid coupons are stored and shown at checkout
+                try:
+                    coupon_rec = validate_coupon_db(access_code, "any")
+                    if coupon_rec:
+                        code_type = "coupon"
+                    else:
+                        logger.info("Unrecognised code at signup: %s — proceeding without reward", access_code)
+                        access_code = ""
+                except Exception:
+                    logger.info("Unrecognised code at signup: %s — proceeding without reward", access_code)
+                    access_code = ""
 
     success, message = register_email(request.email, request.name, pw_hash)
     if not success:
@@ -843,6 +877,18 @@ async def auth_signup(request: EmailSignUpWithCode) -> dict:
                 _urc(access_code, email_lower, learner_id, discount_pct=5, payment_amount=0)
             except Exception as exc:
                 logger.warning("Direct referral record failed: %s", exc)
+    elif access_code and code_type == "coupon" and coupon_rec:
+        # Store the coupon code so it survives to checkout — applied at payment time
+        if email_lower in _pending:
+            _pending[email_lower]["coupon_code"]     = access_code
+            _pending[email_lower]["coupon_disc_pct"] = int(coupon_rec.get("discount_pct") or 0)
+            _pending[email_lower]["coupon_disc_flat"] = float(coupon_rec.get("discount_flat") or 0.0)
+        # For already-confirmed users (auto-confirm dev path), record use immediately
+        elif email_lower in _confirmed:
+            try:
+                use_coupon_db(access_code, learner_id, email_lower, 0.0)
+            except Exception as exc:
+                logger.warning("Direct coupon record failed: %s", exc)
 
     # Mirror to Supabase
     import threading as _thr
@@ -867,6 +913,18 @@ async def auth_signup(request: EmailSignUpWithCode) -> dict:
         response["code_accepted"] = True
         response["code_type"]     = "referral"
         response["discount_pct"]  = 5
+    elif code_type == "coupon" and coupon_rec:
+        disc_pct  = int(coupon_rec.get("discount_pct") or 0)
+        disc_flat = float(coupon_rec.get("discount_flat") or 0.0)
+        response["code_accepted"]  = True
+        response["code_type"]      = "coupon"
+        response["coupon_code"]    = access_code
+        if disc_pct:
+            response["discount_pct"] = disc_pct
+            response["discount_msg"] = f"Coupon saved! {disc_pct}% discount will be applied at checkout."
+        elif disc_flat:
+            response["discount_flat"] = disc_flat
+            response["discount_msg"]  = f"Coupon saved! ₦{disc_flat:,.0f} off will be applied at checkout."
     return response
 
 
