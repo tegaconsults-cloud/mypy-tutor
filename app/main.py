@@ -2715,12 +2715,34 @@ async def admin_terminate_user(learner_id: str, request: Request) -> dict:
 
 @app.get("/admin/payments")
 async def admin_payments(request: Request) -> dict:
-    """Return all payments from SQLite (persistent across restarts)."""
+    """Return all payments including bank transfer proof-of-payment submissions."""
     _require_admin(request)
-    payments = get_payments()   # now returns list[dict] from SQLite
+    payments = get_payments()
+    # Also fetch bank transfer proofs pending review
+    try:
+        import psycopg2.extras as _pge
+        from app.db import get_db as _gdb
+        import datetime as _dt2
+        with _gdb() as _conn:
+            with _conn.cursor(cursor_factory=_pge.RealDictCursor) as _cur:
+                _cur.execute("""
+                    SELECT * FROM bank_transfer_proofs
+                    ORDER BY submitted_at DESC LIMIT 200
+                """)
+                proofs = [dict(r) for r in _cur.fetchall()]
+        for p in proofs:
+            try:
+                p["submitted_at_fmt"] = _dt2.datetime.fromtimestamp(
+                    float(p["submitted_at"])
+                ).strftime("%Y-%m-%d %H:%M")
+            except Exception:
+                pass
+    except Exception:
+        proofs = []
     return {
-        "payments": payments,
-        "summary":  get_revenue_summary(),
+        "payments":            payments,
+        "bank_transfer_proofs": proofs,
+        "summary":             get_revenue_summary(),
     }
 
 
@@ -2734,14 +2756,15 @@ async def admin_add_payment(body: _PaymentAdd, request: Request) -> dict:
 
 @app.post("/admin/payments/confirm/{payment_id}")
 async def admin_confirm_payment(payment_id: str, request: Request) -> dict:
+    """Confirm a payment and auto-upgrade the learner's tier."""
     _require_admin(request)
     ok = confirm_payment(payment_id)
     if not ok:
         raise HTTPException(status_code=404, detail="Payment not found.")
-    # Send payment receipt email via email_service (non-blocking)
+    # Auto-upgrade tier based on the confirmed payment's plan
     try:
         import psycopg2.extras as _pge
-        from app.db import get_db as _gdb
+        from app.db import get_db as _gdb, load_email_account
         with _gdb() as _conn:
             with _conn.cursor(cursor_factory=_pge.RealDictCursor) as _cur:
                 _cur.execute(
@@ -2750,6 +2773,34 @@ async def admin_confirm_payment(payment_id: str, request: Request) -> dict:
                 )
                 row = _cur.fetchone()
         if row:
+            # Infer tier from plan label
+            plan_lower = (row["plan"] or "").lower()
+            _plan_tier_map = {
+                "beginner bundle": "tier1", "intermediate bundle": "tier2",
+                "advanced bundle": "tier3", "premium bundle": "tier4",
+                "pro learner": "tier1", "career builder": "tier2",
+                "tier1": "tier1", "tier2": "tier2", "tier3": "tier3", "tier4": "tier4",
+            }
+            tier = None
+            for k, v in _plan_tier_map.items():
+                if k in plan_lower:
+                    tier = v
+                    break
+            if not tier:
+                amt = float(row["amount"] or 0)
+                if amt >= 90000: tier = "tier3"
+                elif amt >= 50000: tier = "tier2"
+                elif amt >= 25000: tier = "tier1"
+            if tier:
+                acct = load_email_account(row["user_email"])
+                lid  = acct["learner_id"] if acct else row["user_email"]
+                from app.db import upgrade_tier_db
+                from app.progress import apply_tier_upgrade
+                upgrade_tier_db(lid, tier)
+                apply_tier_upgrade(lid, tier)
+                log_activity("admin", "payment:manual-confirm",
+                             f"id={payment_id} tier={tier} email={row['user_email']}")
+            # Send receipt
             from app.services.email_service import send_payment_receipt_email as _svc_pay
             _svc_pay(
                 name=row["user_name"] or row["user_email"],
@@ -2759,17 +2810,378 @@ async def admin_confirm_payment(payment_id: str, request: Request) -> dict:
                 payment_id=row["id"],
                 currency=row["currency"] or "NGN",
             )
-            # Also notify admin
             from app.services.email_service import send_admin_notification as _svc_adm
             _svc_adm(
                 subject=f"Payment confirmed: ₦{float(row['amount']):,.0f} — {row['plan']}",
                 body=f"User: {row['user_name']} ({row['user_email']})\n"
                      f"Amount: {row['currency']} {float(row['amount']):,.0f}\n"
-                     f"Plan: {row['plan']}\nPayment ID: {row['id']}",
+                     f"Plan: {row['plan']}\nPayment ID: {row['id']}"
+                     + (f"\nTier upgraded to: {tier}" if tier else ""),
             )
+    except ImportError:
+        pass   # circular import guard — tier upgrade still succeeded via upgrade_tier_db
     except Exception as _pay_exc:
-        logger.warning("Payment receipt email failed (non-fatal): %s", _pay_exc)
+        logger.warning("Post-confirm actions failed (non-fatal): %s", _pay_exc)
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Bank transfer proof-of-payment — upload, admin review, approve/reject
+# ---------------------------------------------------------------------------
+
+@app.get("/payments/bank-details")
+async def get_bank_details() -> dict:
+    """
+    Return the bank account details for manual bank transfer payments.
+    Reads from env vars so the admin can update them without a code deploy.
+    """
+    return {
+        "bank_name":      _os.getenv("BANK_NAME",    "Zenith Bank Plc"),
+        "account_name":   _os.getenv("BANK_ACCOUNT_NAME", "Teamsamikoko Global Academy"),
+        "account_number": _os.getenv("BANK_ACCOUNT_NUMBER", "1228732577"),
+        "instructions": [
+            "Transfer the exact amount for your chosen plan to the account above.",
+            "Use your email address as the payment reference/narration.",
+            "Upload your payment receipt below immediately after transfer.",
+            "Your account will be upgraded within 24 hours of admin approval.",
+        ],
+        "plans": [
+            {"name": "Beginner Bundle",      "price": 30000,  "tier": "tier1"},
+            {"name": "Intermediate Bundle",  "price": 60000,  "tier": "tier2"},
+            {"name": "Advanced Bundle",      "price": 100000, "tier": "tier3"},
+            {"name": "Premium Bundle",       "price": 100000, "tier": "tier4"},
+        ],
+    }
+
+
+@app.post("/payments/bank-transfer/submit")
+async def submit_bank_transfer_proof(
+    request: Request,
+    user=Depends(get_current_user),
+) -> dict:
+    """
+    Learner submits bank transfer proof-of-payment.
+    Accepts JSON with: plan, amount, reference, proof_image_base64 (optional),
+    proof_url (optional — if hosted elsewhere), notes.
+    Creates a pending bank_transfer_proofs record and notifies admin.
+    """
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in to submit payment proof.")
+
+    body = await request.json()
+    plan    = str(body.get("plan", "")).strip()
+    amount  = float(body.get("amount", 0) or 0)
+    ref     = str(body.get("reference", "") or body.get("ref", "")).strip()
+    proof_b64 = str(body.get("proof_image_base64", "") or "").strip()
+    proof_url = str(body.get("proof_url", "") or "").strip()
+    notes     = str(body.get("notes", "") or "").strip()[:500]
+
+    if not plan:
+        raise HTTPException(status_code=400, detail="Plan is required.")
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be greater than zero.")
+    if not proof_b64 and not proof_url:
+        raise HTTPException(status_code=400, detail="Please upload your payment receipt (image or URL).")
+
+    # Validate proof_b64 is actually a data URL if provided
+    if proof_b64 and not proof_b64.startswith("data:image/"):
+        raise HTTPException(status_code=400,
+            detail="proof_image_base64 must be a base64 data:image/... string.")
+    if len(proof_b64) > 5_000_000:
+        raise HTTPException(status_code=400, detail="Receipt image too large. Max 3.5MB.")
+
+    import time as _t, secrets as _sec
+    proof_id    = _sec.token_hex(6).upper()
+    submitted_at = _t.time()
+    learner_id  = user.learner_id
+    email       = user.email or ""
+
+    # Ensure table exists and insert
+    try:
+        from app.db import get_db as _gdb
+        with _gdb() as _conn:
+            with _conn.cursor() as _cur:
+                _cur.execute("""
+                    CREATE TABLE IF NOT EXISTS bank_transfer_proofs (
+                        id            TEXT PRIMARY KEY,
+                        learner_id    TEXT NOT NULL,
+                        email         TEXT NOT NULL,
+                        plan          TEXT NOT NULL,
+                        amount        DOUBLE PRECISION NOT NULL,
+                        reference     TEXT DEFAULT '',
+                        proof_b64     TEXT DEFAULT '',
+                        proof_url     TEXT DEFAULT '',
+                        notes         TEXT DEFAULT '',
+                        status        TEXT DEFAULT 'pending',
+                        admin_notes   TEXT DEFAULT '',
+                        submitted_at  DOUBLE PRECISION DEFAULT EXTRACT(EPOCH FROM NOW()),
+                        reviewed_at   DOUBLE PRECISION
+                    )
+                """)
+                _cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_btp_learner
+                    ON bank_transfer_proofs (learner_id)
+                """)
+                _cur.execute("""
+                    INSERT INTO bank_transfer_proofs
+                      (id, learner_id, email, plan, amount, reference,
+                       proof_b64, proof_url, notes, submitted_at)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """, (proof_id, learner_id, email, plan, amount,
+                      ref, proof_b64, proof_url, notes, submitted_at))
+    except Exception as exc:
+        logger.error("Bank transfer proof save failed: %s", exc)
+        raise HTTPException(status_code=500, detail="Could not save payment proof. Try again.")
+
+    log_activity(learner_id, "payment:bank-transfer-submitted",
+                 f"id={proof_id} plan={plan} amount={amount:.0f} ref={ref or 'none'}")
+
+    # Notify admin immediately
+    try:
+        from app.services.email_service import send_admin_notification
+        import datetime as _dt3
+        send_admin_notification(
+            subject=f"Bank Transfer Proof Submitted — ₦{amount:,.0f} ({plan})",
+            body=(
+                f"Learner: {user.name} ({email})\n"
+                f"Learner ID: {learner_id}\n"
+                f"Plan: {plan}\n"
+                f"Amount: ₦{amount:,.0f}\n"
+                f"Reference: {ref or '—'}\n"
+                f"Notes: {notes or '—'}\n"
+                f"Proof ID: {proof_id}\n"
+                f"Submitted: {_dt3.datetime.fromtimestamp(submitted_at).strftime('%Y-%m-%d %H:%M UTC')}\n\n"
+                f"Review and approve at: {_os.getenv('FRONTEND_URL', 'https://mypytutor.com.ng')}/admin"
+                + (f"\n\nProof URL: {proof_url}" if proof_url else "")
+            ),
+        )
+    except Exception as _ne:
+        logger.debug("Admin notification for bank proof failed (non-fatal): %s", _ne)
+
+    return {
+        "ok":         True,
+        "proof_id":   proof_id,
+        "status":     "pending",
+        "message":    "Payment proof submitted successfully! Your account will be upgraded within 24 hours after admin review.",
+    }
+
+
+@app.get("/payments/bank-transfer/status/{learner_id}")
+async def get_bank_transfer_status(
+    learner_id: str,
+    user=Depends(get_current_user),
+) -> dict:
+    """Return all bank transfer proof submissions for a learner."""
+    validate_learner_id(learner_id)
+    if not user:
+        raise HTTPException(status_code=401, detail="Sign in to check payment status.")
+    if user.learner_id != learner_id:
+        raise HTTPException(status_code=403, detail="You can only view your own payment status.")
+    try:
+        import psycopg2.extras as _pge
+        import datetime as _dt4
+        from app.db import get_db as _gdb
+        with _gdb() as _conn:
+            with _conn.cursor(cursor_factory=_pge.RealDictCursor) as _cur:
+                _cur.execute("""
+                    SELECT id, plan, amount, reference, proof_url, status,
+                           admin_notes, submitted_at, reviewed_at
+                    FROM bank_transfer_proofs
+                    WHERE learner_id=%s
+                    ORDER BY submitted_at DESC
+                """, (learner_id,))
+                rows = _cur.fetchall()
+        result = []
+        for r in rows:
+            d = dict(r)
+            d.pop("proof_b64", None)   # never return raw base64 in list
+            try:
+                d["submitted_at_fmt"] = _dt4.datetime.fromtimestamp(
+                    float(d["submitted_at"])).strftime("%Y-%m-%d %H:%M")
+            except Exception:
+                pass
+            if d.get("reviewed_at"):
+                try:
+                    d["reviewed_at_fmt"] = _dt4.datetime.fromtimestamp(
+                        float(d["reviewed_at"])).strftime("%Y-%m-%d %H:%M")
+                except Exception:
+                    pass
+            result.append(d)
+        return {"proofs": result, "total": len(result)}
+    except Exception as exc:
+        logger.warning("get_bank_transfer_status error: %s", exc)
+        return {"proofs": [], "total": 0}
+
+
+@app.post("/admin/payments/bank-transfer/{proof_id}/approve")
+async def admin_approve_bank_transfer(
+    proof_id: str,
+    request: Request,
+) -> dict:
+    """
+    Admin approves a bank transfer proof — upgrades the learner's tier
+    and sends a confirmation email.
+    """
+    _require_admin(request)
+    body        = await request.json()
+    admin_notes = str(body.get("notes", "") or "").strip()[:500]
+
+    import time as _t2, psycopg2.extras as _pge, datetime as _dt5
+    from app.db import get_db as _gdb, load_email_account, upgrade_tier_db
+    from app.progress import apply_tier_upgrade
+
+    try:
+        with _gdb() as _conn:
+            with _conn.cursor(cursor_factory=_pge.RealDictCursor) as _cur:
+                _cur.execute(
+                    "SELECT * FROM bank_transfer_proofs WHERE id=%s", (proof_id,)
+                )
+                proof = _cur.fetchone()
+        if not proof:
+            raise HTTPException(status_code=404, detail="Proof not found.")
+        proof = dict(proof)
+        if proof["status"] == "approved":
+            return {"ok": True, "message": "Already approved.", "already_approved": True}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"DB error: {exc}")
+
+    # Mark approved
+    try:
+        with _gdb() as _conn:
+            with _conn.cursor() as _cur:
+                _cur.execute("""
+                    UPDATE bank_transfer_proofs
+                    SET status='approved', admin_notes=%s, reviewed_at=%s
+                    WHERE id=%s
+                """, (admin_notes, _t2.time(), proof_id))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Could not update proof: {exc}")
+
+    # Infer tier from plan
+    plan_lower = (proof["plan"] or "").lower()
+    tier_map   = {
+        "beginner":     "tier1", "tier1": "tier1",
+        "intermediate": "tier2", "tier2": "tier2",
+        "advanced":     "tier3", "tier3": "tier3",
+        "premium":      "tier4", "tier4": "tier4",
+    }
+    tier = next((v for k, v in tier_map.items() if k in plan_lower), None)
+    if not tier:
+        amt = float(proof.get("amount") or 0)
+        if amt >= 90000: tier = "tier3"
+        elif amt >= 50000: tier = "tier2"
+        elif amt >= 25000: tier = "tier1"
+        else: tier = "tier1"
+
+    learner_id = proof["learner_id"]
+    upgrade_tier_db(learner_id, tier)
+    apply_tier_upgrade(learner_id, tier)
+
+    # Record in payments table too
+    from app.admin import add_payment, confirm_payment as _cfp
+    import secrets as _sec2
+    p = add_payment(
+        user_email=proof["email"],
+        user_name=proof.get("email", "").split("@")[0],
+        amount=float(proof["amount"]),
+        plan=proof["plan"],
+        method="bank_transfer",
+        notes=f"Proof ID: {proof_id}" + (f" | {admin_notes}" if admin_notes else ""),
+    )
+    _cfp(p.id)
+
+    log_activity("admin", "payment:bank-transfer-approved",
+                 f"proof={proof_id} learner={learner_id} tier={tier}")
+
+    # Notify learner
+    try:
+        from app.services.email_service import send_payment_receipt_email
+        send_payment_receipt_email(
+            name=proof["email"].split("@")[0],
+            email=proof["email"],
+            amount=float(proof["amount"]),
+            plan=proof["plan"],
+            payment_id=p.id,
+            currency="NGN",
+        )
+    except Exception as _ne2:
+        logger.debug("Approval email failed (non-fatal): %s", _ne2)
+
+    tier_labels = {"tier1": "Beginner Bundle", "tier2": "Intermediate Bundle",
+                   "tier3": "Advanced Bundle", "tier4": "Premium Bundle"}
+    return {
+        "ok":        True,
+        "proof_id":  proof_id,
+        "tier":      tier,
+        "tier_label": tier_labels.get(tier, tier),
+        "message":   f"Bank transfer approved. {proof['email']} upgraded to {tier_labels.get(tier, tier)}.",
+    }
+
+
+@app.post("/admin/payments/bank-transfer/{proof_id}/reject")
+async def admin_reject_bank_transfer(
+    proof_id: str,
+    request: Request,
+) -> dict:
+    """Admin rejects a bank transfer proof with a reason."""
+    _require_admin(request)
+    body        = await request.json()
+    reason      = str(body.get("reason", "Payment proof could not be verified.")).strip()[:500]
+
+    import time as _t3, psycopg2.extras as _pge2
+    from app.db import get_db as _gdb
+
+    try:
+        with _gdb() as _conn:
+            with _conn.cursor(_pge2.RealDictCursor) as _cur:
+                _cur.execute("SELECT * FROM bank_transfer_proofs WHERE id=%s", (proof_id,))
+                proof = _cur.fetchone()
+        if not proof:
+            raise HTTPException(status_code=404, detail="Proof not found.")
+        proof = dict(proof)
+        with _gdb() as _conn:
+            with _conn.cursor() as _cur:
+                _cur.execute("""
+                    UPDATE bank_transfer_proofs
+                    SET status='rejected', admin_notes=%s, reviewed_at=%s
+                    WHERE id=%s
+                """, (reason, _t3.time(), proof_id))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"DB error: {exc}")
+
+    log_activity("admin", "payment:bank-transfer-rejected",
+                 f"proof={proof_id} reason={reason[:80]}")
+
+    # Notify learner of rejection
+    try:
+        from app.services.email_service import _dispatch_async, _shell, _box, PRIMARY
+        body_html = (
+            f"<p style='color:#1e293b;margin:0 0 12px;'>Hi,</p>"
+            f"<h2 style='color:#DC2626;font-size:1.1rem;margin:0 0 12px;'>&#10060; Bank Transfer Not Verified</h2>"
+            f"<p style='color:#475569;line-height:1.7;margin:0 0 16px;'>"
+            f"We were unable to verify your bank transfer for <strong>{proof['plan']}</strong>.</p>"
+            + _box(f"<strong>Reason:</strong> {reason}", bg="#fff1f2", border="#DC2626")
+            + f"<p style='color:#475569;line-height:1.7;margin:0;'>"
+              f"Please transfer again and re-upload your receipt, or contact support.</p>"
+        )
+        html = _shell(body_html, "Bank transfer could not be verified.")
+        text = (f"Hi,\n\nYour bank transfer for {proof['plan']} could not be verified.\n"
+                f"Reason: {reason}\n\nPlease try again or contact support.\n\n— MyPy Tutor Team")
+        _dispatch_async(proof["email"],
+                        "Bank Transfer — Action Required",
+                        html, text, "bank_transfer_rejected")
+    except Exception as _ne3:
+        logger.debug("Rejection email failed (non-fatal): %s", _ne3)
+
+    return {
+        "ok":       True,
+        "proof_id": proof_id,
+        "message":  f"Proof {proof_id} rejected. Learner notified.",
+    }
 
 
 @app.get("/admin/certificates")

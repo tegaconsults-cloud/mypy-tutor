@@ -364,6 +364,23 @@ def init_db() -> None:
                 revoked_at DOUBLE PRECISION NOT NULL
             )""")
 
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS bank_transfer_proofs (
+                id            TEXT PRIMARY KEY,
+                learner_id    TEXT NOT NULL,
+                email         TEXT NOT NULL,
+                plan          TEXT NOT NULL,
+                amount        DOUBLE PRECISION NOT NULL,
+                reference     TEXT DEFAULT '',
+                proof_b64     TEXT DEFAULT '',
+                proof_url     TEXT DEFAULT '',
+                notes         TEXT DEFAULT '',
+                status        TEXT DEFAULT 'pending',
+                admin_notes   TEXT DEFAULT '',
+                submitted_at  DOUBLE PRECISION DEFAULT EXTRACT(EPOCH FROM NOW()),
+                reviewed_at   DOUBLE PRECISION
+            )""")
+
             # ── Indexes ──────────────────────────────────────────────────────
             for sql in [
                 "CREATE INDEX IF NOT EXISTS idx_prompt_history_learner ON prompt_history (learner_id, id)",
@@ -379,6 +396,8 @@ def init_db() -> None:
                 "CREATE INDEX IF NOT EXISTS idx_daily_prompts_key ON daily_prompt_counts (key, date_str)",
                 "CREATE INDEX IF NOT EXISTS idx_feedback_ratings_learner ON feedback_ratings (learner_id, ts)",
                 "CREATE INDEX IF NOT EXISTS idx_feedback_surveys_learner ON feedback_surveys (learner_id, ts)",
+            "CREATE INDEX IF NOT EXISTS idx_btp_learner ON bank_transfer_proofs (learner_id)",
+            "CREATE INDEX IF NOT EXISTS idx_btp_status ON bank_transfer_proofs (status)",
             ]:
                 cur.execute(sql)
 

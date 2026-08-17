@@ -58,6 +58,13 @@ services:
         sync: false          # Get from sentry.io → Project → Settings → Client Keys
       - key: DATABASE_URL
         sync: false          # Set to the Internal Database URL from Render PostgreSQL dashboard
+      # Bank transfer account details — shown to users on the checkout page
+      - key: BANK_NAME
+        value: "Zenith Bank Plc"
+      - key: BANK_ACCOUNT_NAME
+        value: "Teamsamikoko Global Academy"
+      - key: BANK_ACCOUNT_NUMBER
+        value: "1228732577"
                              # Format: postgresql://mypytutor_user:PASSWORD@dpg-d9t11o6417fc73bj9aig-a/mypytutor
                              # Copy the Internal Database URL from: mypy-tutor-db → Connections → Internal Database URL
       # Python optimisations for low-memory deployment
