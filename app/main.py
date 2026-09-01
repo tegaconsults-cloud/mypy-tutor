@@ -1331,7 +1331,7 @@ async def resend_confirmation(request: Request) -> dict:
 
 @app.post("/admin/users/confirm-email")
 async def admin_confirm_email(request: Request) -> dict:
-    """Admin: manually confirm a user's email (useful when SMTP is broken)."""
+    """Admin: manually confirm a user's email (useful when SMTP is broken or after restart)."""
     _require_admin(request)
     body  = await request.json()
     email = body.get("email", "").lower().strip()
@@ -1340,16 +1340,67 @@ async def admin_confirm_email(request: Request) -> dict:
 
     from app.email_auth import _pending, _confirmed, confirm_email_token as _cet
 
+    # Already confirmed — nothing to do
     if email in _confirmed:
-        return {"ok": True, "message": f"{email} is already confirmed."}
+        return {"ok": True, "message": f"{email} is already confirmed. They can sign in now."}
 
     pending = _pending.get(email)
-    if not pending:
-        raise HTTPException(status_code=404, detail=f"No pending account for {email}")
+    if pending:
+        # In-memory path — works when the user signed up in this process lifetime
+        success, message = _cet(pending["token"])
+        log_activity("admin", "admin:manual_confirm", f"email={email}")
+        return {"ok": success, "message": message}
 
-    success, message = _cet(pending["token"])
-    log_activity("admin", "admin:manual_confirm", f"email={email}")
-    return {"ok": success, "message": message}
+    # After a Render restart _pending is empty — fall back to the DB
+    try:
+        from app.db import get_db as _gdb, confirm_email_db, load_email_account
+        acct = load_email_account(email)
+        if not acct:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No account found for {email}. The user must sign up first."
+            )
+        if int(acct.get("confirmed", 0)) == 1:
+            # Already confirmed in DB but not in memory — re-load into memory
+            from app.email_auth import _by_id
+            _confirmed[email] = {
+                "name":       acct.get("name", ""),
+                "email":      email,
+                "learner_id": acct["learner_id"],
+                "password_hash": acct.get("password_hash", ""),
+            }
+            _by_id[acct["learner_id"]] = _confirmed[email]
+            return {"ok": True, "message": f"{email} was already confirmed in the database."}
+
+        # Mark confirmed in PostgreSQL
+        confirm_email_db(email)
+
+        # Sync into in-memory store so the user can sign in immediately
+        from app.email_auth import _by_id
+        entry = {
+            "name":          acct.get("name", ""),
+            "email":         email,
+            "learner_id":    acct["learner_id"],
+            "password_hash": acct.get("password_hash", ""),
+        }
+        _confirmed[email]           = entry
+        _by_id[acct["learner_id"]]  = entry
+
+        # Send welcome email now that they're confirmed
+        try:
+            from app.services.email_service import send_welcome_email
+            send_welcome_email(acct.get("name", "Learner"), email)
+        except Exception as _we:
+            logger.debug("Welcome email after admin confirm failed (non-fatal): %s", _we)
+
+        log_activity("admin", "admin:manual_confirm", f"email={email} (DB path)")
+        return {"ok": True, "message": f"✅ {email} has been confirmed. They can now sign in."}
+
+    except HTTPException:
+        raise
+    except Exception as _db_exc:
+        logger.error("admin_confirm_email DB fallback failed: %s", _db_exc)
+        raise HTTPException(status_code=500, detail=f"Confirmation failed: {_db_exc}")
 
 
 
@@ -3534,20 +3585,35 @@ async def admin_update_task(task_id: str, status: str, request: Request) -> dict
 @app.get("/admin/feedback")
 async def admin_feedback_data(request: Request) -> dict:
     _require_admin(request)
-    from app.feedback import _ratings, _surveys, get_summary as _gs
+    from app.feedback import get_summary as _gs
+    from app.db import get_db as _gdb
+
+    # Always read from PostgreSQL so data survives Render restarts.
+    # In-memory _ratings / _surveys lists are empty after every restart.
+    recent_ratings: list[dict] = []
+    recent_surveys: list[dict] = []
+    try:
+        with _gdb() as _conn:
+            with _conn.cursor(cursor_factory=_pge.RealDictCursor) as _cur:
+                _cur.execute(
+                    "SELECT learner_id, rating, intent, topic, comment "
+                    "FROM feedback_ratings ORDER BY id DESC LIMIT 20"
+                )
+                recent_ratings = [dict(r) for r in _cur.fetchall()]
+
+                _cur.execute(
+                    "SELECT learner_id, overall, clarity, helpfulness, "
+                    "suggestion, would_recommend "
+                    "FROM feedback_surveys ORDER BY id DESC LIMIT 20"
+                )
+                recent_surveys = [dict(r) for r in _cur.fetchall()]
+    except Exception as _fe:
+        logger.warning("admin_feedback DB query failed (non-fatal): %s", _fe)
+
     return {
-        "summary": _gs().model_dump(),
-        "recent_ratings": [
-            {"learner_id": r.learner_id, "rating": r.rating,
-             "topic": r.topic, "comment": r.comment, "intent": r.intent}
-            for r in list(reversed(_ratings))[:20]
-        ],
-        "recent_surveys": [
-            {"learner_id": s.learner_id, "overall": s.overall,
-             "clarity": s.clarity, "helpfulness": s.helpfulness,
-             "suggestion": s.suggestion, "would_recommend": s.would_recommend}
-            for s in list(reversed(_surveys))[:20]
-        ],
+        "summary":        _gs().model_dump(),
+        "recent_ratings": recent_ratings,
+        "recent_surveys": recent_surveys,
     }
 
 

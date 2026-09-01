@@ -362,6 +362,8 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
           <thead><tr><th>ID</th><th>User</th><th>Amount</th><th>Plan</th><th>Method</th><th>Status</th><th>Date</th><th></th></tr></thead>
           <tbody id="payments-body"><tr><td colspan="8" style="color:#4a5568">Loading…</td></tr></tbody>
         </table></div></div>
+        <!-- Bank transfer proofs rendered here by loadPayments() -->
+        <div id="bank-proofs-section"></div>
       </div>
 
       <!-- CERTIFICATES -->
@@ -577,7 +579,11 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
 const TK = 'mpt_admin_token';
 let token = localStorage.getItem(TK) || '';
 const ADMIN_EMAIL = localStorage.getItem('mpt_admin_email') || '';
-const API_BASE = 'https://mypytutor.onrender.com';
+// Dynamic API_BASE: use the current host so the dashboard works on any deployment
+// (local dev, staging, production) without hard-coding a URL.
+const API_BASE = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+  ? 'http://' + location.host
+  : 'https://mypytutor.onrender.com';
 
 function api(path, opts={}) {
   return fetch(API_BASE + path, {...opts, headers:{'Content-Type':'application/json','X-Admin-Token':token,...(opts.headers||{})}});
@@ -662,22 +668,25 @@ async function loadDashboard(){
     const r=await api('/admin/dashboard');
     if(r.status===403){doLogout();return;}
     const d=await r.json();
-    document.getElementById('d-users').textContent=d.users.total;
-    document.getElementById('d-active').textContent=d.users.active_today;
-    document.getElementById('d-new24h').textContent=d.users.new_24h||0;
-    document.getElementById('d-rev').textContent='₦'+(d.revenue.total_revenue||0).toLocaleString();
-    document.getElementById('d-pmts').textContent=d.payments;
-    document.getElementById('d-certs').textContent=d.certificates;
-    document.getElementById('d-tasks').textContent=d.tasks.open;
-    document.getElementById('d-sat').textContent=(d.feedback.satisfaction_pct||0)+'%';
-    document.getElementById('d-team').textContent=d.team_size;
-    document.getElementById('d-withdrawals').textContent=d.withdrawals_pending||0;
+    // Safe coercion helpers — prevent NaN/undefined showing in cards
+    const n  = v => (isNaN(+v) ? 0 : (+v));
+    const u  = v => n(v?.total   ?? v ?? 0);
+    document.getElementById('d-users').textContent       = n(d.users?.total        ?? 0);
+    document.getElementById('d-active').textContent      = n(d.users?.active_today  ?? 0);
+    document.getElementById('d-new24h').textContent      = n(d.users?.new_24h       ?? 0);
+    document.getElementById('d-rev').textContent         = '₦'+n(d.revenue?.total_revenue ?? 0).toLocaleString();
+    document.getElementById('d-pmts').textContent        = n(d.payments            ?? 0);
+    document.getElementById('d-certs').textContent       = n(d.certificates        ?? 0);
+    document.getElementById('d-tasks').textContent       = n(d.tasks?.open         ?? 0);
+    document.getElementById('d-sat').textContent         = n(d.feedback?.satisfaction_pct ?? 0)+'%';
+    document.getElementById('d-team').textContent        = n(d.team_size           ?? 0);
+    document.getElementById('d-withdrawals').textContent = n(d.withdrawals_pending  ?? 0);
     const tiers=Object.entries(d.users_by_tier||{});
     document.getElementById('d-tiers').innerHTML=tiers.length?tiers.map(([t,c])=>
       `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #2d3748;font-size:.83rem">
       <span class="badge ${t==='free'?'grey':t==='tier1'?'bg':t==='tier2'?'gy':'gr'}">${t}</span>
       <strong>${c} users</strong></div>`).join(''):'<span style="color:#4a5568">No users yet.</span>';
-    const plans=Object.entries(d.revenue.by_plan||{});
+    const plans=Object.entries((d.revenue||{}).by_plan||{});
     document.getElementById('d-plans').innerHTML=plans.length?plans.map(([p,v])=>
       `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #2d3748;font-size:.83rem">
       <span>${p}</span><strong style="color:#68d391">₦${v.toLocaleString()}</strong></div>`).join(''):'<span style="color:#4a5568">No payments yet.</span>';
@@ -779,15 +788,58 @@ async function loadPayments(){
   document.getElementById('p-total-rev').textContent='₦'+(rev.total_revenue||0).toLocaleString();
   document.getElementById('p-confirmed').textContent=rev.confirmed||0;
   document.getElementById('p-pending').textContent=rev.pending||0;
+
+  // ── Regular payments ───────────────────────────────────────────────────
   document.getElementById('payments-body').innerHTML=(d.payments||[]).map(p=>{
     const sc={confirmed:'gg',pending:'gy',refunded:'gr'}[p.status]||'grey';
-    const cfm=p.status==='pending'?`<button class="bsm bg2" onclick="confirmPayment('${p.id}')">Confirm</button>`:'';
-    return `<tr><td>${p.id}</td>
-      <td>${p.user_name}<br><span style="font-size:.7rem;color:#4a5568">${p.user_email}</span></td>
-      <td>₦${p.amount.toLocaleString()}</td><td>${p.plan}</td><td>${p.method}</td>
+    const cfm=p.status==='pending'?`<button class="bsm bg2" onclick="confirmPayment('${p.id}')">✓ Confirm</button>`:'';
+    const amt = isNaN(+(p.amount)) ? '—' : '₦'+(+(p.amount)).toLocaleString();
+    const dt  = (p.created_at||'').split('T')[0] || '—';
+    return `<tr>
+      <td style="font-family:monospace;font-size:.75rem">${p.id}</td>
+      <td>${p.user_name||'—'}<br><span style="font-size:.7rem;color:#4a5568">${p.user_email||'—'}</span></td>
+      <td>${amt}</td><td>${p.plan||'—'}</td><td>${p.method||'—'}</td>
       <td><span class="badge ${sc}">${p.status}</span></td>
-      <td>${p.created_at.split('T')[0]}</td><td>${cfm}</td></tr>`;
+      <td>${dt}</td><td>${cfm}</td></tr>`;
   }).join('')||'<tr><td colspan="8" style="color:#4a5568">No payments yet.</td></tr>';
+
+  // ── Bank transfer proofs ───────────────────────────────────────────────
+  const proofs = d.bank_transfer_proofs || [];
+  let proofsHtml = '';
+  if(proofs.length){
+    const rows = proofs.map(p=>{
+      const sc={pending:'gy',approved:'bg',rejected:'gr',reviewed:'gg'}[p.status]||'grey';
+      const amt = isNaN(+(p.amount)) ? '—' : '₦'+(+(p.amount)).toLocaleString();
+      const dt  = p.submitted_at_fmt || (p.submitted_at||'').toString().split('T')[0] || '—';
+      const actions = p.status==='pending' ? `
+        <button class="bsm bg2" onclick="approveBankTransfer('${p.id}')">✓ Approve</button>
+        <button class="bsm br"  onclick="rejectBankTransfer('${p.id}')">✕ Reject</button>` : '—';
+      return `<tr>
+        <td style="font-family:monospace;font-size:.72rem">${p.id}</td>
+        <td style="font-size:.78rem">${p.email||'—'}<br><span style="color:#4a5568;font-size:.68rem">${p.learner_id||'—'}</span></td>
+        <td>${amt}</td>
+        <td><span class="badge grey">${p.plan||'—'}</span></td>
+        <td style="font-size:.74rem">${p.reference||'—'}</td>
+        <td><span class="badge ${sc}">${p.status}</span></td>
+        <td style="font-size:.72rem;color:#4a5568">${dt}</td>
+        <td style="display:flex;gap:4px;flex-wrap:wrap">${actions}</td>
+      </tr>`;
+    }).join('');
+    proofsHtml = `
+      <div class="sec" style="margin-top:16px">
+        <h3 style="color:#fbbf24">🏦 Bank Transfer Proofs</h3>
+        <div style="overflow-x:auto"><table>
+          <thead><tr>
+            <th>Proof ID</th><th>Learner</th><th>Amount</th><th>Plan</th>
+            <th>Reference</th><th>Status</th><th>Date</th><th>Actions</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table></div>
+      </div>`;
+  }
+  // Inject proofs section after the payments table
+  const proofsDest = document.getElementById('bank-proofs-section');
+  if(proofsDest) proofsDest.innerHTML = proofsHtml;
 }
 
 async function addPayment(){
@@ -802,6 +854,25 @@ async function addPayment(){
 async function confirmPayment(id){
   const r=await api('/admin/payments/confirm/'+id,{method:'POST'});
   if(r.ok){toast('Payment confirmed');loadPayments();}
+}
+
+async function approveBankTransfer(proofId){
+  const tier=prompt('Tier to grant (tier1 / tier2 / tier3 / tier4):');
+  if(!tier)return;
+  const r=await api(`/admin/payments/bank-transfer/${proofId}/approve`,
+    {method:'POST',body:JSON.stringify({tier})});
+  const d=await r.json();
+  if(r.ok&&d.ok){toast('Bank transfer approved — learner upgraded to '+tier);loadPayments();}
+  else toast(d.detail||d.message||'Approval failed',false);
+}
+
+async function rejectBankTransfer(proofId){
+  const reason=prompt('Reason for rejection (shown to learner):') || '';
+  const r=await api(`/admin/payments/bank-transfer/${proofId}/reject`,
+    {method:'POST',body:JSON.stringify({reason})});
+  const d=await r.json();
+  if(r.ok&&d.ok){toast('Bank transfer rejected');loadPayments();}
+  else toast(d.detail||d.message||'Rejection failed',false);
 }
 
 // ── Certificates ───────────────────────────────────────────────────────────
@@ -1010,13 +1081,13 @@ async function loadCoupons(){
         <tbody>`+
         (d.coupons).map(c=>{
           const exp=c.expires_at&&c.expires_at>0?new Date(c.expires_at*1000).toLocaleDateString():'never';
-          const cls=c.times_used>=c.max_uses?'gr':'gg';
+          const cls=c.uses>=c.max_uses?'gr':'gg';
           return `<tr>
             <td><code style="font-size:.82rem;color:#a78bfa;letter-spacing:.06em">${c.code}</code></td>
             <td style="color:#fcd34d">${c.discount_pct}%</td>
             <td>${c.discount_flat>0?'₦'+c.discount_flat:'—'}</td>
             <td><span class="badge grey">${c.plan}</span></td>
-            <td><span class="badge ${cls}">${c.times_used||0}/${c.max_uses}</span></td>
+            <td><span class="badge ${cls}">${c.uses||0}/${c.max_uses}</span></td>
             <td style="font-size:.74rem;color:#718096">${exp}</td>
           </tr>`;
         }).join('')+
