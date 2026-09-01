@@ -3022,36 +3022,79 @@ async def admin_delete_user(learner_id: str, request: Request) -> dict:
     """
     Hard-delete a user account (admin-only).
 
-    Permanently removes all PII and anonymises learning data — same logic
-    as the user-initiated DELETE /auth/account, but callable by an admin
-    without needing the user's password.  Payment records are retained for
-    7 years per Nigerian tax law.
+    Permanently removes all PII and anonymises learning data.
+    Payment records are retained for 7 years (Nigerian tax law).
+    Works even when no email is on record (Google/GitHub OAuth users).
     """
     _require_admin(request)
     validate_learner_id(learner_id)
 
-    # Look up email so we can pass it to delete_account()
+    # Try every source to find the user's email — it is only needed for
+    # the payments anonymisation step; deletion itself works without it.
     email = ""
+
+    # 1. learner_profiles table (fastest — already pooled)
     try:
         from app.db import load_profile as _lp_db
         row = _lp_db(learner_id)
         if row:
-            email = row.get("email", "")
+            email = (row.get("email") or "").strip()
     except Exception:
         pass
 
+    # 2. email_accounts table (email-signup users)
     if not email:
         try:
-            p = get_profile(learner_id)
-            email = p.email or ""
+            from app.db import get_db as _gdb2
+            with _gdb2() as _c2:
+                with _c2.cursor(cursor_factory=_pge.RealDictCursor) as _cur2:
+                    _cur2.execute(
+                        "SELECT email FROM email_accounts WHERE learner_id=%s LIMIT 1",
+                        (learner_id,)
+                    )
+                    _row2 = _cur2.fetchone()
+                    if _row2:
+                        email = (_row2["email"] or "").strip()
         except Exception:
             pass
 
+    # 3. In-memory progress store (Google/GitHub users)
     if not email:
-        raise HTTPException(
-            status_code=404,
-            detail=f"User {learner_id} not found or has no email on record."
-        )
+        try:
+            p = get_profile(learner_id)
+            email = (p.email or "").strip()
+        except Exception:
+            pass
+
+    # 4. In-memory auth store (Google/GitHub users after restart)
+    if not email:
+        try:
+            from app.auth import _users as _au
+            au = _au.get(learner_id)
+            if au:
+                email = (au.email or "").strip()
+        except Exception:
+            pass
+
+    # If we still have no email, check whether the learner even exists
+    # before proceeding (avoid silently deleting a ghost ID)
+    if not email:
+        try:
+            from app.db import load_profile as _lp2
+            if _lp2(learner_id) is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"User '{learner_id}' not found in the database."
+                )
+            # Learner exists but has no email (e.g. imported via access code with no auth)
+            # Proceed with deletion using an empty email — DB function handles it safely.
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(
+                status_code=404,
+                detail=f"User '{learner_id}' not found."
+            )
 
     try:
         from app.db import delete_account as _del_db
@@ -3060,33 +3103,46 @@ async def admin_delete_user(learner_id: str, request: Request) -> dict:
         logger.error("Admin account deletion failed for %s: %s", learner_id, exc)
         raise HTTPException(status_code=500, detail=f"Deletion failed: {exc}")
 
-    # Remove from in-memory caches
+    # Remove from all in-memory caches immediately
     from app.progress import _store as _prog_store
     _prog_store.pop(learner_id, None)
-    from app.auth import _users as _auth_users
-    _auth_users.pop(learner_id, None)
-    from app.email_auth import _confirmed as _conf, _by_id as _bid
-    _conf.pop(email, None)
-    _bid.pop(learner_id, None)
-
-    # Mirror deletion to Supabase (non-blocking)
     try:
-        from app.supabase_client import get_supabase, sb_enabled
-        if sb_enabled():
-            threading.Thread(
-                target=lambda: (
-                    get_supabase().table("email_accounts").delete().eq("learner_id", learner_id).execute(),
-                    get_supabase().table("profiles").delete().eq("id", learner_id).execute(),
-                    get_supabase().table("learner_progress").delete().eq("learner_id", learner_id).execute(),
-                ),
-                daemon=True,
-            ).start()
+        from app.auth import _users as _auth_users
+        _auth_users.pop(learner_id, None)
+    except Exception:
+        pass
+    try:
+        from app.email_auth import _confirmed as _conf, _by_id as _bid
+        if email:
+            _conf.pop(email, None)
+        _bid.pop(learner_id, None)
     except Exception:
         pass
 
-    log_activity("admin", "admin:delete-account", f"learner_id={learner_id} email={email}")
-    return {"ok": True, "learner_id": learner_id, "summary": summary,
-            "message": f"Account for {email} permanently deleted."}
+    # Mirror deletion to Supabase (non-blocking, best-effort)
+    try:
+        from app.supabase_client import get_supabase, sb_enabled
+        if sb_enabled():
+            def _sb_delete():
+                try:
+                    sb = get_supabase()
+                    sb.table("email_accounts").delete().eq("learner_id", learner_id).execute()
+                    sb.table("profiles").delete().eq("id", learner_id).execute()
+                    sb.table("learner_progress").delete().eq("learner_id", learner_id).execute()
+                except Exception as _se:
+                    logger.debug("Supabase delete failed (non-fatal): %s", _se)
+            threading.Thread(target=_sb_delete, daemon=True).start()
+    except Exception:
+        pass
+
+    label = email or learner_id
+    log_activity("admin", "admin:delete-account", f"learner_id={learner_id} email={label}")
+    return {
+        "ok": True,
+        "learner_id": learner_id,
+        "summary": summary,
+        "message": f"Account for {label} permanently deleted.",
+    }
 
 
 @app.get("/admin/payments")

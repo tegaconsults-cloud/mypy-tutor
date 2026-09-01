@@ -811,13 +811,16 @@ def is_session_revoked(learner_id: str, token_issued_at: float) -> bool:
 
 def delete_account(learner_id: str, email: str) -> dict:
     import time as _t
+    email = (email or "").lower().strip()
     summary = {}
     try:
         with get_db() as conn:
             with conn.cursor() as cur:
                 cur.execute("DELETE FROM email_accounts WHERE learner_id=%s", (learner_id,))
                 cur.execute("DELETE FROM user_profiles WHERE learner_id=%s", (learner_id,))
-                cur.execute("DELETE FROM password_resets WHERE email=%s", (email.lower(),))
+                # Only clean up email-dependent tables when we have a valid email
+                if email:
+                    cur.execute("DELETE FROM password_resets WHERE email=%s", (email,))
                 cur.execute("DELETE FROM referral_withdrawals WHERE learner_id=%s", (learner_id,))
                 cur.execute("""
                     INSERT INTO session_revocations (learner_id, revoked_at) VALUES (%s, %s)
@@ -830,18 +833,19 @@ def delete_account(learner_id: str, email: str) -> dict:
                 cur.execute("""
                     UPDATE prompt_history SET content='[deleted]' WHERE learner_id=%s
                 """, (learner_id,))
-                cur.execute("""
-                    UPDATE payments SET user_email='deleted@deleted.invalid',
-                                        user_name='[deleted]'
-                    WHERE user_email=%s
-                """, (email.lower(),))
+                if email:
+                    cur.execute("""
+                        UPDATE payments SET user_email='deleted@deleted.invalid',
+                                            user_name='[deleted]'
+                        WHERE user_email=%s
+                    """, (email,))
         summary = {
             "email_account": "deleted",
             "user_profile": "deleted",
             "sessions": "revoked",
             "learning_profile": "anonymised",
             "prompt_history": "anonymised",
-            "payments": "email anonymised (retained 7 years per law)",
+            "payments": "email anonymised (retained 7 years per law)" if email else "skipped (no email on record)",
         }
     except Exception as _e:
         logger.error("delete_account DB error for %s: %s", learner_id, _e)
