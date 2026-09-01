@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>AI Automation Course — MyPy Tutor</title>
+<meta name="description" content="Master AI Automation with Python — build real pipelines, bots, and workflows powered by LLMs. 8 modules, 38 lessons, practical projects. By Teamsamikoko Global Academy."/>
+<link rel="icon" type="image/jpeg" href="https://mypytutor.onrender.com/static/icons/mypytutor_logo.jpg"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+:root{
+  --bg:#07090f;--surface:#0d1120;--card:#111827;--elevated:#1a2235;
+  --border:rgba(255,255,255,0.07);
+  --accent:#3b82f6;--accent2:#8b5cf6;--gold:#f59e0b;--green:#10b981;
+  --text:#f1f5f9;--muted:#64748b;--sub:#94a3b8;
+  --radius:14px;--font:'Inter',-apple-system,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:var(--font);background:var(--bg);color:var(--text);-webkit-font-smoothing:antialiased;line-height:1.6}
+
+/* ── Backgrounds ── */
+body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:radial-gradient(ellipse 80% 60% at 50% -15%,rgba(59,130,246,.12),transparent),
+             radial-gradient(ellipse 60% 50% at 85% 80%,rgba(139,92,246,.08),transparent),
+             radial-gradient(ellipse 40% 30% at 10% 60%,rgba(16,185,129,.05),transparent);}
+body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:radial-gradient(rgba(255,255,255,.018) 1px,transparent 1px);
+  background-size:28px 28px;}
+
+/* ── Layout ── */
+.wrap{position:relative;z-index:1;max-width:1080px;margin:0 auto;padding:0 20px}
+
+/* ── Nav ── */
+nav{position:sticky;top:0;z-index:100;background:rgba(7,9,15,.92);backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--border);padding:14px 0}
+.nav-inner{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none}
+.brand-logo{width:38px;height:38px;border-radius:50%;overflow:hidden;
+  border:2px solid rgba(59,130,246,.5);box-shadow:0 0 14px rgba(59,130,246,.3);flex-shrink:0}
+.brand-logo img{width:100%;height:100%;object-fit:cover;display:block}
+.brand-name{font-weight:800;font-size:1rem;letter-spacing:-.02em;
+  background:linear-gradient(135deg,#60a5fa,#a78bfa);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.nav-cta{display:flex;gap:8px;align-items:center}
+.btn{display:inline-block;padding:9px 22px;border-radius:var(--radius);font-size:.85rem;
+  font-weight:700;cursor:pointer;text-decoration:none;transition:all .15s;border:none;font-family:var(--font)}
+.btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;
+  box-shadow:0 4px 14px rgba(59,130,246,.35)}
+.btn-primary:hover{transform:translateY(-1px);filter:brightness(1.08)}
+.btn-outline{background:transparent;color:var(--sub);border:1px solid var(--border)}
+.btn-outline:hover{border-color:rgba(59,130,246,.5);color:#93c5fd}
+
+/* ── Hero ── */
+.hero{padding:96px 0 72px;text-align:center}
+.hero-badge{display:inline-flex;align-items:center;gap:6px;
+  background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.25);
+  color:#93c5fd;border-radius:999px;padding:5px 14px;font-size:.75rem;font-weight:700;
+  letter-spacing:.06em;text-transform:uppercase;margin-bottom:24px}
+.hero h1{font-size:clamp(2.2rem,5vw,3.6rem);font-weight:900;letter-spacing:-.04em;line-height:1.1;
+  margin-bottom:20px}
+.hero h1 span{background:linear-gradient(135deg,#60a5fa,#a78bfa,#34d399);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-sub{font-size:1.05rem;color:var(--sub);max-width:640px;margin:0 auto 32px;line-height:1.7}
+.hero-stats{display:flex;justify-content:center;gap:32px;flex-wrap:wrap;margin-top:40px}
+.stat{text-align:center}
+.stat-v{font-size:1.6rem;font-weight:800;color:var(--accent);letter-spacing:-.03em}
+.stat-l{font-size:.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;font-weight:600;margin-top:2px}
+
+/* ── Section titles ── */
+.section{padding:72px 0}
+.section-tag{display:inline-block;font-size:.72rem;font-weight:700;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--accent);margin-bottom:10px}
+.section-title{font-size:clamp(1.5rem,3vw,2rem);font-weight:800;letter-spacing:-.03em;margin-bottom:10px}
+.section-sub{color:var(--sub);max-width:580px;line-height:1.7;font-size:.95rem}
+.section-divider{border:none;border-top:1px solid var(--border);margin:0}
+
+/* ── Outcomes grid ── */
+.outcomes{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-top:36px}
+.outcome-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+  padding:20px;transition:border-color .15s}
+.outcome-card:hover{border-color:rgba(59,130,246,.3)}
+.outcome-icon{font-size:1.4rem;margin-bottom:10px}
+.outcome-card h4{font-size:.88rem;font-weight:700;color:var(--text);margin-bottom:6px}
+.outcome-card p{font-size:.78rem;color:var(--muted);line-height:1.6}
+
+/* ── Modules ── */
+.modules{margin-top:40px;display:flex;flex-direction:column;gap:14px}
+.module{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+  overflow:hidden;transition:border-color .15s}
+.module:hover{border-color:rgba(59,130,246,.3)}
+.module-header{display:flex;align-items:flex-start;gap:16px;padding:20px 22px;cursor:pointer;
+  user-select:none}
+.module-num{flex-shrink:0;width:36px;height:36px;border-radius:10px;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  display:flex;align-items:center;justify-content:center;
+  font-size:.75rem;font-weight:800;color:#fff}
+.module-info{flex:1;min-width:0}
+.module-title{font-size:.95rem;font-weight:700;color:var(--text);margin-bottom:4px}
+.module-meta{font-size:.74rem;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap}
+.module-meta span{display:flex;align-items:center;gap:4px}
+.module-chevron{flex-shrink:0;color:var(--muted);font-size:.8rem;transition:transform .2s;margin-top:2px}
+.module.open .module-chevron{transform:rotate(180deg)}
+.module-body{display:none;padding:0 22px 20px;border-top:1px solid var(--border)}
+.module.open .module-body{display:block}
+.lesson-list{margin-top:14px;display:flex;flex-direction:column;gap:6px}
+.lesson{display:flex;align-items:flex-start;gap:10px;padding:8px 0;
+  border-bottom:1px solid rgba(255,255,255,.04)}
+.lesson:last-child{border-bottom:none}
+.lesson-type{flex-shrink:0;padding:2px 8px;border-radius:999px;font-size:.64rem;font-weight:700;
+  letter-spacing:.04em;text-transform:uppercase;min-width:62px;text-align:center}
+.lt-concept{background:rgba(59,130,246,.12);color:#93c5fd;border:1px solid rgba(59,130,246,.25)}
+.lt-exercise{background:rgba(245,158,11,.1);color:#fcd34d;border:1px solid rgba(245,158,11,.25)}
+.lt-project{background:rgba(16,185,129,.1);color:#6ee7b7;border:1px solid rgba(16,185,129,.25)}
+.lt-quiz{background:rgba(139,92,246,.1);color:#c4b5fd;border:1px solid rgba(139,92,246,.25)}
+.lesson-text{flex:1;font-size:.8rem;color:var(--sub);line-height:1.55}
+.lesson-text strong{color:var(--text);font-weight:600}
+
+/* ── Workflow cards ── */
+.workflows{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-top:36px}
+.wf-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:22px;
+  position:relative;overflow:hidden;transition:all .2s}
+.wf-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;
+  background:linear-gradient(90deg,var(--accent),var(--accent2))}
+.wf-card:hover{border-color:rgba(59,130,246,.3);transform:translateY(-2px)}
+.wf-card.green::before{background:linear-gradient(90deg,#059669,#34d399)}
+.wf-card.purple::before{background:linear-gradient(90deg,#7c3aed,#a78bfa)}
+.wf-card.gold::before{background:linear-gradient(90deg,#d97706,#fcd34d)}
+.wf-card.red::before{background:linear-gradient(90deg,#dc2626,#f87171)}
+.wf-label{font-size:.66rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--accent);margin-bottom:8px}
+.wf-card.green .wf-label{color:#34d399}
+.wf-card.purple .wf-label{color:#a78bfa}
+.wf-card.gold .wf-label{color:#fcd34d}
+.wf-card.red .wf-label{color:#f87171}
+.wf-title{font-size:.95rem;font-weight:700;color:var(--text);margin-bottom:10px}
+.wf-steps{display:flex;flex-direction:column;gap:5px}
+.wf-step{display:flex;align-items:flex-start;gap:8px;font-size:.78rem;color:var(--sub)}
+.wf-step-num{flex-shrink:0;width:18px;height:18px;border-radius:50%;
+  background:rgba(59,130,246,.15);color:#93c5fd;
+  display:flex;align-items:center;justify-content:center;font-size:.62rem;font-weight:700}
+.wf-card.green .wf-step-num{background:rgba(16,185,129,.15);color:#6ee7b7}
+.wf-card.purple .wf-step-num{background:rgba(139,92,246,.15);color:#c4b5fd}
+.wf-card.gold .wf-step-num{background:rgba(245,158,11,.15);color:#fcd34d}
+.wf-card.red .wf-step-num{background:rgba(239,68,68,.15);color:#f87171}
+.wf-arrow{color:rgba(255,255,255,.2);font-size:.7rem;padding-left:26px}
+
+/* ── Pricing ── */
+.pricing-box{background:var(--card);border:1px solid var(--border);border-radius:20px;
+  padding:36px;margin-top:36px;position:relative;overflow:hidden}
+.pricing-box::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;
+  background:linear-gradient(90deg,var(--accent),var(--accent2))}
+.pricing-badge{display:inline-block;background:linear-gradient(135deg,rgba(245,158,11,.15),rgba(245,158,11,.05));
+  border:1px solid rgba(245,158,11,.3);color:#fcd34d;
+  border-radius:999px;padding:4px 14px;font-size:.72rem;font-weight:700;margin-bottom:20px}
+.price-row{display:flex;align-items:baseline;gap:10px;margin-bottom:6px}
+.price-main{font-size:2.4rem;font-weight:900;color:var(--text);letter-spacing:-.04em}
+.price-label{font-size:.85rem;color:var(--muted)}
+.price-note{font-size:.8rem;color:var(--sub);margin-bottom:24px;line-height:1.6}
+.features{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:28px}
+@media(max-width:520px){.features{grid-template-columns:1fr}}
+.feature{display:flex;align-items:flex-start;gap:8px;font-size:.82rem;color:var(--sub)}
+.feature-check{color:var(--green);flex-shrink:0;margin-top:1px}
+.pricing-also{font-size:.8rem;color:var(--muted);text-align:center;margin-top:16px}
+.pricing-also a{color:var(--accent);text-decoration:none}
+
+/* ── Instructor ── */
+.instructor{display:flex;align-items:flex-start;gap:24px;background:var(--card);
+  border:1px solid var(--border);border-radius:var(--radius);padding:28px;margin-top:36px}
+.instructor-avatar{width:72px;height:72px;border-radius:50%;overflow:hidden;flex-shrink:0;
+  border:2px solid rgba(59,130,246,.4);box-shadow:0 0 18px rgba(59,130,246,.2)}
+.instructor-avatar img{width:100%;height:100%;object-fit:cover;display:block}
+.instructor-name{font-size:1rem;font-weight:800;color:var(--text);margin-bottom:4px}
+.instructor-title{font-size:.78rem;color:var(--accent);margin-bottom:10px;font-weight:600}
+.instructor-bio{font-size:.82rem;color:var(--sub);line-height:1.65}
+
+/* ── FAQ ── */
+.faq{margin-top:36px;display:flex;flex-direction:column;gap:10px}
+.faq-item{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+  overflow:hidden}
+.faq-q{display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:16px 20px;cursor:pointer;font-size:.88rem;font-weight:600;color:var(--text);user-select:none}
+.faq-q:hover{background:rgba(255,255,255,.02)}
+.faq-chevron{flex-shrink:0;color:var(--muted);transition:transform .2s}
+.faq-item.open .faq-chevron{transform:rotate(180deg)}
+.faq-a{display:none;padding:0 20px 16px;font-size:.82rem;color:var(--sub);line-height:1.7;
+  border-top:1px solid var(--border)}
+.faq-item.open .faq-a{display:block}
+
+/* ── CTA band ── */
+.cta-band{padding:80px 0;text-align:center}
+.cta-band h2{font-size:clamp(1.6rem,3vw,2.2rem);font-weight:900;letter-spacing:-.03em;margin-bottom:14px}
+.cta-band p{color:var(--sub);max-width:500px;margin:0 auto 32px;line-height:1.7}
+.cta-buttons{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+
+/* ── Footer ── */
+footer{border-top:1px solid var(--border);padding:28px 0;text-align:center}
+footer p{font-size:.76rem;color:var(--muted);line-height:1.8}
+footer a{color:var(--sub);text-decoration:none}
+footer a:hover{color:var(--accent)}
+
+@media(max-width:640px){
+  .hero{padding:72px 0 48px}
+  .hero-stats{gap:20px}
+  .stat-v{font-size:1.3rem}
+  .instructor{flex-direction:column}
+  .module-meta{gap:8px}
+  .nav-cta .btn-outline{display:none}
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="wrap">
+    <div class="nav-inner">
+      <a class="brand" href="https://mypytutor.com.ng">
+        <div class="brand-logo">
+          <img src="https://mypytutor.onrender.com/static/icons/mypytutor_logo.jpg"
+               alt="MyPy Tutor" onerror="this.src='https://mypytutor.onrender.com/static/icons/mypytutor_logo.png'"/>
+        </div>
+        <span class="brand-name">MyPy Tutor</span>
+      </a>
+      <div class="nav-cta">
+        <a class="btn btn-outline" href="https://mypytutor.com.ng">← All Courses</a>
+        <a class="btn btn-primary" href="https://paystack.shop/pay/vt_re4d3h52">Enrol Now — ₦50,000</a>
+      </div>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="wrap">
+    <div class="hero-badge">🤖 New Course &nbsp;·&nbsp; AI Automation</div>
+    <h1>Build Real <span>AI Automation</span><br/>Systems with Python</h1>
+    <p class="hero-sub">
+      Stop doing things manually. Learn to build LLM-powered pipelines, bots, document processors,
+      and end-to-end automation systems — the skills every Python developer needs in 2025 and beyond.
+    </p>
+    <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+      <a class="btn btn-primary" href="https://paystack.shop/pay/vt_re4d3h52"
+         style="font-size:.95rem;padding:12px 28px">🚀 Enrol Now — ₦50,000 one-time</a>
+      <a class="btn btn-outline" href="#modules"
+         style="font-size:.95rem;padding:12px 28px">📚 See Curriculum</a>
+    </div>
+    <div class="hero-stats">
+      <div class="stat"><div class="stat-v">8</div><div class="stat-l">Modules</div></div>
+      <div class="stat"><div class="stat-v">38</div><div class="stat-l">Lessons</div></div>
+      <div class="stat"><div class="stat-v">12+</div><div class="stat-l">Real Workflows</div></div>
+      <div class="stat"><div class="stat-v">8</div><div class="stat-l">Capstone Projects</div></div>
+      <div class="stat"><div class="stat-v">∞</div><div class="stat-l">Lifetime Access</div></div>
+    </div>
+  </div>
+</section>
+
+<hr class="section-divider"/>
+
+<!-- OUTCOMES -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-tag">What You'll Build</div>
+    <h2 class="section-title">From zero to production-ready automation</h2>
+    <p class="section-sub">By the end of this course you will have built 8 real systems and understand every layer of AI automation — from a simple scheduler to a full multi-channel support bot deployed on Render.</p>
+    <div class="outcomes">
+      <div class="outcome-card">
+        <div class="outcome-icon">🗂️</div>
+        <h4>File & Data Pipelines</h4>
+        <p>Automate file organisation, CSV processing, PDF extraction, and Google Sheets sync with pure Python.</p>
+      </div>
+      <div class="outcome-card">
+        <div class="outcome-icon">🤖</div>
+        <h4>LLM-Powered Processing</h4>
+        <p>Classify, extract, and generate text at scale using Groq/OpenAI with structured JSON output.</p>
+      </div>
+      <div class="outcome-card">
+        <div class="outcome-icon">📧</div>
+        <h4>Email & Document Bots</h4>
+        <p>Build bots that read inboxes, triage support tickets, extract invoice data, and draft replies automatically.</p>
+      </div>
+      <div class="outcome-card">
+        <div class="outcome-icon">🔗</div>
+        <h4>API & Webhook Integrations</h4>
+        <p>Connect Slack, Telegram, HubSpot, Notion, and Typeform to your Python backend in real time.</p>
+      </div>
+      <div class="outcome-card">
+        <div class="outcome-icon">⚙️</div>
+        <h4>n8n & Zapier Workflows</h4>
+        <p>Orchestrate no-code tools alongside your Python code for maximum automation reach.</p>
+      </div>
+      <div class="outcome-card">
+        <div class="outcome-icon">🚀</div>
+        <h4>Production Deployment</h4>
+        <p>Containerise with Docker, use Redis queues, and deploy automated workers on Render.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="section-divider"/>
+
+<!-- SAMPLE WORKFLOWS -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-tag">Sample Workflows</div>
+    <h2 class="section-title">Practicals you'll build — step by step</h2>
+    <p class="section-sub">Every module ends with a real-world workflow exercise. Here are six of them — complete with the exact steps you'll implement in Python.</p>
+    <div class="workflows">
+
+      <div class="wf-card">
+        <div class="wf-label">Module 2 · Scripting</div>
+        <div class="wf-title">☀️ Automated Morning Report</div>
+        <div class="wf-steps">
+          <div class="wf-step"><div class="wf-step-num">1</div><span>Scrape weather API for today's forecast</span></div>
+          <div class="wf-arrow">↓</div>
+          <div class="wf-step"><div class="wf-step-num">2</div><span>Fetch top 3 news headlines</span></div>
+          <div class="wf-arrow">↓</div>
+          <div class="wf-step"><div class="wf-step-num">3</div><span>Pull GitHub trending repos</span></div>
+          <div class="wf-arrow">↓</div>
+          <div class="wf-step"><div class="wf-step-num">4</div><span>Format as HTML email with smtplib</span></div>
+          <div class="wf-arrow">↓</div>
+          <div class="wf-step"><div class="wf-step-num">5</div><span>Schedule with <code>schedule</code> at 7AM daily</span></div>
+        </div>
+      </div>
+
+      <div class="wf-card green">
+        <div class="wf-label">Module 3 · LLM Pipelines</div>
+        <div class="wf-title">🎫 Customer Support Ticket Bot</div>
+        <div class="wf-steps">
+          <div class="wf-step"><div class="wf-step-num">1</div><span>Receive raw email from imap inbox</span></div>
+          <div class="wf-arrow">↓</div>
+          <div class="wf-step"><div class="wf-step-num">2</div><span>LLM classifies urgency (low/medium/high)</span></div>
+          <div class="wf-arrow">↓</div>
+          <div class="wf-step"><div class="wf-step-num">3</div><span>LLM extracts name + issue + product (JSON)</span></div>
+          <div class="wf-arrow">↓</div>
+          <div class="wf-step"><div class="wf-step-num">4</div><span>Route to correct support queue (code)</span></div>
+          <div class="wf-arrow">↓</div>
+          <div class="wf-step"><div class="wf-step-num">5</div><span>LLM drafts personalised reply → send</span></div>
+        </div>
+      </div>
+
+      <div class="wf-card gold">
+        <div class="wf-label">Module 4 · Document Automation</div>
+        <div class="wf-title">🧾 Invoice Intelligence Pipeline</div>
+        <div class="wf-steps">
+          <div class="wf-step"><div class="wf-step-num">1</div><span>Receive PDF invoice via email attachment</span></div>
+          <div class="wf-arrow">↓</div>
+          <div class="wf-step"><div class="wf-step-num">2</div><span>OCR extracts vendor, amount, date</span></div>
+          <div class="wf-arrow">↓</div>
+          <div class="wf-step"><div class="wf-step-num">3</div><span>Validate against approved vendor CSV</span></div>
+          <div class="wf-arrow">↓</div>
+          <div class="wf-step"><div class="wf-step-num">4</div><span>Auto-approve or flag for human review</span></div>
+          <div class="wf-arrow">↓</div>
+          <div class="wf-step"><div class="wf-step-num">5</div><span>Update Google Sheet + notify Slack</span></div>
+        </div>
+      </div>
+
+      <div class="wf-card purple">
+        <div class="wf-label">Module 5 · n8n + Python</div>
+        <div class="wf-title">📋 Typeform Lead Enrichment</div>
+        <div class="wf-steps">
+          <div class="wf-step"><div class="wf-step-num">1</div><span>n8n triggers on new Typeform submission</span></div>
+          <div class="wf-arrow">↓</div>
+          <div class="wf-step"><div class="wf-step-num">2</div><span>HTTP call → your FastAPI LLM classifier</span></div>
+          <div class="wf-arrow">↓</div>
+          <div class="wf-step"><div class="wf-step-num">3</div><span>Post categorised lead to Slack channel</span></div>
+          <div class="wf-arrow">↓</div>
+          <div class="wf-step"><div class="wf-step-num">4</div><span>Create Notion database row with all data</span></div>
+          <div class="wf-arrow">↓</div>
+          <div class="wf-step"><div class="wf-step-num">5</div><span>Send personalised welcome email</span></div>
+        </div>
+      </div>
+
+      <div class="wf-card red">
+        <div class="wf-label">Module 6 · API Integrations</div>
+        <div class="wf-title">🤖 Telegram Study Assistant Bot</div>
+        <div class="wf-steps">
+          <div class="wf-step"><div class="wf-step-num">1</div><span>User sends Python question on Telegram</span></div>
+          <div class="wf-arrow">↓</div>
+          <div class="wf-step"><div class="wf-step-num">2</div><span>Bot classifies intent (concept / debug / quiz)</span></div>
+          <div class="wf-arrow">↓</div>
+          <div class="wf-step"><div class="wf-step-num">3</div><span>Routes to the right LLM prompt template</span></div>
+          <div class="wf-arrow">↓</div>
+          <div class="wf-step"><div class="wf-step-num">4</div><span>Streams answer back to user in real time</span></div>
+          <div class="wf-arrow">↓</div>
+          <div class="wf-step"><div class="wf-step-num">5</div><span>Logs conversation to SQLite for analytics</span></div>
+        </div>
+      </div>
+
+      <div class="wf-card" style="--accent:#34d399">
+        <div class="wf-label" style="color:#34d399">Module 8 · Deployment</div>
+        <div class="wf-title">🏭 Production Support Bot (Capstone)</div>
+        <div class="wf-steps">
+          <div class="wf-step"><div class="wf-step-num">1</div><span>Monitor Gmail + Telegram for new tickets</span></div>
+          <div class="wf-arrow">↓</div>
+          <div class="wf-step"><div class="wf-step-num">2</div><span>LLM classifies + routes to Redis queue</span></div>
+          <div class="wf-arrow">↓</div>
+          <div class="wf-step"><div class="wf-step-num">3</div><span>Worker auto-resolves FAQs, escalates complex</span></div>
+          <div class="wf-arrow">↓</div>
+          <div class="wf-step"><div class="wf-step-num">4</div><span>Logs everything to PostgreSQL</span></div>
+          <div class="wf-arrow">↓</div>
+          <div class="wf-step"><div class="wf-step-num">5</div><span>FastAPI dashboard + deployed on Render</span></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<hr class="section-divider"/>
+
+<!-- CURRICULUM -->
+<section class="section" id="modules">
+  <div class="wrap">
+    <div class="section-tag">Curriculum</div>
+    <h2 class="section-title">8 Modules · 38 Lessons · 12+ Workflows</h2>
+    <p class="section-sub">Every module has concept lessons, at least one hands-on exercise, and a capstone project with a complete sample workflow.</p>
+
+    <div class="modules">
+
+      <!-- M1 -->
+      <div class="module open">
+        <div class="module-header" onclick="toggleModule(this)">
+          <div class="module-num">01</div>
+          <div class="module-info">
+            <div class="module-title">Automation Fundamentals</div>
+            <div class="module-meta">
+              <span>📖 3 lessons</span><span>✏️ 1 exercise</span><span>🗺️ 1 workflow</span>
+            </div>
+          </div>
+          <div class="module-chevron">▼</div>
+        </div>
+        <div class="module-body">
+          <div class="lesson-list">
+            <div class="lesson"><span class="lesson-type lt-concept">Concept</span><div class="lesson-text"><strong>What is AI Automation</strong> — spectrum from scripts to LLM agents; real examples: support bots, data extractors, report generators.</div></div>
+            <div class="lesson"><span class="lesson-type lt-concept">Concept</span><div class="lesson-text"><strong>The Automation Mindset</strong> — RICE framework to identify automation candidates in any workflow.</div></div>
+            <div class="lesson"><span class="lesson-type lt-concept">Concept</span><div class="lesson-text"><strong>Tools Landscape</strong> — Python scripts, n8n, Zapier/Make, LangChain, AutoGen, CrewAI — when to use each.</div></div>
+            <div class="lesson"><span class="lesson-type lt-exercise">Exercise</span><div class="lesson-text"><strong>Workflow Mapping Practical</strong> — map a real business process, identify LLM-suitable steps vs pure-code steps.</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- M2 -->
+      <div class="module">
+        <div class="module-header" onclick="toggleModule(this)">
+          <div class="module-num">02</div>
+          <div class="module-info">
+            <div class="module-title">Python Automation Scripting</div>
+            <div class="module-meta"><span>📖 4 lessons</span><span>✏️ 1 exercise</span><span>🏗️ 1 project</span></div>
+          </div>
+          <div class="module-chevron">▼</div>
+        </div>
+        <div class="module-body">
+          <div class="lesson-list">
+            <div class="lesson"><span class="lesson-type lt-concept">Concept</span><div class="lesson-text"><strong>File &amp; Folder Automation</strong> — os, pathlib, shutil, watchdog. Build a file organiser that sorts downloads by extension.</div></div>
+            <div class="lesson"><span class="lesson-type lt-concept">Concept</span><div class="lesson-text"><strong>Web Scraping Automation</strong> — requests + BeautifulSoup for static; Playwright for dynamic JS. Schedule with <code>schedule</code> library.</div></div>
+            <div class="lesson"><span class="lesson-type lt-concept">Concept</span><div class="lesson-text"><strong>Browser Automation with Playwright</strong> — headless Chrome, form filling, authentication flows, screenshots.</div></div>
+            <div class="lesson"><span class="lesson-type lt-concept">Concept</span><div class="lesson-text"><strong>Script Scheduling</strong> — <code>schedule</code>, cron, APScheduler, Render cron services.</div></div>
+            <div class="lesson"><span class="lesson-type lt-exercise">Exercise</span><div class="lesson-text"><strong>Morning Report Workflow</strong> — scrape weather + news + GitHub trending → format HTML email → send at 7AM daily.</div></div>
+            <div class="lesson"><span class="lesson-type lt-project">Project</span><div class="lesson-text"><strong>CSV Monitor Agent</strong> — watch folder for new CSVs → validate → Pandas summary → email with attachment.</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- M3 -->
+      <div class="module">
+        <div class="module-header" onclick="toggleModule(this)">
+          <div class="module-num">03</div>
+          <div class="module-info">
+            <div class="module-title">LLM-Powered Pipelines</div>
+            <div class="module-meta"><span>📖 3 lessons</span><span>✏️ 1 exercise</span><span>🏗️ 1 project</span></div>
+          </div>
+          <div class="module-chevron">▼</div>
+        </div>
+        <div class="module-body">
+          <div class="lesson-list">
+            <div class="lesson"><span class="lesson-type lt-concept">Concept</span><div class="lesson-text"><strong>LLMs as Pipeline Components</strong> — classify, extract, generate patterns. When to chain multiple LLM calls.</div></div>
+            <div class="lesson"><span class="lesson-type lt-concept">Concept</span><div class="lesson-text"><strong>Structured Output from LLMs</strong> — response_format, Pydantic parsing, instructor library. Reliable JSON from any LLM.</div></div>
+            <div class="lesson"><span class="lesson-type lt-project">Project</span><div class="lesson-text"><strong>Prompt Templates</strong> — Jinja2 parameterised templates, prompt versioning, prompt registry pattern.</div></div>
+            <div class="lesson"><span class="lesson-type lt-exercise">Exercise</span><div class="lesson-text"><strong>Support Ticket Pipeline</strong> — email → classify urgency → extract fields → route → draft reply → send.</div></div>
+            <div class="lesson"><span class="lesson-type lt-project">Project</span><div class="lesson-text"><strong>Sentiment Analysis Pipeline</strong> — 20 reviews CSV → classify each → group → Markdown summary report.</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- M4 -->
+      <div class="module">
+        <div class="module-header" onclick="toggleModule(this)">
+          <div class="module-num">04</div>
+          <div class="module-info">
+            <div class="module-title">Real-World Workflow Automation</div>
+            <div class="module-meta"><span>📖 3 lessons</span><span>✏️ 1 exercise</span><span>🏗️ 1 project</span></div>
+          </div>
+          <div class="module-chevron">▼</div>
+        </div>
+        <div class="module-body">
+          <div class="lesson-list">
+            <div class="lesson"><span class="lesson-type lt-concept">Concept</span><div class="lesson-text"><strong>Email Automation</strong> — smtplib + Resend outbound; imaplib inbound triage bot; handle attachments.</div></div>
+            <div class="lesson"><span class="lesson-type lt-concept">Concept</span><div class="lesson-text"><strong>Document Automation</strong> — PDF extraction (pdfplumber, PyMuPDF), OCR (pytesseract), auto-fill templates, report generation.</div></div>
+            <div class="lesson"><span class="lesson-type lt-concept">Concept</span><div class="lesson-text"><strong>Spreadsheet &amp; Data Automation</strong> — openpyxl, gspread (Google Sheets), Pandas analysis → write results back.</div></div>
+            <div class="lesson"><span class="lesson-type lt-exercise">Exercise</span><div class="lesson-text"><strong>Invoice Intelligence Workflow</strong> — PDF email → OCR → validate → auto-approve/flag → update Sheet → Slack notify.</div></div>
+            <div class="lesson"><span class="lesson-type lt-project">Project</span><div class="lesson-text"><strong>Document Intelligence System</strong> — folder watch → PDF extract → LLM summarise → SQLite → FastAPI endpoint.</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- M5 -->
+      <div class="module">
+        <div class="module-header" onclick="toggleModule(this)">
+          <div class="module-num">05</div>
+          <div class="module-info">
+            <div class="module-title">n8n / Zapier + Python</div>
+            <div class="module-meta"><span>📖 3 lessons</span><span>✏️ 1 exercise</span></div>
+          </div>
+          <div class="module-chevron">▼</div>
+        </div>
+        <div class="module-body">
+          <div class="lesson-list">
+            <div class="lesson"><span class="lesson-type lt-concept">Concept</span><div class="lesson-text"><strong>n8n for AI Automation</strong> — install with Docker, build first workflow, Code node to call Python, HTTP calls to LLM APIs.</div></div>
+            <div class="lesson"><span class="lesson-type lt-concept">Concept</span><div class="lesson-text"><strong>Zapier &amp; Make</strong> — connect 5000+ apps, complex branching in Make, no-code vs full-code trade-offs.</div></div>
+            <div class="lesson"><span class="lesson-type lt-project">Project</span><div class="lesson-text"><strong>Webhook-Driven Automation</strong> — FastAPI endpoints for Paystack, GitHub, Slack, Typeform events. Validate signatures, async processing.</div></div>
+            <div class="lesson"><span class="lesson-type lt-exercise">Exercise</span><div class="lesson-text"><strong>Lead Enrichment Workflow</strong> — Typeform → n8n → FastAPI LLM → Slack → Notion row → welcome email.</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- M6 -->
+      <div class="module">
+        <div class="module-header" onclick="toggleModule(this)">
+          <div class="module-num">06</div>
+          <div class="module-info">
+            <div class="module-title">API Integrations</div>
+            <div class="module-meta"><span>📖 3 lessons</span><span>✏️ 1 exercise</span><span>🏗️ 1 project</span></div>
+          </div>
+          <div class="module-chevron">▼</div>
+        </div>
+        <div class="module-body">
+          <div class="lesson-list">
+            <div class="lesson"><span class="lesson-type lt-concept">Concept</span><div class="lesson-text"><strong>REST API Integration Patterns</strong> — OAuth2, JWT, pagination, retry with backoff, asyncio rate-limit queue, reusable API client class.</div></div>
+            <div class="lesson"><span class="lesson-type lt-concept">Concept</span><div class="lesson-text"><strong>Slack, Telegram &amp; Discord Bots</strong> — slack-sdk, python-telegram-bot, LLM-powered question answering, slash commands.</div></div>
+            <div class="lesson"><span class="lesson-type lt-concept">Concept</span><div class="lesson-text"><strong>CRM &amp; Business App Integrations</strong> — HubSpot, Notion, Airtable, Google Workspace SDKs, lead scoring, calendar automation.</div></div>
+            <div class="lesson"><span class="lesson-type lt-exercise">Exercise</span><div class="lesson-text"><strong>Lead Enrichment Bot</strong> — HubSpot new contact → scrape data → LLM outreach email → add to sequence → log to Notion.</div></div>
+            <div class="lesson"><span class="lesson-type lt-project">Project</span><div class="lesson-text"><strong>Telegram Study Assistant</strong> — classify intent → route to prompt template → stream LLM answer → log to SQLite.</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- M7 -->
+      <div class="module">
+        <div class="module-header" onclick="toggleModule(this)">
+          <div class="module-num">07</div>
+          <div class="module-info">
+            <div class="module-title">Testing, Monitoring &amp; Error Handling</div>
+            <div class="module-meta"><span>📖 3 lessons</span><span>✏️ 1 exercise</span></div>
+          </div>
+          <div class="module-chevron">▼</div>
+        </div>
+        <div class="module-body">
+          <div class="lesson-list">
+            <div class="lesson"><span class="lesson-type lt-concept">Concept</span><div class="lesson-text"><strong>Testing Automation Pipelines</strong> — pytest, unittest.mock, pytest-asyncio, responses library for HTTP replay, deterministic LLM tests.</div></div>
+            <div class="lesson"><span class="lesson-type lt-concept">Concept</span><div class="lesson-text"><strong>Error Handling &amp; Retries</strong> — transient vs permanent errors, tenacity retry, dead-letter queues, circuit breaker, alerting.</div></div>
+            <div class="lesson"><span class="lesson-type lt-concept">Concept</span><div class="lesson-text"><strong>Logging &amp; Observability</strong> — structlog structured logging, log pipeline I/O + latency + token usage, Streamlit log dashboard.</div></div>
+            <div class="lesson"><span class="lesson-type lt-exercise">Exercise</span><div class="lesson-text"><strong>Pipeline Monitoring Dashboard</strong> — add structured logging to an existing pipeline, build Streamlit health view from log DB.</div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- M8 -->
+      <div class="module">
+        <div class="module-header" onclick="toggleModule(this)">
+          <div class="module-num">08</div>
+          <div class="module-info">
+            <div class="module-title">Deployment &amp; Production</div>
+            <div class="module-meta"><span>📖 3 lessons</span><span>✏️ 1 exercise</span><span>📝 Quiz</span><span>🏗️ Capstone</span></div>
+          </div>
+          <div class="module-chevron">▼</div>
+        </div>
+        <div class="module-body">
+          <div class="lesson-list">
+            <div class="lesson"><span class="lesson-type lt-concept">Concept</span><div class="lesson-text"><strong>Containerising with Docker</strong> — Dockerfile for Python automation, docker-compose multi-service stack, deploy to Render/Railway/Fly.io.</div></div>
+            <div class="lesson"><span class="lesson-type lt-concept">Concept</span><div class="lesson-text"><strong>Queue-Based Automation</strong> — Redis + rq or Celery, decouple producers/consumers, priority queues, long-running LLM tasks.</div></div>
+            <div class="lesson"><span class="lesson-type lt-exercise">Exercise</span><div class="lesson-text"><strong>Production Deployment Workflow</strong> — deploy document intelligence system as Render background worker + Redis + PostgreSQL + FastAPI status endpoint.</div></div>
+            <div class="lesson"><span class="lesson-type lt-quiz">Quiz</span><div class="lesson-text"><strong>AI Automation Quiz</strong> — 20 questions covering all 8 modules: patterns, scripting, LLM pipelines, APIs, testing, deployment.</div></div>
+            <div class="lesson"><span class="lesson-type lt-project">Capstone</span><div class="lesson-text"><strong>Multi-Channel Support Bot</strong> — Gmail + Telegram → LLM classify → Redis queue → auto-resolve FAQs → escalate complex → PostgreSQL log → FastAPI dashboard → Render.</div></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<hr class="section-divider"/>
+
+<!-- PRICING -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-tag">Pricing</div>
+    <h2 class="section-title">One payment. Lifetime access.</h2>
+    <p class="section-sub">No monthly fees. Pay once and learn at your own pace forever — including all future updates to the course.</p>
+    <div class="pricing-box">
+      <div class="pricing-badge">⭐ Premium Bundle — tier4</div>
+      <div class="price-row">
+        <span class="price-main">₦50,000</span>
+        <span class="price-label">one-time · lifetime access</span>
+      </div>
+      <p class="price-note">
+        Or unlock this course + ALL 16 other courses (including Machine Learning and AI &amp; Prompt Engineering)
+        with the <strong>Premium Bundle at ₦100,000</strong>.
+      </p>
+      <div class="features">
+        <div class="feature"><span class="feature-check">✓</span><span>8 modules, 38 step-by-step lessons</span></div>
+        <div class="feature"><span class="feature-check">✓</span><span>12+ real-world workflow exercises</span></div>
+        <div class="feature"><span class="feature-check">✓</span><span>8 complete capstone projects</span></div>
+        <div class="feature"><span class="feature-check">✓</span><span>Taught by Sir. Tega AI — always available</span></div>
+        <div class="feature"><span class="feature-check">✓</span><span>Ask Sir. Tega any question, any time</span></div>
+        <div class="feature"><span class="feature-check">✓</span><span>Progress tracking and XP badges</span></div>
+        <div class="feature"><span class="feature-check">✓</span><span>Verifiable certificate on completion</span></div>
+        <div class="feature"><span class="feature-check">✓</span><span>Free future course updates forever</span></div>
+      </div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <a class="btn btn-primary" href="https://paystack.shop/pay/vt_re4d3h52"
+           style="font-size:.95rem;padding:13px 32px;flex:1;min-width:200px;text-align:center">
+          🚀 Enrol Now — ₦50,000
+        </a>
+        <a class="btn btn-outline" href="https://mypytutor.com.ng"
+           style="font-size:.88rem;padding:13px 20px;text-align:center">
+          Start Free (10 prompts/day)
+        </a>
+      </div>
+      <p class="pricing-also">
+        Payment via Paystack or bank transfer — Zenith Bank · Teamsamikoko Global Academy · <strong>1228732577</strong><br/>
+        Questions? Use the <a href="https://mypytutor.com.ng">Support/Enquiry form</a> on the platform.
+      </p>
+    </div>
+  </div>
+</section>
+
+<hr class="section-divider"/>
+
+<!-- INSTRUCTOR -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-tag">Your Instructor</div>
+    <h2 class="section-title">Learn from Sir. Tega</h2>
+    <div class="instructor">
+      <div class="instructor-avatar">
+        <img src="https://mypytutor.onrender.com/static/icons/mypytutor_logo.jpg"
+             alt="Sir. Tega" onerror="this.src='https://mypytutor.onrender.com/static/icons/mypytutor_logo.png'"/>
+      </div>
+      <div>
+        <div class="instructor-name">Amb. Samuel Atulegwu Nwosu (Sir. Tega)</div>
+        <div class="instructor-title">Founder &amp; CEO — TeamTega Technologies Limited &amp; Teamsamikoko Global Academy</div>
+        <p class="instructor-bio">
+          Sir. Tega is a Nigerian technology entrepreneur, software developer, AI/ML engineer, and educationist.
+          He designed and built the entire MyPy Tutor platform — including the AI tutoring engine, course curriculum,
+          payment system, and certification infrastructure. His vision is to make world-class Python and AI education
+          accessible and affordable to every learner in Africa.<br/><br/>
+          As your AI-powered tutor, <strong>Sir. Tega is available 24/7</strong> on the platform — answering questions,
+          grading exercises, reviewing your code, and guiding you through every single step of this course in real time.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr class="section-divider"/>
+
+<!-- FAQ -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-tag">FAQ</div>
+    <h2 class="section-title">Common questions</h2>
+    <div class="faq">
+
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">
+          Do I need prior Python experience? <span class="faq-chevron">▼</span>
+        </div>
+        <div class="faq-a">Yes — this is an advanced course. You should be comfortable with Python basics (variables, functions, loops, classes, and working with APIs). If you are new to Python, start with the Beginner or Intermediate Bundle first, then come back to this course.</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">
+          What tools will I need installed? <span class="faq-chevron">▼</span>
+        </div>
+        <div class="faq-a">Python 3.10+, VS Code (or any editor), and a Groq API key (free tier available). Each module lists the exact packages to install — requests, playwright, openai/groq, n8n (Docker), and others. Sir. Tega will walk you through every setup step.</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">
+          Can I get a certificate? <span class="faq-chevron">▼</span>
+        </div>
+        <div class="faq-a">Yes. On completing the final quiz and capstone project, you earn a verifiable certificate issued by Teamsamikoko Global Academy (Reg No: 3508656). The certificate is available as a PDF and can be verified online at mypytutor.com.ng.</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">
+          Is there a monthly subscription? <span class="faq-chevron">▼</span>
+        </div>
+        <div class="faq-a">No. MyPy Tutor uses a one-time payment model. Pay ₦50,000 once and you have lifetime access to this course including all future updates. There is no monthly fee.</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">
+          What if I get stuck or have questions? <span class="faq-chevron">▼</span>
+        </div>
+        <div class="faq-a">Sir. Tega is your AI tutor inside the platform — available 24/7. Ask any question about the course content and get a detailed, personalised answer instantly. You can also submit an enquiry through the Support form on the platform.</div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">
+          Is this course included in the Premium Bundle? <span class="faq-chevron">▼</span>
+        </div>
+        <div class="faq-a">Yes. The Premium Bundle (₦100,000 one-time) unlocks all 17 courses on the platform — including AI Automation, Machine Learning, AI &amp; Prompt Engineering, and all 14 other courses. It is the best value option if you want everything.</div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- CTA BAND -->
+<section class="cta-band">
+  <div class="wrap">
+    <h2>Ready to automate everything?</h2>
+    <p>Join learners across Africa building real AI-powered automation systems with Python. Pay once. Learn forever. Build things that matter.</p>
+    <div class="cta-buttons">
+      <a class="btn btn-primary" href="https://paystack.shop/pay/vt_re4d3h52"
+         style="font-size:1rem;padding:14px 36px">🚀 Enrol Now — ₦50,000</a>
+      <a class="btn btn-outline" href="https://mypytutor.com.ng"
+         style="font-size:1rem;padding:14px 28px">Try Free First</a>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="wrap">
+    <p>
+      <strong>MyPy Tutor</strong> — Africa's AI-Powered Python &amp; Machine Learning Tutor<br/>
+      Built by <a href="https://mypytutor.com.ng">TeamTega Technologies Limited</a> ·
+      Certificates issued by <strong>Teamsamikoko Global Academy</strong> (Reg No: 3508656)<br/>
+      <a href="https://mypytutor.com.ng">mypytutor.com.ng</a> ·
+      Payment via <a href="https://paystack.shop/pay/vt_re4d3h52">Paystack</a> or
+      Zenith Bank · 1228732577
+    </p>
+  </div>
+</footer>
+
+<script>
+function toggleModule(header) {
+  const mod = header.parentElement;
+  mod.classList.toggle('open');
+}
+function toggleFaq(qEl) {
+  const item = qEl.parentElement;
+  item.classList.toggle('open');
+}
+// Open first module by default — done in HTML via class="module open"
+</script>
+</body>
+</html>

@@ -387,6 +387,148 @@ COURSES: dict[str, Course] = {
     ),
 
     # ─────────────────────────────────────────────────────────────────────────
+    # AI AUTOMATION  (8 modules · practical workflows · 38 steps)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    "ai-automation": Course(
+        name="ai-automation",
+        level="advanced",
+        description="AI Automation — 8 modules covering automation fundamentals, Python scripting, LLM-powered pipelines, real-world workflow automation, n8n/Zapier + Python, API integrations, testing/monitoring, and deployment.",
+        steps=[
+
+            # ── Module 1: Automation Fundamentals ────────────────────────────
+            CourseStep(step=1,  title="What is AI Automation",
+                       description="Define automation vs AI automation. Understand the spectrum from simple scripts to fully autonomous LLM-driven pipelines. Real-world examples: customer support bots, data extraction agents, email responders, report generators.",
+                       intent="concept"),
+            CourseStep(step=2,  title="The Automation Mindset",
+                       description="Identify automation candidates using the RICE framework (Repetitive, Input-driven, Consistent output, Error-prone manually). Map your own workflow and spot three automation opportunities.",
+                       intent="concept"),
+            CourseStep(step=3,  title="Automation Tools Landscape",
+                       description="Survey of tools: pure Python scripts, n8n, Zapier/Make, LangChain agents, AutoGen, CrewAI, and custom FastAPI services. When to use each. No-code vs low-code vs full-code trade-offs.",
+                       intent="concept"),
+            CourseStep(step=4,  title="Foundations Practical",
+                       description="Workflow: Map a real business process (order confirmation email → update CRM → notify Slack) into a trigger-action diagram. Then identify which steps benefit from an LLM and which don't.",
+                       intent="exercise"),
+
+            # ── Module 2: Python Automation Scripting ────────────────────────
+            CourseStep(step=5,  title="File & Folder Automation",
+                       description="Use os, pathlib, shutil, and watchdog to monitor folders, rename files in bulk, organise downloads, and auto-archive old reports. Practical: build a file organiser that sorts downloads by extension.",
+                       intent="concept"),
+            CourseStep(step=6,  title="Web Scraping Automation",
+                       description="requests + BeautifulSoup for static pages; Playwright for dynamic JS pages. Respect robots.txt and rate limits. Practical: scrape job listings and save to CSV every hour via schedule.",
+                       intent="concept"),
+            CourseStep(step=7,  title="Browser Automation with Playwright",
+                       description="Install playwright, launch headless Chrome, fill forms, click buttons, extract data, take screenshots, and handle authentication flows in Python.",
+                       intent="concept"),
+            CourseStep(step=8,  title="Script Scheduling",
+                       description="Schedule Python scripts with schedule library, cron (Linux/Mac), Windows Task Scheduler, and APScheduler for in-process jobs. Deploy scheduled jobs on Render as cron services.",
+                       intent="concept"),
+            CourseStep(step=9,  title="Python Scripting Practical",
+                       description="Sample workflow: Build an automated morning report script — scrapes weather + news headline + GitHub trending repos, formats into an HTML email, and sends it at 7 AM daily using schedule + smtplib.",
+                       intent="exercise"),
+            CourseStep(step=10, title="Scripting Project",
+                       description="Build a Python automation agent that monitors a folder for new CSV files, validates the data, generates a summary report using Pandas, and emails it with the CSV as attachment.",
+                       intent="codegen"),
+
+            # ── Module 3: LLM-Powered Pipelines ──────────────────────────────
+            CourseStep(step=11, title="LLMs as Automation Components",
+                       description="Treat an LLM as a processing unit in a pipeline: input text → LLM → structured output. The three core automation patterns: classify, extract, generate. When to chain multiple LLM calls.",
+                       intent="concept"),
+            CourseStep(step=12, title="Structured Output from LLMs",
+                       description="Force JSON output using response_format, Pydantic parsing, and instructor library. Extract entities, classify intent, and validate LLM responses reliably — no more fragile string parsing.",
+                       intent="concept"),
+            CourseStep(step=13, title="Prompt Templates for Automation",
+                       description="Build parameterised prompt templates with Jinja2 and Python dataclasses. Version-control your prompts. Use a prompt registry to manage system prompts across multiple pipelines.",
+                       intent="codegen"),
+            CourseStep(step=14, title="LLM Pipeline Practical",
+                       description="Sample workflow: Customer support ticket pipeline — receive raw email text → classify urgency (LLM) → extract customer name + issue + product (LLM) → route to the right queue (code) → draft reply (LLM) → send via email API.",
+                       intent="exercise"),
+            CourseStep(step=15, title="LLM Pipeline Project",
+                       description="Build a Python script that reads 20 customer reviews from a CSV, classifies each as positive/negative/neutral with confidence score (JSON output), groups by sentiment, and writes a Markdown summary report.",
+                       intent="codegen"),
+
+            # ── Module 4: Real-World Workflow Automation ──────────────────────
+            CourseStep(step=16, title="Email Automation",
+                       description="Automate outbound emails with smtplib and Resend API. Parse inbound emails with imaplib. Build a triage bot that reads support inbox, classifies emails, and drafts replies using an LLM. Handle attachments.",
+                       intent="concept"),
+            CourseStep(step=17, title="Document Automation",
+                       description="Extract text from PDFs (pdfplumber, PyMuPDF), Word docs (python-docx), and images (pytesseract OCR). Auto-fill Word/PDF templates. Generate reports as PDF using reportlab or WeasyPrint.",
+                       intent="concept"),
+            CourseStep(step=18, title="Spreadsheet & Data Automation",
+                       description="Read/write Excel with openpyxl and xlrd. Automate Google Sheets with gspread. Build a pipeline that pulls sales data from Sheets, runs Pandas analysis, and writes results back automatically.",
+                       intent="concept"),
+            CourseStep(step=19, title="Workflow Automation Practical",
+                       description="Sample workflow: Invoice automation pipeline — receive PDF invoice via email → OCR extract vendor, amount, date → validate against approved vendor list (CSV) → auto-approve or flag for review → update Google Sheet → notify Slack.",
+                       intent="exercise"),
+            CourseStep(step=20, title="Workflow Automation Project",
+                       description="Build an end-to-end document intelligence system: watch a folder for PDFs → extract text → use LLM to summarise and extract key fields → save structured data to a SQLite database → serve results via a FastAPI endpoint.",
+                       intent="codegen"),
+
+            # ── Module 5: n8n / Zapier + Python ───────────────────────────────
+            CourseStep(step=21, title="n8n for AI Automation",
+                       description="Install n8n locally with Docker. Understand nodes, triggers, and connections. Build your first workflow: HTTP trigger → transform data → HTTP request to an LLM API → send email. Use the Code node to call Python logic.",
+                       intent="concept"),
+            CourseStep(step=22, title="Zapier & Make (Integromat)",
+                       description="Connect 5000+ apps with Zapier: trigger on new Gmail → extract with LLM → create Notion page. Use Make for more complex branching. When to use no-code tools vs Python custom code.",
+                       intent="concept"),
+            CourseStep(step=23, title="Webhook-Driven Automation",
+                       description="Build Python FastAPI webhook endpoints that receive events from Paystack, GitHub, Stripe, Slack, and Typeform. Process events asynchronously with BackgroundTasks. Validate webhook signatures.",
+                       intent="codegen"),
+            CourseStep(step=24, title="No-Code + Python Practical",
+                       description="Sample workflow: Build an n8n workflow that triggers when a new Typeform submission arrives, enriches it with an LLM classification (HTTP call to your FastAPI), posts to a Slack channel, and creates a Notion row.",
+                       intent="exercise"),
+
+            # ── Module 6: API Integrations ────────────────────────────────────
+            CourseStep(step=25, title="REST API Integration Patterns",
+                       description="Authentication methods: API keys, OAuth2, JWT. Paginate large datasets. Retry with exponential backoff. Rate-limit-safe request queue with asyncio. Build a reusable API client class.",
+                       intent="concept"),
+            CourseStep(step=26, title="Slack, Telegram & Discord Bots",
+                       description="Build a Slack bot with slack-sdk: respond to mentions, post scheduled digests, and handle slash commands. Build a Telegram bot with python-telegram-bot that answers questions using an LLM.",
+                       intent="concept"),
+            CourseStep(step=27, title="CRM & Business App Integrations",
+                       description="Integrate with HubSpot, Notion, Airtable, and Google Workspace using their Python SDKs and REST APIs. Automate lead scoring, task creation, and calendar scheduling.",
+                       intent="concept"),
+            CourseStep(step=28, title="API Integration Practical",
+                       description="Sample workflow: Build a Python lead enrichment bot — new contact added to HubSpot → fetch LinkedIn data (via Apify or scraping) → generate personalised outreach email with LLM → add to email sequence → log to Notion.",
+                       intent="exercise"),
+            CourseStep(step=29, title="API Integration Project",
+                       description="Build a Telegram study assistant bot powered by an LLM: users send Python questions → bot classifies intent → routes to the right prompt template → streams answer back → logs conversation to SQLite.",
+                       intent="codegen"),
+
+            # ── Module 7: Testing, Monitoring & Error Handling ────────────────
+            CourseStep(step=30, title="Testing Automation Pipelines",
+                       description="Unit test each pipeline step with pytest and unittest.mock. Use pytest-asyncio for async pipelines. Record/replay HTTP calls with responses library. Test LLM steps with deterministic seed prompts.",
+                       intent="concept"),
+            CourseStep(step=31, title="Error Handling & Retries",
+                       description="Defensive automation: classify errors (transient vs permanent), implement retry with tenacity, dead-letter queues with SQLite, circuit breaker pattern, and alerting on repeated failures.",
+                       intent="concept"),
+            CourseStep(step=32, title="Logging & Observability",
+                       description="Structured logging with Python logging and structlog. Log pipeline inputs, outputs, latency, and LLM token usage. Visualise with Grafana Loki or ship to Datadog/Better Uptime.",
+                       intent="concept"),
+            CourseStep(step=33, title="Monitoring Practical",
+                       description="Sample workflow: Add comprehensive logging to an existing pipeline — log each step's input/output, duration, and success/failure. Build a lightweight dashboard using Streamlit that reads the log DB and shows pipeline health.",
+                       intent="exercise"),
+
+            # ── Module 8: Deployment & Production ────────────────────────────
+            CourseStep(step=34, title="Containerising Automation with Docker",
+                       description="Write a Dockerfile for a Python automation service. Use docker-compose for multi-service stacks (automation worker + Redis queue + PostgreSQL). Deploy to Render, Railway, or Fly.io.",
+                       intent="concept"),
+            CourseStep(step=35, title="Queue-Based Automation",
+                       description="Decouple producers and consumers with Redis + rq or Celery. Handle long-running LLM tasks without blocking HTTP responses. Priority queues for urgent vs background jobs.",
+                       intent="concept"),
+            CourseStep(step=36, title="Production Deployment Practical",
+                       description="Sample workflow: Deploy the document intelligence system (Module 4 project) to Render as a background worker service with a Redis queue, PostgreSQL storage, and a FastAPI status endpoint.",
+                       intent="exercise"),
+            CourseStep(step=37, title="AI Automation Quiz",
+                       description="Comprehensive quiz covering all 8 modules: automation patterns, Python scripting, LLM pipelines, n8n/Zapier, API integration, testing, and deployment.",
+                       intent="quiz"),
+            CourseStep(step=38, title="Capstone Project",
+                       description="Build a production-ready AI automation system: a multi-channel support bot that monitors Gmail + Telegram, classifies and routes tickets with an LLM, auto-resolves FAQs, escalates complex issues to a human queue, logs everything to PostgreSQL, and provides a FastAPI dashboard — deployed on Render with Docker.",
+                       intent="codegen"),
+        ],
+    ),
+
+    # ─────────────────────────────────────────────────────────────────────────
     # MACHINE LEARNING  (GFG curriculum — 7 modules, 30 steps)
     # ─────────────────────────────────────────────────────────────────────────
 
@@ -506,6 +648,7 @@ COURSE_CATALOG: dict[str, dict] = {
     # ── Premium (tier4) — ₦50,000 per course
     "ai-prompt-engineering":     {"price_ngn": 50000, "tier_unlocks": ["tier4"],                         "category": "AI & Prompting",       "badge": "🧠💬"},
     "machine-learning":          {"price_ngn": 50000, "tier_unlocks": ["tier4"],                         "category": "Machine Learning",     "badge": "🧠"},
+    "ai-automation":             {"price_ngn": 50000, "tier_unlocks": ["tier4"],                         "category": "AI Automation",        "badge": "🤖⚙️"},
 }
 
 # ---------------------------------------------------------------------------
@@ -572,10 +715,10 @@ TIER_PLANS: dict[str, dict] = {
     },
     "tier4": {
         "name":         "Premium Bundle",
-        "price_ngn":    100000,  # = Executive Masters Certificate (₦100,000) — all 16 courses
-        "description":  "Unlock ALL 16 courses including Machine Learning and AI Engineering.",
+        "price_ngn":    100000,  # = Executive Masters Certificate (₦100,000) — all 17 courses
+        "description":  "Unlock ALL 17 courses including Machine Learning, AI & Prompt Engineering, and AI Automation.",
         "eligible_courses": list(COURSE_CATALOG.keys()),
-        "unlocks_count": 16,
+        "unlocks_count": 17,
         "paystack_url": "https://paystack.shop/pay/vt_re4d3h52",
     },
 }

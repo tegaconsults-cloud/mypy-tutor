@@ -5855,9 +5855,32 @@ async def serve_admin_html() -> HTMLResponse:
 
 @app.get("/admin", include_in_schema=False)
 async def redirect_admin():
-    """Redirect /admin ? /admin.html"""
+    """Redirect /admin → /admin.html"""
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/admin.html", status_code=302)
+
+
+# ---------------------------------------------------------------------------
+# AI Automation course landing page
+# ---------------------------------------------------------------------------
+
+@app.get("/courses/ai-automation", response_class=HTMLResponse, include_in_schema=False)
+async def serve_ai_automation_landing() -> HTMLResponse:
+    """Serve the AI Automation course landing page."""
+    import os as _os_aia
+    path = _os_aia.path.join("static", "courses", "ai-automation.html")
+    if not _os_aia.path.exists(path):
+        raise HTTPException(status_code=404, detail="AI Automation landing page not found.")
+    with open(path, "r", encoding="utf-8") as f:
+        content = f.read()
+    return HTMLResponse(content=content)
+
+
+@app.get("/courses/ai-automation/", response_class=HTMLResponse, include_in_schema=False)
+async def serve_ai_automation_landing_slash() -> HTMLResponse:
+    """Trailing-slash redirect for the AI Automation landing page."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/courses/ai-automation", status_code=301)
 
 
 # Serve icons under /icons/ directly (shortcut used in admin.html)
