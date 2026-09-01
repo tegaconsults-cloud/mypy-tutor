@@ -728,6 +728,7 @@ async function loadUsers(){
           <button class="bsm" onclick="viewUser('${u.learner_id}')">View</button>
           <button class="bsm bg2" onclick="setTier('${u.learner_id}')">Set Tier</button>
           <button class="bsm br" onclick="terminateUser('${u.learner_id}')">Terminate</button>
+          <button class="bsm br" style="background:rgba(127,29,29,.18);border-color:rgba(239,68,68,.5)" onclick="deleteUser('${u.learner_id}','${(u.email||'').replace(/'/g,'')}')">🗑 Delete</button>
         </td></tr>`;
     }).join('')||'<tr><td colspan="7" style="color:#4a5568">No users yet.</td></tr>';
   } catch(e) {
@@ -764,10 +765,21 @@ async function setTier(lid){
 }
 
 async function terminateUser(lid){
-  if(!confirm('Terminate subscription for '+lid+'?\nThis sets them to free and removes course progress.'))return;
+  if(!confirm('Terminate subscription for '+lid+'?\nThis resets them to free tier and clears course progress.\nThe account itself is NOT deleted.'))return;
   const r=await api('/admin/users/'+lid+'/terminate',{method:'POST'});
   const d=await r.json();
-  if(r.ok){toast('Subscription terminated');loadUsers();}else toast(d.error||'Failed',false);
+  if(r.ok){toast('Subscription terminated — user is now on free tier');loadUsers();}else toast(d.detail||d.error||'Failed',false);
+}
+
+async function deleteUser(lid, email){
+  const label = email ? email : lid;
+  if(!confirm(`⚠ PERMANENTLY DELETE account for ${label}?\n\nThis cannot be undone:\n• All personal data erased\n• Learning profile anonymised\n• Payment records retained (legal requirement)\n\nType the learner ID to confirm:`))return;
+  const confirm2 = prompt(`Type "${lid}" to permanently delete this account:`);
+  if(confirm2 !== lid){toast('Cancelled — ID did not match',false);return;}
+  const r=await api('/admin/users/'+lid,{method:'DELETE'});
+  const d=await r.json();
+  if(r.ok&&d.ok){toast('Account permanently deleted: '+label);loadUsers();}
+  else toast(d.detail||d.error||'Deletion failed',false);
 }
 
 // ── Activity ───────────────────────────────────────────────────────────────
@@ -1077,22 +1089,51 @@ async function loadCoupons(){
   const r=await api('/admin/coupons'); const d=await r.json();
   document.getElementById('coupons-list').innerHTML=(d.coupons||[]).length
     ? `<div style="overflow-x:auto"><table>
-        <thead><tr><th>Code</th><th>Disc%</th><th>Flat(₦)</th><th>Plan</th><th>Uses</th><th>Expires</th></tr></thead>
+        <thead><tr><th>Code</th><th>Disc%</th><th>Flat(₦)</th><th>Plan</th><th>Uses</th><th>Expires</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody>`+
         (d.coupons).map(c=>{
           const exp=c.expires_at&&c.expires_at>0?new Date(c.expires_at*1000).toLocaleDateString():'never';
-          const cls=c.uses>=c.max_uses?'gr':'gg';
+          const useCls=c.uses>=c.max_uses?'gr':'gg';
+          const active=c.active!==0;
+          const statusBadge=active
+            ?`<span class="badge gg">active</span>`
+            :`<span class="badge gr">inactive</span>`;
           return `<tr>
             <td><code style="font-size:.82rem;color:#a78bfa;letter-spacing:.06em">${c.code}</code></td>
             <td style="color:#fcd34d">${c.discount_pct}%</td>
             <td>${c.discount_flat>0?'₦'+c.discount_flat:'—'}</td>
             <td><span class="badge grey">${c.plan}</span></td>
-            <td><span class="badge ${cls}">${c.uses||0}/${c.max_uses}</span></td>
+            <td><span class="badge ${useCls}">${c.uses||0}/${c.max_uses}</span></td>
             <td style="font-size:.74rem;color:#718096">${exp}</td>
+            <td>${statusBadge}</td>
+            <td style="display:flex;gap:4px;flex-wrap:wrap">
+              ${active
+                ?`<button class="bsm gy" onclick="toggleCoupon('${c.code}','deactivate')">⏸ Disable</button>`
+                :`<button class="bsm bg2" onclick="toggleCoupon('${c.code}','activate')">▶ Enable</button>`}
+              <button class="bsm br" onclick="deleteCoupon('${c.code}')">🗑 Delete</button>
+            </td>
           </tr>`;
         }).join('')+
       `</tbody></table></div>`
     : '<span style="color:#4a5568;font-size:.82rem">No coupons created yet.</span>';
+}
+
+async function deleteCoupon(code){
+  if(!confirm('Permanently delete coupon '+code+'? This cannot be undone.'))return;
+  const r=await api('/admin/coupons/'+code,{method:'DELETE'});
+  const d=await r.json();
+  if(r.ok&&d.ok){toast('Coupon '+code+' deleted');_loaded.delete('coupons');loadCoupons();}
+  else toast(d.detail||d.error||'Delete failed',false);
+}
+
+async function toggleCoupon(code, action){
+  const method = action==='deactivate' ? 'PUT' : 'PUT';
+  const r=await api('/admin/coupons/'+code+'/'+action,{method:'PUT'});
+  const d=await r.json();
+  if(r.ok&&d.ok){
+    toast('Coupon '+code+' '+(action==='deactivate'?'disabled':'enabled'));
+    _loaded.delete('coupons'); loadCoupons();
+  } else toast(d.detail||d.error||'Failed',false);
 }
 
 async function createCoupon(){
@@ -1113,6 +1154,7 @@ async function createCoupon(){
   if(r.ok){
     resEl.innerHTML=`<div class="alert-g">✅ Coupon <strong style="color:#a78bfa;letter-spacing:.08em">${code}</strong> created · ${pct}% off · max ${maxUses} uses</div>`;
     document.getElementById('cp-code').value='';
+    _loaded.delete('coupons');
     loadCoupons();
   } else {
     resEl.innerHTML=`<div class="alert-r">❌ ${d.detail||d.error||'Failed'}</div>`;

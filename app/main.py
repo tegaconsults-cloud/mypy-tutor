@@ -3000,6 +3000,7 @@ async def admin_set_tier(learner_id: str, request: Request) -> dict:
 
 @app.post("/admin/users/{learner_id}/terminate")
 async def admin_terminate_user(learner_id: str, request: Request) -> dict:
+    """Soft-terminate: reset tier to free, clear active course. Account remains."""
     _require_admin(request)
     validate_learner_id(learner_id)
     from app.progress import apply_tier_upgrade
@@ -3014,6 +3015,78 @@ async def admin_terminate_user(learner_id: str, request: Request) -> dict:
     apply_tier_upgrade(learner_id, "free")
     log_activity(learner_id, "admin:terminate", "subscription terminated by admin")
     return {"ok": True, "message": f"Subscription terminated for {learner_id}"}
+
+
+@app.delete("/admin/users/{learner_id}")
+async def admin_delete_user(learner_id: str, request: Request) -> dict:
+    """
+    Hard-delete a user account (admin-only).
+
+    Permanently removes all PII and anonymises learning data — same logic
+    as the user-initiated DELETE /auth/account, but callable by an admin
+    without needing the user's password.  Payment records are retained for
+    7 years per Nigerian tax law.
+    """
+    _require_admin(request)
+    validate_learner_id(learner_id)
+
+    # Look up email so we can pass it to delete_account()
+    email = ""
+    try:
+        from app.db import load_profile as _lp_db
+        row = _lp_db(learner_id)
+        if row:
+            email = row.get("email", "")
+    except Exception:
+        pass
+
+    if not email:
+        try:
+            p = get_profile(learner_id)
+            email = p.email or ""
+        except Exception:
+            pass
+
+    if not email:
+        raise HTTPException(
+            status_code=404,
+            detail=f"User {learner_id} not found or has no email on record."
+        )
+
+    try:
+        from app.db import delete_account as _del_db
+        summary = _del_db(learner_id, email)
+    except Exception as exc:
+        logger.error("Admin account deletion failed for %s: %s", learner_id, exc)
+        raise HTTPException(status_code=500, detail=f"Deletion failed: {exc}")
+
+    # Remove from in-memory caches
+    from app.progress import _store as _prog_store
+    _prog_store.pop(learner_id, None)
+    from app.auth import _users as _auth_users
+    _auth_users.pop(learner_id, None)
+    from app.email_auth import _confirmed as _conf, _by_id as _bid
+    _conf.pop(email, None)
+    _bid.pop(learner_id, None)
+
+    # Mirror deletion to Supabase (non-blocking)
+    try:
+        from app.supabase_client import get_supabase, sb_enabled
+        if sb_enabled():
+            threading.Thread(
+                target=lambda: (
+                    get_supabase().table("email_accounts").delete().eq("learner_id", learner_id).execute(),
+                    get_supabase().table("profiles").delete().eq("id", learner_id).execute(),
+                    get_supabase().table("learner_progress").delete().eq("learner_id", learner_id).execute(),
+                ),
+                daemon=True,
+            ).start()
+    except Exception:
+        pass
+
+    log_activity("admin", "admin:delete-account", f"learner_id={learner_id} email={email}")
+    return {"ok": True, "learner_id": learner_id, "summary": summary,
+            "message": f"Account for {email} permanently deleted."}
 
 
 @app.get("/admin/payments")
