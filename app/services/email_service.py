@@ -743,3 +743,277 @@ def send_reengagement_email(name: str, email: str, days_inactive: int,
     _dispatch_async(email,
                     "Sir. Tega misses you! &#128013; Come back to MyPy Tutor",
                     html, text, "reengagement")
+
+
+# ── 14. Sign-in / Sign-up greeting email ─────────────────────────────────────
+def send_signin_greeting_email(name: str, email: str, greeting: str,
+                                is_new_user: bool = False) -> None:
+    """
+    Warm personalised email sent immediately after sign-in or email confirmation.
+    Uses the WAT-aware greeting already computed by the backend.
+    New users get onboarding tips; returning users get a motivational nudge.
+    """
+    first = name.split()[0] if name else "Learner"
+    site  = _frontend_url()
+
+    if is_new_user:
+        headline = f"&#127881; Welcome to MyPy Tutor, {first}!"
+        sub      = (
+            "Sir. Tega is ready to be your personal Python and AI tutor. "
+            "Here is everything waiting for you:"
+        )
+        tips = (
+            "&#127813;&nbsp;<strong>Ask Sir. Tega anything</strong> — Python, NumPy, Pandas, ML, and more<br/>"
+            "&#128218;&nbsp;<strong>16 structured courses</strong> — beginner to executive level<br/>"
+            "&#127942;&nbsp;<strong>Earn certificates</strong> — issued by Teamsamikoko Global Academy<br/>"
+            "&#127919;&nbsp;<strong>Daily quizzes</strong> — track your progress and close knowledge gaps<br/>"
+            "&#128176;&nbsp;<strong>Free to start</strong> — 10 AI prompts per day, no card needed"
+        )
+        cta_label = "&#128640; Start Learning Now"
+        preview   = f"Welcome {first}! Sir. Tega is ready for you."
+    else:
+        headline = f"&#128013; {greeting}"
+        sub      = "Good to see you back! Here is a quick reminder of what to pick up today:"
+        tips = (
+            "&#128204;&nbsp;Continue where you left off on your current course<br/>"
+            "&#127919;&nbsp;Take a 2-minute quiz to warm up your brain<br/>"
+            "&#128200;&nbsp;Check your XP and progress dashboard<br/>"
+            "&#9997;&#65039;&nbsp;Submit any pending assignments for review"
+        )
+        cta_label = "&#128218; Continue Learning"
+        preview   = f"{greeting} — Your Python journey continues."
+
+    body = (
+        f"<p style='color:#1e293b;margin:0 0 8px;'><strong style='font-size:1.1rem;'>{headline}</strong></p>"
+        f"<p style='color:#475569;line-height:1.7;margin:0 0 16px;'>{sub}</p>"
+        + _box(tips)
+        + _cta(cta_label, site)
+        + "<p style='color:#64748b;font-size:0.82rem;margin:0;'>"
+          "Warm regards,<br/><strong style='color:" + PRIMARY + ";'>Sir. Tega &amp; The MyPy Tutor Team</strong></p>"
+    )
+    html = _shell(body, preview)
+    text = (
+        f"{greeting}\n\n"
+        + ("Welcome to MyPy Tutor! Sir. Tega is your personal Python tutor.\n\n" if is_new_user
+           else "Good to see you back!\n\n")
+        + "Continue learning at: " + site + "\n\n-- Sir. Tega & The MyPy Tutor Team"
+    )
+    _dispatch_async(email, headline.replace("&#127881;", "🎉").replace("&#128013;", "🐍"),
+                    html, text, "signin_greeting")
+
+
+# ── 15. Course reminder ───────────────────────────────────────────────────────
+def send_course_reminder_email(name: str, email: str, course_name: str,
+                                step: int = 0, total_steps: int = 0,
+                                days_since_last: int = 0) -> None:
+    """
+    Remind a learner they have an incomplete course to finish.
+    Sent at most once every 4 days per learner by the automation scheduler.
+    """
+    first       = name.split()[0] if name else "Learner"
+    site        = _frontend_url()
+    pct         = round((step / total_steps) * 100) if total_steps else 0
+    progress_bar = (
+        f"<div style='background:#e2e8f0;border-radius:8px;height:12px;margin:10px 0;'>"
+        f"<div style='background:linear-gradient(90deg,{PRIMARY},{SECONDARY});"
+        f"width:{pct}%;height:12px;border-radius:8px;'></div></div>"
+    )
+    idle_note = (
+        f"<p style='color:#DC2626;font-size:0.88rem;margin:0 0 10px;'>"
+        f"&#9200; You haven't touched this course in <strong>{days_since_last} days</strong>.</p>"
+        if days_since_last >= 3 else ""
+    )
+    step_info = (
+        f"<strong>Step {step} of {total_steps}</strong> &nbsp;({pct}% complete)<br/>"
+        + progress_bar
+        if step and total_steps else ""
+    )
+    details = (
+        "&#128218;&nbsp;Course: <strong>" + course_name + "</strong><br/>"
+        + step_info
+    )
+    body = (
+        "<p style='color:#1e293b;margin:0 0 12px;'>Hi <strong>" + first + "</strong>,</p>"
+        + idle_note
+        + "<h2 style='color:" + PRIMARY + ";font-size:1.2rem;margin:0 0 10px;'>"
+          "&#128218; Your course is waiting for you!</h2>"
+        "<p style='color:#475569;line-height:1.7;margin:0 0 14px;'>"
+        "Sir. Tega is holding your place in <strong>" + course_name + "</strong>. "
+        "Just a few more steps and you will have completed it — don't stop now!</p>"
+        + _box(details)
+        + _cta("&#9654;&#65039; Continue Course", site + "/?panel=courses")
+        + "<p style='color:#64748b;font-size:0.82rem;'>"
+          "You've got this! 💪<br/>"
+          "<strong style='color:" + PRIMARY + ";'>Sir. Tega</strong></p>"
+    )
+    html = _shell(body, f"Your course '{course_name}' is waiting — keep going!")
+    text = (
+        f"Hi {first},\n\nYou have an incomplete course: {course_name}.\n"
+        + (f"Progress: Step {step} of {total_steps} ({pct}%)\n" if step and total_steps else "")
+        + f"\nContinue learning: {site}/?panel=courses\n\n-- Sir. Tega & MyPy Tutor Team"
+    )
+    _dispatch_async(email, f"📚 Your course '{course_name}' is waiting for you!",
+                    html, text, "course_reminder")
+
+
+# ── 16. Assignment reminder ───────────────────────────────────────────────────
+def send_assignment_reminder_email(name: str, email: str,
+                                    pending_count: int,
+                                    assignment_titles: list[str] | None = None) -> None:
+    """
+    Remind a learner they have pending assignments to submit.
+    Sent at most once every 3 days per learner.
+    """
+    first   = name.split()[0] if name else "Learner"
+    site    = _frontend_url()
+    titles  = assignment_titles or []
+    count   = pending_count or len(titles)
+
+    assignments_html = ""
+    if titles:
+        items = "".join(
+            f"<li style='margin:4px 0;color:#1e293b;'>{t}</li>"
+            for t in titles[:5]
+        )
+        assignments_html = (
+            f"<ul style='padding-left:18px;margin:8px 0;'>{items}</ul>"
+            + (f"<p style='color:#64748b;font-size:0.82rem;'>...and {count - 5} more</p>"
+               if count > 5 else "")
+        )
+
+    body = (
+        "<p style='color:#1e293b;margin:0 0 12px;'>Hi <strong>" + first + "</strong>,</p>"
+        "<h2 style='color:#D97706;font-size:1.2rem;margin:0 0 10px;'>"
+        "&#9997;&#65039; You have pending assignments!</h2>"
+        "<p style='color:#475569;line-height:1.7;margin:0 0 14px;'>"
+        "You have <strong>" + str(count) + " pending assignment"
+        + ("s" if count != 1 else "") + "</strong> that need"
+        + ("" if count == 1 else "s") + " your submission. "
+        "Sir. Tega is ready to review your work and give you detailed feedback.</p>"
+        + _box(
+            "<strong>Pending assignment" + ("s" if count != 1 else "") + ":</strong>"
+            + assignments_html,
+            bg="#fffbeb", border="#D97706"
+        )
+        + _cta("&#9997;&#65039; Submit Assignments", site + "/?panel=assignments",
+               color="#D97706")
+        + "<p style='color:#64748b;font-size:0.82rem;'>"
+          "Submitting keeps your learning momentum going!<br/>"
+          "<strong style='color:" + PRIMARY + ";'>Sir. Tega</strong></p>"
+    )
+    html = _shell(body, f"You have {count} pending assignment{'s' if count != 1 else ''} — submit today!")
+    text = (
+        f"Hi {first},\n\n"
+        f"You have {count} pending assignment{'s' if count != 1 else ''} on MyPy Tutor.\n"
+        + ("\n".join(f"- {t}" for t in titles[:5]) + "\n" if titles else "")
+        + f"\nSubmit your work: {site}/?panel=assignments\n\n-- Sir. Tega & MyPy Tutor Team"
+    )
+    _dispatch_async(email,
+                    f"✏️ {count} pending assignment{'s' if count != 1 else ''} waiting for your submission",
+                    html, text, "assignment_reminder")
+
+
+# ── 17. Weekend motivation ────────────────────────────────────────────────────
+def send_weekend_motivation_email(name: str, email: str,
+                                   xp: int = 0, current_course: str = "") -> None:
+    """
+    Motivational email sent on Saturday mornings (WAT) to encourage weekend learning.
+    Sent at most once per week per learner.
+    """
+    first  = name.split()[0] if name else "Learner"
+    site   = _frontend_url()
+    xp_str = (
+        "You are sitting on <strong style='color:" + GOLD + ";'>" + "{:,}".format(xp)
+        + " XP</strong> — let's add to that total this weekend!"
+        if xp else "The weekend is a great time to build your Python skills!"
+    )
+    course_hint = (
+        "<p style='color:#475569;line-height:1.7;margin:0 0 12px;'>"
+        "&#128204; Pick up where you left off: <strong>" + current_course + "</strong></p>"
+        if current_course else ""
+    )
+    weekend_ideas = (
+        "&#128218;&nbsp;Complete one course lesson (just 10 minutes!)<br/>"
+        "&#127919;&nbsp;Take a quiz and earn some XP<br/>"
+        "&#9997;&#65039;&nbsp;Submit a pending assignment<br/>"
+        "&#128161;&nbsp;Ask Sir. Tega a Python question you've been curious about"
+    )
+    body = (
+        "<p style='color:#1e293b;margin:0 0 12px;'>Hi <strong>" + first + "</strong>,</p>"
+        "<h2 style='color:" + PRIMARY + ";font-size:1.2rem;margin:0 0 10px;'>"
+        "&#127774; Happy Weekend! Make it count. &#128013;</h2>"
+        "<p style='color:#475569;line-height:1.7;margin:0 0 14px;'>" + xp_str + "</p>"
+        + course_hint
+        + _box("<strong>Weekend learning ideas:</strong><br/>" + weekend_ideas,
+               bg="#f0fdf4", border="#16A34A")
+        + _cta("&#128640; Learn This Weekend", site)
+        + "<p style='color:#64748b;font-size:0.82rem;'>"
+          "Even one lesson this weekend keeps your momentum going.<br/>"
+          "<strong style='color:" + PRIMARY + ";'>Sir. Tega &amp; The MyPy Tutor Team</strong></p>"
+        + "<p style='color:#94a3b8;font-size:0.7rem;margin-top:16px;'>"
+          "To stop receiving reminders, reply with 'unsubscribe'.</p>"
+    )
+    html = _shell(body, f"Happy Weekend, {first}! Sir. Tega has a lesson ready for you. 🐍")
+    text = (
+        f"Happy Weekend, {first}!\n\n{xp_str}\n\n"
+        + (f"Continue: {current_course}\n\n" if current_course else "")
+        + f"Start learning: {site}\n\n-- Sir. Tega & MyPy Tutor Team"
+    )
+    _dispatch_async(email,
+                    f"🌴 Happy Weekend, {first}! Sir. Tega has a lesson ready for you.",
+                    html, text, "weekend_motivation")
+
+
+# ── 18. New month kickoff ─────────────────────────────────────────────────────
+def send_new_month_email(name: str, email: str, month_name: str,
+                          xp: int = 0, courses_done: int = 0) -> None:
+    """
+    Celebratory/motivational email sent on the 1st of every month (WAT).
+    Sets goals and celebrates progress from the previous month.
+    Sent at most once per month per learner.
+    """
+    first = name.split()[0] if name else "Learner"
+    site  = _frontend_url()
+
+    stats_html = ""
+    if xp or courses_done:
+        parts = []
+        if xp:          parts.append(f"&#11088;&nbsp;<strong style='color:{GOLD};'>{xp:,} XP</strong> earned so far")
+        if courses_done: parts.append(f"&#128218;&nbsp;<strong>{courses_done}</strong> course{'s' if courses_done != 1 else ''} completed")
+        stats_html = _box("<br/>".join(parts), bg="#fffbeb", border=GOLD)
+
+    goals = (
+        "&#128218;&nbsp;Start or complete a new course<br/>"
+        "&#127919;&nbsp;Aim for at least 3 quizzes this month<br/>"
+        "&#9997;&#65039;&nbsp;Submit all pending assignments<br/>"
+        "&#127942;&nbsp;Work toward your next certificate"
+    )
+    body = (
+        "<p style='color:#1e293b;margin:0 0 12px;'>Hi <strong>" + first + "</strong>,</p>"
+        "<h2 style='color:" + PRIMARY + ";font-size:1.3rem;margin:0 0 10px;'>"
+        "&#127882; New month, new goals — Happy " + month_name + "!</h2>"
+        "<p style='color:#475569;line-height:1.7;margin:0 0 14px;'>"
+        "A brand new month means a fresh opportunity to level up your Python and AI skills. "
+        "Sir. Tega is here every step of the way — let's make <strong>" + month_name
+        + "</strong> your best learning month yet!</p>"
+        + stats_html
+        + _box("<strong>Your " + month_name + " goals:</strong><br/>" + goals,
+               bg="#f0f7ff", border=PRIMARY)
+        + _cta("&#128640; Start " + month_name + " Strong", site)
+        + "<p style='color:#64748b;font-size:0.82rem;'>"
+          "New month, same great tutor — Sir. Tega is ready for you! 🐍<br/>"
+          "<strong style='color:" + PRIMARY + ";'>The MyPy Tutor Team</strong></p>"
+        + "<p style='color:#94a3b8;font-size:0.7rem;margin-top:16px;'>"
+          "To stop receiving these messages, reply with 'unsubscribe'.</p>"
+    )
+    html = _shell(body, f"Happy {month_name}, {first}! New month, new goals — let's go! 🚀")
+    text = (
+        f"Happy {month_name}, {first}!\n\n"
+        "A new month means a fresh chance to level up your Python skills.\n"
+        + (f"Your XP so far: {xp:,}\n" if xp else "")
+        + (f"Courses completed: {courses_done}\n" if courses_done else "")
+        + f"\nStart learning: {site}\n\n-- Sir. Tega & MyPy Tutor Team"
+    )
+    _dispatch_async(email,
+                    f"🎊 Happy {month_name}! New month, new Python goals — Sir. Tega is ready.",
+                    html, text, "new_month")

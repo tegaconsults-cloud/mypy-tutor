@@ -268,12 +268,6 @@ Stay strictly on the lesson topic. Be thorough but focused.
 After the lesson content, always end with:
 "✅ Lesson complete! Type **next** to continue to the next step, or ask me any questions about this lesson." """
 
-_GAP_PROMPT = """You are a Python tutor focused on closing knowledge gaps.
-The learner has struggled with this topic before. Be especially patient and clear.
-Use different explanations and analogies than might have been used before.
-Break things down into the smallest possible steps.
-After explaining, give a simple confidence-check question to verify understanding."""
-
 _AMBIGUOUS_PROMPT = """You are a helpful Python tutor. The user's message is not entirely clear. Ask exactly ONE clarifying question to determine what kind of help they need. Keep your question concise and friendly.
 
 Do not attempt to answer the question yet — just ask for clarification."""

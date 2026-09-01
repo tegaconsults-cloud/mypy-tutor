@@ -11,6 +11,7 @@ Set DATABASE_URL in Render → mypy-tutor → Environment:
 import os
 import json
 import logging
+import threading
 from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
@@ -18,12 +19,52 @@ logger = logging.getLogger(__name__)
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 # ---------------------------------------------------------------------------
+# Connection pool — reuse connections instead of open/close per query.
+# ThreadedConnectionPool is safe for multi-threaded WSGI/ASGI workers.
+#
+# minconn=2  — keep 2 connections warm at all times (covers idle periods)
+# maxconn=10 — Render free PostgreSQL allows up to 25 concurrent connections;
+#              we cap at 10 so other services sharing the DB have headroom.
+# ---------------------------------------------------------------------------
+_pool = None
+_pool_lock = threading.Lock()
+
+
+def _get_pool():
+    """Lazy-initialise the connection pool on first use."""
+    global _pool
+    if _pool is not None:
+        return _pool
+    with _pool_lock:
+        if _pool is not None:          # double-checked locking
+            return _pool
+        if not DATABASE_URL:
+            return None
+        try:
+            import psycopg2.pool
+            _pool = psycopg2.pool.ThreadedConnectionPool(
+                minconn=2,
+                maxconn=10,
+                dsn=DATABASE_URL,
+            )
+            logger.info("PostgreSQL connection pool initialised (min=2 max=10)")
+        except Exception as exc:
+            logger.error("Failed to create connection pool: %s", exc)
+            _pool = None
+        return _pool
+
+
+# ---------------------------------------------------------------------------
 # Connection management
 # ---------------------------------------------------------------------------
 
 @contextmanager
 def get_db():
-    """Context manager for a PostgreSQL connection with auto-commit/rollback."""
+    """Yield a PostgreSQL connection from the pool (auto-commit/rollback).
+
+    Falls back to a plain single connection if the pool is unavailable
+    (e.g. during init_db() before the pool exists, or in unit tests).
+    """
     if not DATABASE_URL:
         raise RuntimeError(
             "DATABASE_URL environment variable is not set. "
@@ -32,7 +73,21 @@ def get_db():
         )
     import psycopg2
     import psycopg2.extras
-    conn = psycopg2.connect(DATABASE_URL)
+
+    pool = _get_pool()
+    conn = None
+    from_pool = False
+
+    if pool:
+        try:
+            conn = pool.getconn()
+            from_pool = True
+        except Exception as exc:
+            logger.warning("Pool.getconn() failed (%s) — falling back to direct connect", exc)
+
+    if conn is None:
+        conn = psycopg2.connect(DATABASE_URL)
+
     conn.autocommit = False
     try:
         yield conn
@@ -41,21 +96,19 @@ def get_db():
         conn.rollback()
         raise
     finally:
-        conn.close()
-
-
-def _q(sql: str) -> str:
-    """No-op — kept for readability; psycopg2 uses %s placeholders natively."""
-    return sql
-
-
-def _fetchone(cursor) -> dict | None:
-    row = cursor.fetchone()
-    return dict(row) if row else None
-
-
-def _fetchall(cursor) -> list[dict]:
-    return [dict(r) for r in cursor.fetchall()]
+        if from_pool and pool:
+            # Return to pool: reset the connection state first
+            try:
+                conn.reset()
+                pool.putconn(conn)
+            except Exception:
+                # If reset fails the connection is broken — discard it
+                try:
+                    pool.putconn(conn, close=True)
+                except Exception:
+                    pass
+        else:
+            conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -381,6 +434,39 @@ def init_db() -> None:
                 reviewed_at   DOUBLE PRECISION
             )""")
 
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS processed_webhooks (
+                reference    TEXT PRIMARY KEY,
+                processed_at DOUBLE PRECISION DEFAULT EXTRACT(EPOCH FROM NOW())
+            )""")
+
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS enquiries (
+                id          SERIAL PRIMARY KEY,
+                learner_id  TEXT DEFAULT '',
+                name        TEXT NOT NULL,
+                email       TEXT NOT NULL,
+                category    TEXT NOT NULL,
+                subject     TEXT NOT NULL,
+                message     TEXT NOT NULL,
+                status      TEXT DEFAULT 'open',
+                created_at  DOUBLE PRECISION DEFAULT EXTRACT(EPOCH FROM NOW())
+            )""")
+
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS email_automation (
+                learner_id               TEXT PRIMARY KEY,
+                email                    TEXT NOT NULL DEFAULT '',
+                name                     TEXT NOT NULL DEFAULT '',
+                last_reengagement_at     DOUBLE PRECISION DEFAULT 0,
+                last_course_reminder_at  DOUBLE PRECISION DEFAULT 0,
+                last_assignment_reminder_at DOUBLE PRECISION DEFAULT 0,
+                last_weekend_msg_at      DOUBLE PRECISION DEFAULT 0,
+                last_new_month_msg_at    DOUBLE PRECISION DEFAULT 0,
+                opted_out                INTEGER DEFAULT 0,
+                updated_at               DOUBLE PRECISION DEFAULT EXTRACT(EPOCH FROM NOW())
+            )""")
+
             # ── Indexes ──────────────────────────────────────────────────────
             for sql in [
                 "CREATE INDEX IF NOT EXISTS idx_prompt_history_learner ON prompt_history (learner_id, id)",
@@ -398,6 +484,7 @@ def init_db() -> None:
                 "CREATE INDEX IF NOT EXISTS idx_feedback_surveys_learner ON feedback_surveys (learner_id, ts)",
             "CREATE INDEX IF NOT EXISTS idx_btp_learner ON bank_transfer_proofs (learner_id)",
             "CREATE INDEX IF NOT EXISTS idx_btp_status ON bank_transfer_proofs (status)",
+            "CREATE INDEX IF NOT EXISTS idx_email_automation_opted ON email_automation (opted_out)",
             ]:
                 cur.execute(sql)
 
@@ -485,18 +572,20 @@ def save_profile_db(learner_id: str, profile_dict: dict) -> None:
 
 
 def upgrade_tier_db(learner_id: str, tier: str) -> None:
-    """Upgrade a learner's tier in PostgreSQL and mirror to Supabase."""
+    """Upgrade a learner's tier in PostgreSQL and mirror to Supabase.
+
+    Uses a single UPSERT so new users (no profile row yet) are handled
+    correctly — the previous UPDATE + INSERT ON CONFLICT DO NOTHING silently
+    left the tier at 'free' for brand-new learners.
+    """
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE learner_profiles SET tier=%s, updated_at=EXTRACT(EPOCH FROM NOW()) "
-                "WHERE learner_id=%s",
-                (tier, learner_id)
-            )
             cur.execute("""
-                INSERT INTO learner_profiles (learner_id, tier)
-                VALUES (%s, %s)
-                ON CONFLICT(learner_id) DO NOTHING
+                INSERT INTO learner_profiles (learner_id, tier, updated_at)
+                VALUES (%s, %s, EXTRACT(EPOCH FROM NOW()))
+                ON CONFLICT (learner_id) DO UPDATE SET
+                    tier       = EXCLUDED.tier,
+                    updated_at = EXTRACT(EPOCH FROM NOW())
             """, (learner_id, tier))
     try:
         from app.supabase_client import sb_update_tier
@@ -1292,6 +1381,23 @@ def has_course_purchase(learner_id: str, course_name: str) -> bool:
     return row is not None
 
 
+def get_course_purchases_for_learner(learner_id: str) -> set[str]:
+    """Return the set of all course names this learner has individually purchased.
+
+    Use this instead of calling has_course_purchase() in a loop — one query
+    instead of N queries.
+    """
+    import psycopg2.extras
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT course_name FROM course_purchases WHERE learner_id=%s",
+                (learner_id,)
+            )
+            rows = cur.fetchall()
+    return {r["course_name"] for r in rows}
+
+
 def get_learner_courses(learner_id: str) -> list[str]:
     import psycopg2.extras
     with get_db() as conn:
@@ -1393,15 +1499,42 @@ def purge_old_prompt_counts(keep_date: str) -> None:
 def create_withdrawal_request(learner_id: str, email: str, amount: float,
                                bank_name: str, account_name: str,
                                account_num: str) -> int:
+    """Insert a withdrawal record and atomically deduct the amount from bonus_balance.
+
+    Uses SELECT … FOR UPDATE on the referrals row so concurrent requests
+    cannot both read a positive balance and both succeed — the second will
+    see the already-decremented balance and be rejected upstream.
+    """
     with get_db() as conn:
         with conn.cursor() as cur:
+            # Lock the referral row for this learner for the duration of the tx
+            cur.execute(
+                "SELECT bonus_balance FROM referrals WHERE owner_id=%s FOR UPDATE",
+                (learner_id,)
+            )
+            row = cur.fetchone()
+            current_balance = float(row[0]) if row else 0.0
+
+            if current_balance < amount:
+                raise ValueError(
+                    f"Insufficient balance: ₦{current_balance:.2f} available, "
+                    f"₦{amount:.2f} requested"
+                )
+
+            # Deduct balance atomically in the same transaction
+            cur.execute(
+                "UPDATE referrals SET bonus_balance = bonus_balance - %s "
+                "WHERE owner_id=%s",
+                (amount, learner_id)
+            )
+
             cur.execute("""
                 INSERT INTO referral_withdrawals
                   (learner_id, email, amount, bank_name, account_name, account_num)
                 VALUES (%s,%s,%s,%s,%s,%s) RETURNING id
             """, (learner_id, email.lower(), amount, bank_name, account_name, account_num))
-            row = cur.fetchone()
-    return row[0] if row else 0
+            id_row = cur.fetchone()
+    return id_row[0] if id_row else 0
 
 
 def get_withdrawals_for_learner(learner_id: str) -> list[dict]:
@@ -1447,3 +1580,114 @@ def update_withdrawal_status(withdrawal_id: int, status: str, notes: str = "") -
                 (status, notes, withdrawal_id)
             )
             return cur.rowcount > 0
+
+
+# ---------------------------------------------------------------------------
+# Email automation helpers
+# ---------------------------------------------------------------------------
+
+def upsert_email_automation(learner_id: str, email: str, name: str) -> None:
+    """Ensure a row exists for this learner; never overwrites opted_out."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO email_automation (learner_id, email, name, updated_at)
+                VALUES (%s, %s, %s, EXTRACT(EPOCH FROM NOW()))
+                ON CONFLICT (learner_id) DO UPDATE SET
+                    email      = CASE WHEN EXCLUDED.email <> '' THEN EXCLUDED.email
+                                      ELSE email_automation.email END,
+                    name       = CASE WHEN EXCLUDED.name  <> '' THEN EXCLUDED.name
+                                      ELSE email_automation.name  END,
+                    updated_at = EXTRACT(EPOCH FROM NOW())
+            """, (learner_id, email.lower(), name))
+
+
+def mark_email_sent(learner_id: str, email_type: str) -> None:
+    """Record the timestamp of the last email of a given type for a learner.
+
+    email_type values: 'reengagement', 'course_reminder', 'assignment_reminder',
+                       'weekend', 'new_month'
+    """
+    import time as _t
+    col_map = {
+        "reengagement":        "last_reengagement_at",
+        "course_reminder":     "last_course_reminder_at",
+        "assignment_reminder": "last_assignment_reminder_at",
+        "weekend":             "last_weekend_msg_at",
+        "new_month":           "last_new_month_msg_at",
+    }
+    col = col_map.get(email_type)
+    if not col:
+        return
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"""
+                INSERT INTO email_automation (learner_id, updated_at, {col})
+                VALUES (%s, EXTRACT(EPOCH FROM NOW()), %s)
+                ON CONFLICT (learner_id) DO UPDATE SET
+                    {col}      = EXCLUDED.{col},
+                    updated_at = EXCLUDED.updated_at
+            """, (learner_id, _t.time()))
+
+
+def set_email_opted_out(learner_id: str, opted_out: bool = True) -> None:
+    """Honour an unsubscribe request."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO email_automation (learner_id, opted_out, updated_at)
+                VALUES (%s, %s, EXTRACT(EPOCH FROM NOW()))
+                ON CONFLICT (learner_id) DO UPDATE SET
+                    opted_out  = EXCLUDED.opted_out,
+                    updated_at = EXCLUDED.updated_at
+            """, (learner_id, int(opted_out)))
+
+
+def get_email_automation_candidates(email_type: str, cooldown_days: int) -> list[dict]:
+    """Return confirmed learners who are eligible for a given email type.
+
+    A learner is eligible when:
+      - They have not opted out
+      - The relevant last_*_at is older than cooldown_days (or NULL)
+
+    Returns dicts with: learner_id, email, name, last_sent_at,
+    plus learner_profile fields: xp, current_course, topics_seen, updated_at,
+    assignments (pending count injected by callers as needed).
+    """
+    import time as _t
+    import psycopg2.extras
+    col_map = {
+        "reengagement":        "ea.last_reengagement_at",
+        "course_reminder":     "ea.last_course_reminder_at",
+        "assignment_reminder": "ea.last_assignment_reminder_at",
+        "weekend":             "ea.last_weekend_msg_at",
+        "new_month":           "ea.last_new_month_msg_at",
+    }
+    col = col_map.get(email_type, "ea.last_reengagement_at")
+    cutoff = _t.time() - (cooldown_days * 86400)
+
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(f"""
+                SELECT
+                    em.learner_id,
+                    em.email,
+                    em.name,
+                    lp.xp,
+                    lp.updated_at          AS last_activity_at,
+                    lp.current_course,
+                    lp.topics_seen,
+                    lp.completed_projects,
+                    {col}                  AS last_sent_at
+                FROM email_accounts em
+                LEFT JOIN email_automation ea
+                       ON ea.learner_id = em.learner_id
+                LEFT JOIN learner_profiles lp
+                       ON lp.learner_id = em.learner_id
+                WHERE em.confirmed = 1
+                  AND em.email NOT LIKE '%@github.local'
+                  AND (ea.opted_out IS NULL OR ea.opted_out = 0)
+                  AND ({col} IS NULL OR {col} < %s)
+            """, (cutoff,))
+            rows = cur.fetchall()
+    return [dict(r) for r in rows]

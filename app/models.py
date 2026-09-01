@@ -16,7 +16,7 @@ class UserAccount(BaseModel):
     email:      str
     name:       str
     picture:    str = ""
-    google_sub: str
+    google_sub: str = ""   # empty for email/GitHub users
 
 
 class GoogleAuthRequest(BaseModel):
@@ -29,6 +29,8 @@ class AuthResponse(BaseModel):
     name:       str
     email:      str
     picture:    str
+    greeting:   str = ""   # WAT-aware personalised greeting, e.g. "Good evening, Chidi! 🌙"
+    is_new_user: bool = False  # True on first-ever sign-in so frontend can show onboarding
 
 
 class EmailSignUpRequest(BaseModel):

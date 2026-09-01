@@ -202,22 +202,81 @@ def increment_interaction(learner_id: str) -> bool:
 
 
 def get_summary() -> FeedbackSummary:
-    total = len(_ratings)
-    ups   = sum(1 for r in _ratings if r.rating == "up")
-    downs = total - ups
-    pct   = round((ups / total * 100), 1) if total else 0.0
+    """Build the feedback summary by querying PostgreSQL directly.
 
-    def avg(vals):
-        return round(sum(vals) / len(vals), 2) if vals else 0.0
+    The in-memory lists (_ratings, _surveys) reset on every Render restart,
+    so they are only used as a fast path when they happen to be populated.
+    The DB is always the authoritative source.
+    """
+    try:
+        from app.db import get_db as _gdb
+        with _gdb() as _conn:
+            with _conn.cursor() as _cur:
+                # Rating counts
+                _cur.execute("SELECT COUNT(*) FROM feedback_ratings")
+                total = (_cur.fetchone() or [0])[0]
 
-    return FeedbackSummary(
-        total_ratings=total,
-        thumbs_up=ups,
-        thumbs_down=downs,
-        satisfaction_pct=pct,
-        avg_overall=avg([s.overall     for s in _surveys]),
-        avg_clarity=avg([s.clarity     for s in _surveys]),
-        avg_helpfulness=avg([s.helpfulness for s in _surveys]),
-        total_surveys=len(_surveys),
-        recent_suggestions=[s.suggestion for s in reversed(_surveys) if s.suggestion.strip()][:10],
-    )
+                _cur.execute("SELECT COUNT(*) FROM feedback_ratings WHERE rating='up'")
+                ups = (_cur.fetchone() or [0])[0]
+
+                # Survey aggregates
+                _cur.execute("""
+                    SELECT
+                        COUNT(*),
+                        COALESCE(AVG(overall), 0),
+                        COALESCE(AVG(clarity), 0),
+                        COALESCE(AVG(helpfulness), 0)
+                    FROM feedback_surveys
+                """)
+                row = _cur.fetchone() or (0, 0, 0, 0)
+                total_surveys   = int(row[0])
+                avg_overall     = round(float(row[1]), 2)
+                avg_clarity     = round(float(row[2]), 2)
+                avg_helpfulness = round(float(row[3]), 2)
+
+                # Recent non-empty suggestions (last 10)
+                _cur.execute("""
+                    SELECT suggestion FROM feedback_surveys
+                    WHERE suggestion <> ''
+                    ORDER BY id DESC LIMIT 10
+                """)
+                recent_suggestions = [r[0] for r in _cur.fetchall()]
+
+        downs = total - ups
+        pct   = round((ups / total * 100), 1) if total else 0.0
+
+        return FeedbackSummary(
+            total_ratings=total,
+            thumbs_up=ups,
+            thumbs_down=downs,
+            satisfaction_pct=pct,
+            avg_overall=avg_overall,
+            avg_clarity=avg_clarity,
+            avg_helpfulness=avg_helpfulness,
+            total_surveys=total_surveys,
+            recent_suggestions=recent_suggestions,
+        )
+    except Exception as exc:
+        logger.warning("get_summary DB query failed, falling back to in-memory: %s", exc)
+        # Fallback to in-memory data (e.g. during tests with no DB)
+        total = len(_ratings)
+        ups   = sum(1 for r in _ratings if r.rating == "up")
+        downs = total - ups
+        pct   = round((ups / total * 100), 1) if total else 0.0
+
+        def avg(vals: list) -> float:
+            return round(sum(vals) / len(vals), 2) if vals else 0.0
+
+        return FeedbackSummary(
+            total_ratings=total,
+            thumbs_up=ups,
+            thumbs_down=downs,
+            satisfaction_pct=pct,
+            avg_overall=avg([s.overall      for s in _surveys]),
+            avg_clarity=avg([s.clarity      for s in _surveys]),
+            avg_helpfulness=avg([s.helpfulness  for s in _surveys]),
+            total_surveys=len(_surveys),
+            recent_suggestions=[
+                s.suggestion for s in reversed(_surveys) if s.suggestion.strip()
+            ][:10],
+        )

@@ -1,7 +1,7 @@
 from fastapi.testclient import TestClient
 
 from app.main import app
-
+from app.auth import require_user
 
 client = TestClient(app)
 
@@ -24,10 +24,8 @@ def test_referral_withdrawal_requires_auth():
 
 def test_referral_withdrawal_requires_sufficient_balance(monkeypatch):
     """Authenticated request with amount > balance must be rejected with 400."""
-    from app import auth as _auth
     from app.models import UserAccount
 
-    # Inject a fake authenticated user with learner_id matching the request
     fake_user = UserAccount(
         learner_id="test-withdraw",
         email="learner@example.com",
@@ -36,35 +34,34 @@ def test_referral_withdrawal_requires_sufficient_balance(monkeypatch):
         google_sub="fake-sub",
     )
 
-    # Patch the dependency so the route sees our fake user as authenticated
-    async def _fake_require_user(*_args, **_kwargs):
+    # Override the FastAPI dependency that the route actually uses (require_user),
+    # not get_current_user — patching get_current_user has no effect on the route
+    # because Depends() captures the dependency object at import time.
+    async def _fake_require_user():
         return fake_user
 
-    async def _fake_get_current_user(*_args, **_kwargs):
-        return fake_user
-
-    from app import main as _main
-    monkeypatch.setattr(_main, "get_current_user", _fake_get_current_user)
+    app.dependency_overrides[require_user] = _fake_require_user
 
     # Patch get_referral_bonus_balance to return zero balance
     from app import db as _db
     monkeypatch.setattr(_db, "get_referral_bonus_balance", lambda lid: {"balance": 0.0})
 
-    response = client.post(
-        "/referral/withdraw",
-        json={
-            "learner_id": "test-withdraw",
-            "email": "learner@example.com",
-            "amount": 1000,
-            "bank_name": "Zenith Bank",
-            "account_name": "Test Learner",
-            "account_num": "1234567890",
-        },
-    )
-
-    # Route checks auth first (401), then ownership (403), then balance (400).
-    # With our patched current_user = fake_user, we get past auth.
-    # Balance is 0 < 1000, so we expect 400.
-    assert response.status_code in (400, 401, 403)
-    if response.status_code == 400:
+    try:
+        response = client.post(
+            "/referral/withdraw",
+            json={
+                "learner_id": "test-withdraw",
+                "email": "learner@example.com",
+                "amount": 1000,
+                "bank_name": "Zenith Bank",
+                "account_name": "Test Learner",
+                "account_num": "1234567890",
+            },
+        )
+        # Auth is bypassed → ownership check passes (learner_id matches fake_user)
+        # → balance 0 < 1000 → expect 400 with "balance" in detail
+        assert response.status_code == 400
         assert "balance" in response.json()["detail"].lower()
+    finally:
+        # Always clean up dependency overrides so other tests are not affected
+        app.dependency_overrides.pop(require_user, None)

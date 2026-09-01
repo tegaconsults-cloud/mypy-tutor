@@ -4,10 +4,16 @@ Memory cache (_store) is used for fast reads; SQLite is the source of truth.
 """
 
 import json
+import threading
 from app.models import LearnerProfile, TopicProgress
 from app.db import load_profile, save_profile_db
 
 _store: dict[str, LearnerProfile] = {}
+
+# Module-level Supabase debounce state — using a Lock makes concurrent
+# save_profile calls for the same learner thread-safe.
+_pending_syncs: dict[str, threading.Timer] = {}
+_pending_syncs_lock = threading.Lock()
 
 # XP rewards
 XP_LESSON     = 10
@@ -173,31 +179,28 @@ def save_profile(profile: LearnerProfile) -> None:
     # concurrent upsert races and reducing Supabase API traffic.
     try:
         from app.supabase_client import sb_sync_progress
-        import threading
-
-        _pending_syncs: dict = getattr(save_profile, "_pending_syncs", {})
-        if not hasattr(save_profile, "_pending_syncs"):
-            save_profile._pending_syncs = _pending_syncs  # type: ignore[attr-defined]
 
         lid = profile.learner_id
-        # Cancel previous pending timer if still waiting
-        existing = _pending_syncs.get(lid)
-        if existing and existing.is_alive():
-            existing.cancel()
 
         def _do_sync(lid: str, data: dict) -> None:
-            _pending_syncs.pop(lid, None)
+            with _pending_syncs_lock:
+                _pending_syncs.pop(lid, None)
             sb_sync_progress(lid, data)
 
-        t = threading.Timer(
-            2.0,  # wait 2 s before actually syncing — collapses burst writes
-            _do_sync,
-            args=(lid, profile_data),
-        )
-        t.daemon = False  # non-daemon: survives idle — finishes before SIGTERM
-        t.name = f"sb-sync-{lid[:12]}"
-        t.start()
-        _pending_syncs[lid] = t
+        with _pending_syncs_lock:
+            existing = _pending_syncs.get(lid)
+            if existing is not None:
+                existing.cancel()
+
+            t = threading.Timer(
+                2.0,  # wait 2 s before syncing — collapses burst writes
+                _do_sync,
+                args=(lid, profile_data),
+            )
+            t.daemon = False  # non-daemon: finishes before SIGTERM
+            t.name = f"sb-sync-{lid[:12]}"
+            t.start()
+            _pending_syncs[lid] = t
     except Exception:
         pass
 
