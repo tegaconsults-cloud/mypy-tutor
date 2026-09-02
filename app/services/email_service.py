@@ -1017,3 +1017,71 @@ def send_new_month_email(name: str, email: str, month_name: str,
     _dispatch_async(email,
                     f"🎊 Happy {month_name}! New month, new Python goals — Sir. Tega is ready.",
                     html, text, "new_month")
+
+
+# ── 19. Resend confirmation ───────────────────────────────────────────────────
+def send_resend_confirmation_email(name: str, email: str, confirm_url: str) -> None:
+    """Re-send the email confirmation link (resend-confirmation route)."""
+    first = name.split()[0] if name else "Learner"
+    notice = ("This link expires in <strong>24 hours</strong>. "
+              "If you did not create an account, you can safely ignore this email.")
+    body = (
+        "<p style='color:#1e293b;margin:0 0 12px;'>Hi <strong>" + first + "</strong>,</p>"
+        "<h2 style='color:#0D47A1;font-size:1.2rem;margin:0 0 12px;'>Confirm your email address</h2>"
+        "<p style='color:#475569;line-height:1.7;margin:0 0 16px;'>"
+        "Here is a fresh confirmation link for your MyPy Tutor account. "
+        "Click the button below to activate your account.</p>"
+        + _cta("&#9989; Confirm Email Address", confirm_url)
+        + _box(notice, bg="#fffbeb", border="#D97706")
+        + "<p style='color:#64748b;font-size:0.82rem;'>If the button does not work:<br/>"
+          "<a href='" + confirm_url + "' style='color:#1565E8;word-break:break-all;'>"
+          + confirm_url + "</a></p>"
+    )
+    html = _shell(body, "Confirm your MyPy Tutor account — link expires in 24 hours.")
+    text = (
+        "Hi " + first + ",\n\n"
+        "Confirm your MyPy Tutor account by visiting:\n" + confirm_url + "\n\n"
+        "This link expires in 24 hours.\n\n-- MyPy Tutor Team"
+    )
+    _dispatch_async(email, "Confirm your MyPy Tutor account", html, text, "resend_confirmation")
+
+
+# ── 20. Task assigned ─────────────────────────────────────────────────────────
+def send_task_assigned_email(assigned_to: str, title: str, description: str,
+                              priority: str, due_date: str, platform_url: str) -> None:
+    """Notify a team member that a task has been assigned to them."""
+    priority_colors = {
+        "urgent": "#ef4444", "high": "#f59e0b",
+        "medium": "#3b82f6", "low": "#6b7280",
+    }
+    pc   = priority_colors.get(priority.lower(), "#3b82f6")
+    due  = (f"<br/><strong style='color:#94a3b8;'>Due:</strong> "
+            f"<strong style='color:#e2e8f0;'>{due_date}</strong>" if due_date else "")
+    task_box = (
+        "<strong style='color:#e2e8f0;font-size:1rem;'>" + title + "</strong><br/>"
+        "<span style='color:#94a3b8;font-size:.88rem;line-height:1.6;'>"
+        + description + "</span><br/><br/>"
+        "<span style='display:inline-block;background:" + pc + "22;color:" + pc + ";"
+        "border:1px solid " + pc + "55;border-radius:6px;padding:3px 10px;"
+        "font-size:.78rem;font-weight:700;'>" + priority.upper() + " PRIORITY</span>"
+        + due
+    )
+    body = (
+        "<p style='color:#1e293b;margin:0 0 12px;'>Hi,</p>"
+        "<h2 style='color:#0D47A1;font-size:1.2rem;margin:0 0 12px;'>📋 New Task Assigned</h2>"
+        "<p style='color:#475569;line-height:1.7;margin:0 0 16px;'>"
+        "You have been assigned a new task on MyPy Tutor. Here are the details:</p>"
+        + _box(task_box)
+        + _cta("&#128640; View Task", platform_url)
+        + "<p style='color:#64748b;font-size:0.82rem;'>"
+          "<strong style='color:#0D47A1;'>The MyPy Tutor Team</strong></p>"
+    )
+    html = _shell(body, f"New task assigned: {title} [{priority.upper()} priority]")
+    text = (
+        f"New task assigned: {title}\n"
+        f"Description: {description}\n"
+        f"Priority: {priority.upper()}\n"
+        + (f"Due: {due_date}\n" if due_date else "")
+        + f"\nView: {platform_url}\n\n-- MyPy Tutor Team"
+    )
+    _dispatch_async(assigned_to, f"Task assigned: {title}", html, text, "task_assigned")

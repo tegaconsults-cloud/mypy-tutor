@@ -715,7 +715,7 @@ TIER_PLANS: dict[str, dict] = {
     },
     "tier4": {
         "name":         "Premium Bundle",
-        "price_ngn":    100000,  # = Executive Masters Certificate (₦100,000) — all 17 courses
+        "price_ngn":    150000,  # Premium Bundle — all 17 courses
         "description":  "Unlock ALL 17 courses including Machine Learning, AI & Prompt Engineering, and AI Automation.",
         "eligible_courses": list(COURSE_CATALOG.keys()),
         "unlocks_count": 17,

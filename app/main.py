@@ -1277,37 +1277,19 @@ async def resend_confirmation(request: Request) -> dict:
     confirm_url = f"{app_url}/auth/confirm?token={new_token}"
     name        = pending.get("name", "Learner")
 
-    html_body = f"""<!DOCTYPE html>
-<html>
-<body style="font-family:Arial,sans-serif;background:#0f1117;color:#e2e8f0;padding:32px;">
-  <div style="max-width:520px;margin:0 auto;background:#1a202c;border-radius:16px;
-              padding:32px;border:1px solid #2d3748;">
-    <h1 style="color:#63b3ed;font-size:1.4rem;margin-bottom:8px;">?? MyPy Tutor</h1>
-    <h2 style="color:#e2e8f0;font-size:1.1rem;margin-bottom:16px;">Confirm your email address</h2>
-    <p style="color:#a0aec0;line-height:1.6;">Hi <strong style="color:#e2e8f0;">{name}</strong>,</p>
-    <p style="color:#a0aec0;line-height:1.6;margin-top:8px;">
-      Here is a fresh confirmation link for your MyPy Tutor account.
-      Click the button below to activate your account.
-    </p>
-    <a href="{confirm_url}"
-       style="display:inline-block;margin-top:24px;background:#3182ce;color:#fff;
-              padding:12px 28px;border-radius:10px;text-decoration:none;
-              font-weight:bold;font-size:0.95rem;">
-      ? Confirm Email Address
-    </a>
-    <p style="color:#4a5568;font-size:0.78rem;margin-top:24px;line-height:1.5;">
-      This link expires in 24 hours. If you didn't create an account, ignore this email.
-    </p>
-    <hr style="border:none;border-top:1px solid #2d3748;margin:20px 0;">
-    <p style="color:#4a5568;font-size:0.75rem;">MyPy Tutor � Teamsamikoko Global Academy</p>
-  </div>
-</body>
-</html>"""
-    text_body = (
-        f"Hi {name},\n\nConfirm your MyPy Tutor account:\n{confirm_url}\n\n"
-        f"This link expires in 24 hours.\n� MyPy Tutor Team"
-    )
-    _send_email_async(email, "Confirm your MyPy Tutor account", html_body, text_body)
+    # Send via email_service (Resend → SMTP fallback, branded template)
+    try:
+        from app.services.email_service import send_resend_confirmation_email as _src_email
+        _src_email(name, email, confirm_url)
+    except Exception:
+        # Absolute fallback: plain SMTP
+        text_body = (
+            f"Hi {name},\n\nConfirm your MyPy Tutor account:\n{confirm_url}\n\n"
+            f"This link expires in 24 hours.\n— MyPy Tutor Team"
+        )
+        _send_email_async(email, "Confirm your MyPy Tutor account",
+                          f"<p>Hi {name},</p><p>Confirm your account: <a href='{confirm_url}'>{confirm_url}</a></p>",
+                          text_body)
 
     # Check if email is actually configured � if not, auto-confirm instead
     from app.email_auth import confirm_email_token as _cet
@@ -1554,27 +1536,32 @@ async def get_certificate(
 
     if not admin_view and not tier_ok and not courses_ok:
         tier_names = {
-            "basic":     "Beginner Bundle (?30,000) or complete all 4 beginner courses",
-            "advanced":  "Intermediate Bundle (?60,000) or complete all 7 courses",
-            "executive": "Elite Bundle (?100,000) or complete all advanced courses",
+            "basic":     "Beginner Bundle (₦30,000) or complete all 4 beginner courses",
+            "advanced":  "Intermediate Bundle (₦60,000) or complete all 7 courses",
+            "executive": "Advanced Bundle (₦100,000) or complete all advanced courses",
         }
-        return HTMLResponse(
-            content=f"""<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Certificate Locked</title>
-            <style>body{{font-family:sans-serif;background:#0f1117;color:#e2e8f0;display:flex;
-            align-items:center;justify-content:center;height:100vh;text-align:center;padding:20px}}
-            .box{{background:#1a202c;border:1px solid #2d3748;border-radius:14px;padding:40px;max-width:480px}}
-            h2{{color:#f6ad55;margin-bottom:12px}}p{{color:#a0aec0;line-height:1.6;margin-bottom:20px}}
-            a{{background:#3182ce;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;
-            font-weight:700;display:inline-block;margin-top:8px}}</style></head>
-            <body><div class="box"><h2>?? Certificate Locked</h2>
-            <p>To earn the <strong>{level.title()} Certificate</strong>, either:</p>
-            <p>? Purchase the <strong>{tier_names.get(level,'appropriate plan')}</strong></p>
-            <p>� or �</p>
-            <p>?? Complete all required courses in this track</p>
-            <a href="https://paystack.shop/pay/vt_re4d3h52" target="_blank">?? Upgrade Now</a>
-            </div></body></html>""",
-            status_code=402,
+        import os as _os_cert_lock
+        _lock_path = _os_cert_lock.path.join("static", "certificate-locked.html")
+        try:
+            with open(_lock_path, "r", encoding="utf-8") as _f:
+                _lock_html = _f.read()
+        except FileNotFoundError:
+            # Minimal fallback if static file is missing
+            _lock_html = (
+                "<html><body style='font-family:sans-serif;text-align:center;padding:40px'>"
+                "<h2>Certificate Locked</h2>"
+                "<p>Purchase {{PLAN_NAME}} to unlock your {{LEVEL_TITLE}} certificate.</p>"
+                "<a href='https://paystack.shop/pay/vt_re4d3h52'>Upgrade Now</a>"
+                "</body></html>"
+            )
+        _frontend_url_lock = _os.getenv("FRONTEND_URL", _os.getenv("APP_URL", "https://mypytutor.com.ng"))
+        _lock_html = (
+            _lock_html
+            .replace("{{LEVEL_TITLE}}", level.title())
+            .replace("{{PLAN_NAME}}", tier_names.get(level, "an appropriate plan"))
+            .replace("{{FRONTEND_URL}}", _frontend_url_lock)
         )
+        return HTMLResponse(content=_lock_html, status_code=402)
 
     import re as _re
     clean_name = _re.sub(r'[<>&"\']', '', name).strip()[:80] or "Learner"
@@ -1648,33 +1635,24 @@ async def verify_certificate(cert_id: str) -> HTMLResponse:
 
     frontend_url = _os.getenv("FRONTEND_URL", _os.getenv("APP_URL", "https://mypytutor.com.ng"))
 
+    # ── Helper: load a static template and substitute placeholders ──────────
+    def _load_verify_tpl(filename: str, subs: dict) -> str:
+        import os as _osv
+        path = _osv.path.join("static", filename)
+        try:
+            with open(path, "r", encoding="utf-8") as _fv:
+                content = _fv.read()
+            for k, v in subs.items():
+                content = content.replace(k, str(v))
+            return content
+        except FileNotFoundError:
+            return f"<html><body><h2>{filename} template missing</h2></body></html>"
+
     if not record:
-        html = f"""<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Certificate Not Found � MyPy Tutor</title>
-<style>
-  body{{font-family:Arial,sans-serif;background:#0f1117;color:#e2e8f0;
-       display:flex;align-items:center;justify-content:center;
-       min-height:100vh;margin:0;padding:20px;box-sizing:border-box;}}
-  .box{{background:#1a202c;border:1px solid #2d3748;border-radius:14px;
-        padding:40px;max-width:480px;width:100%;text-align:center;}}
-  h2{{color:#f6ad55;margin-bottom:12px;}}
-  p{{color:#a0aec0;line-height:1.6;margin-bottom:20px;}}
-  a{{background:#3182ce;color:#fff;text-decoration:none;padding:12px 24px;
-     border-radius:8px;font-weight:700;display:inline-block;margin-top:8px;}}
-</style></head>
-<body><div class="box">
-  <div style="font-size:3rem;margin-bottom:16px;">&#10060;</div>
-  <h2>Certificate Not Found</h2>
-  <p>No certificate with ID <code style="background:#2d3748;padding:2px 6px;
-     border-radius:4px;font-size:0.85em;">{cert_id}</code> was found
-     in our records.</p>
-  <p>If you believe this is an error, please contact
-     <a href="mailto:support@mypytutor.com.ng" style="background:none;
-     color:#63b3ed;padding:0;">support@mypytutor.com.ng</a>.</p>
-  <a href="{frontend_url}">&#8592; Return to MyPy Tutor</a>
-</div></body></html>"""
+        html = _load_verify_tpl("certificate-not-found.html", {
+            "{{CERT_ID}}":      cert_id,
+            "{{FRONTEND_URL}}": frontend_url,
+        })
         return HTMLResponse(content=html, status_code=404)
 
     import datetime as _dtt
@@ -1685,72 +1663,16 @@ async def verify_certificate(cert_id: str) -> HTMLResponse:
     except Exception:
         issued_str = str(record.get("issued_at", ""))
 
-    level_label = str(record.get("level", "")).title()
+    level_label  = str(record.get("level", "")).title()
     learner_name = record.get("learner_name", "Learner")
 
-    html = f"""<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Certificate Verified � MyPy Tutor</title>
-<style>
-  *{{box-sizing:border-box;}}
-  body{{font-family:Arial,sans-serif;background:#0f1117;color:#e2e8f0;
-       display:flex;align-items:center;justify-content:center;
-       min-height:100vh;margin:0;padding:20px;}}
-  .box{{background:#1a202c;border:1px solid #276749;border-radius:14px;
-        padding:40px;max-width:520px;width:100%;text-align:center;}}
-  .badge{{font-size:3.5rem;margin-bottom:8px;}}
-  h2{{color:#68d391;font-size:1.4rem;margin:0 0 8px;}}
-  .subtitle{{color:#a0aec0;font-size:0.85rem;margin-bottom:28px;}}
-  .card{{background:#2d3748;border-radius:10px;padding:20px 24px;
-          text-align:left;margin-bottom:24px;}}
-  .row{{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px;}}
-  .row:last-child{{margin-bottom:0;}}
-  .label{{color:#718096;font-size:0.8rem;min-width:110px;padding-top:1px;}}
-  .value{{color:#e2e8f0;font-size:0.9rem;font-weight:600;word-break:break-all;}}
-  .issuer{{color:#a0aec0;font-size:0.78rem;margin-bottom:24px;line-height:1.6;}}
-  a.btn{{background:#276749;color:#fff;text-decoration:none;padding:12px 28px;
-         border-radius:8px;font-weight:700;display:inline-block;}}
-  a.btn:hover{{background:#2f855a;}}
-</style></head>
-<body>
-<div class="box">
-  <div class="badge">&#9989;</div>
-  <h2>Certificate Verified</h2>
-  <p class="subtitle">This certificate is authentic and issued by MyPy Tutor</p>
-
-  <div class="card">
-    <div class="row">
-      <span class="label">Recipient</span>
-      <span class="value">{learner_name}</span>
-    </div>
-    <div class="row">
-      <span class="label">Programme</span>
-      <span class="value">{level_label} Python Certificate</span>
-    </div>
-    <div class="row">
-      <span class="label">Issued</span>
-      <span class="value">{issued_str}</span>
-    </div>
-    <div class="row">
-      <span class="label">Certificate ID</span>
-      <span class="value" style="font-family:monospace;font-size:0.8rem;">{cert_id}</span>
-    </div>
-    <div class="row">
-      <span class="label">Status</span>
-      <span class="value" style="color:#68d391;">&#10004; Genuine</span>
-    </div>
-  </div>
-
-  <p class="issuer">
-    Issued by <strong>Teamsamikoko Global Academy</strong><br/>
-    Reg No: 3508656 &middot; Powered by TeamTega Technologies Limited<br/>
-    MyPy Tutor &mdash; Africa's Best AI, Python &amp; Machine Learning Tutor
-  </p>
-
-  <a class="btn" href="{frontend_url}">&#8592; Visit MyPy Tutor</a>
-</div>
-</body></html>"""
+    html = _load_verify_tpl("certificate-verified.html", {
+        "{{CERT_ID}}":      cert_id,
+        "{{LEARNER_NAME}}": learner_name,
+        "{{LEVEL_LABEL}}":  level_label,
+        "{{ISSUED_STR}}":   issued_str,
+        "{{FRONTEND_URL}}": frontend_url,
+    })
     return HTMLResponse(content=html)
 
 @app.get("/progress/{learner_id}", response_model=ProgressResponse)
@@ -2434,14 +2356,14 @@ async def paystack_webhook(request: Request) -> dict:
 
             if not tier:
                 # Infer tier from amount using canonical bundle prices:
-                # Premium ?100,000 (tier4) | Advanced ?100,000 (tier3) | Intermediate ?60,000 (tier2) | Beginner ?30,000 (tier1)
-                # When amount is ?100k and plan_meta is empty, default to tier3 (Advanced Bundle)
-                # tier4 requires explicit "premium bundle" in plan name
+                # Premium ₦150,000 (tier4) | Advanced ₦100,000 (tier3) | Intermediate ₦60,000 (tier2) | Beginner ₦30,000 (tier1)
+                # When amount is ₦100k and plan_meta is empty, default to tier3 (Advanced Bundle)
+                # tier4 (Premium Bundle ₦150,000) requires explicit "premium bundle" in plan name
                 if amount_ngn >= 90000:
                     if "premium" in plan_meta:
-                        tier = "tier4"   # Premium Bundle ?100,000 � all 16 courses
+                        tier = "tier4"   # Premium Bundle — ₦150,000 (all 17 courses)
                     else:
-                        tier = "tier3"   # Advanced Bundle ?100,000 � 14 courses
+                        tier = "tier3"   # Advanced Bundle — ₦100,000 (14 courses)
                 elif amount_ngn >= 50000:
                     tier = "tier2"   # Intermediate Bundle ?60,000
                 elif amount_ngn >= 25000:
@@ -2483,10 +2405,10 @@ async def paystack_webhook(request: Request) -> dict:
                 apply_tier_upgrade(learner_id, tier)     # in-memory cache sync
 
                 tier_labels = {
-                    "tier1": "Beginner Bundle � ?30,000 (4 courses)",
-                    "tier2": "Intermediate Bundle � ?60,000 (7 courses)",
-                    "tier3": "Advanced Bundle � ?100,000 (14 courses)",
-                    "tier4": "Premium Bundle � ?100,000 (all 16 courses)",
+                    "tier1": "Beginner Bundle — ₦30,000 (4 courses)",
+                    "tier2": "Intermediate Bundle — ₦60,000 (7 courses)",
+                    "tier3": "Advanced Bundle — ₦100,000 (14 courses)",
+                    "tier4": "Premium Bundle — ₦150,000 (all 17 courses)",
                 }
                 plan_label = tier_labels.get(tier, tier)
                 import secrets as _sec
@@ -2702,7 +2624,7 @@ async def admin_dashboard(request: Request) -> dict:
                 active_today = _cur.fetchone()[0]
 
                 tier_counts: dict = {}
-                for _tier in ["free", "tier1", "tier2", "tier3"]:
+                for _tier in ["free", "tier1", "tier2", "tier3", "tier4"]:
                     _cur.execute(
                         "SELECT COUNT(*) FROM learner_profiles WHERE tier=%s", (_tier,)
                     )
@@ -2763,7 +2685,7 @@ async def admin_dashboard(request: Request) -> dict:
         from app.progress import _store as _ls
         total_users   = len(_ls)
         active_today  = 0
-        tier_counts   = {t: sum(1 for p in _ls.values() if p.tier == t) for t in ["free","tier1","tier2","tier3"]}
+        tier_counts   = {t: sum(1 for p in _ls.values() if p.tier == t) for t in ["free","tier1","tier2","tier3","tier4"]}
         total_revenue = 0; confirmed_pmts = 0; pending_pmts = 0; total_pmts = 0
         by_plan = {}; today_rev = 0; cert_count = 0
         task_total = task_open = task_inprog = task_done = team_size = wd_pending = new_users_24h = 0
@@ -3281,7 +3203,7 @@ async def get_bank_details() -> dict:
             {"name": "Beginner Bundle",      "price": 30000,  "tier": "tier1"},
             {"name": "Intermediate Bundle",  "price": 60000,  "tier": "tier2"},
             {"name": "Advanced Bundle",      "price": 100000, "tier": "tier3"},
-            {"name": "Premium Bundle",       "price": 100000, "tier": "tier4"},
+            {"name": "Premium Bundle",       "price": 150000, "tier": "tier4"},
         ],
     }
 
@@ -3664,37 +3586,16 @@ async def admin_create_task(body: _TaskCreate, request: Request) -> dict:
     _require_admin(request)
     t = create_task(body.title, body.description, body.assigned_to, body.priority, body.due_date)
     try:
-        from app.email_auth import _send_email_async
+        from app.services.email_service import send_task_assigned_email as _ste
         _frontend_url = _os.getenv("FRONTEND_URL", _os.getenv("APP_URL", "https://mypytutor.com.ng"))
-        priority_color = {"urgent": "#ef4444", "high": "#f59e0b", "medium": "#3b82f6", "low": "#6b7280"}.get(body.priority, "#3b82f6")
-        html = f"""<!DOCTYPE html>
-<html><body style="font-family:Arial,sans-serif;background:#0f1117;color:#e2e8f0;padding:32px;">
-<div style="max-width:520px;margin:0 auto;background:#0d1120;border-radius:16px;padding:32px;border:1px solid rgba(13,71,161,0.3);">
-  <div style="text-align:center;margin-bottom:24px">
-    <img src="{_frontend_url}/icons/mypytutor_logo.jpg" alt="MyPy Tutor" style="width:56px;height:56px;border-radius:50%;border:2px solid rgba(224,163,0,0.5);" />
-    <h2 style="color:#E0A300;margin:12px 0 4px;font-size:1.3rem;">MyPy Tutor</h2>
-    <p style="color:#4d6080;font-size:.78rem;margin:0">Powered by TeamTega Technologies Limited</p>
-  </div>
-  <h3 style="color:#fcd34d;margin-bottom:8px;">?? New Task Assigned</h3>
-  <div style="background:#111827;border-radius:10px;padding:16px;margin-bottom:16px;">
-    <p style="color:#e2e8f0;font-weight:bold;font-size:1rem;margin:0 0 8px;">{body.title}</p>
-    <p style="color:#94a3b8;font-size:.88rem;line-height:1.6;margin:0 0 10px;">{body.description}</p>
-    <span style="display:inline-block;background:{priority_color}22;color:{priority_color};
-          border:1px solid {priority_color}55;border-radius:6px;padding:3px 10px;font-size:.78rem;font-weight:700;">
-      {body.priority.upper()} PRIORITY
-    </span>
-    {f'<p style="color:#4d6080;font-size:.78rem;margin:10px 0 0;">? Due: <strong style=color:#e2e8f0>{body.due_date}</strong></p>' if body.due_date else ''}
-  </div>
-  <a href="{_frontend_url}" style="display:inline-block;background:#0D47A1;color:#fff;
-     padding:12px 28px;border-radius:10px;text-decoration:none;font-weight:bold;font-size:.95rem;">
-    ?? View Task
-  </a>
-  <p style="color:#4d6080;font-size:.75rem;margin-top:28px;">
-    MyPy Tutor � Teamsamikoko Global Academy � Powered by TeamTega Technologies Limited
-  </p>
-</div></body></html>"""
-        _send_email_async(body.assigned_to, f"Task assigned: {body.title}", html,
-                          f"New task: {body.title}\n{body.description}\nPriority: {body.priority}{chr(10)+'Due: '+body.due_date if body.due_date else ''}\n\nView: {_frontend_url}")
+        _ste(
+            assigned_to=body.assigned_to,
+            title=body.title,
+            description=body.description,
+            priority=body.priority,
+            due_date=body.due_date or "",
+            platform_url=_frontend_url,
+        )
     except Exception as e:
         logger.warning("Task email failed: %s", e)
     return {"ok": True, "task_id": t.id}
@@ -4470,95 +4371,45 @@ async def list_invoices(learner_id: str,
 
 
 def _render_invoice(inv: dict) -> str:
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <title>Invoice #{inv['id']} � MyPy Tutor</title>
-  <style>
-    @media print{{.no-print{{display:none}}body{{padding:0}}}}
-    *{{box-sizing:border-box;margin:0;padding:0}}
-    body{{font-family:Arial,Helvetica,sans-serif;background:#f9fafb;color:#1a202c;padding:40px 20px}}
-    .invoice{{max-width:700px;margin:0 auto;background:#fff;border-radius:12px;
-              box-shadow:0 4px 20px rgba(0,0,0,.08);overflow:hidden}}
-    .hdr{{background:linear-gradient(135deg,#0d2b6e,#1a3f9a);color:#fff;
-          padding:32px 40px;display:flex;justify-content:space-between;align-items:flex-start}}
-    .hdr h1{{font-size:1.5rem;margin-bottom:4px}}
-    .hdr p{{font-size:0.75rem;opacity:.75;margin-top:3px}}
-    .badge{{background:rgba(255,255,255,.2);padding:6px 14px;border-radius:20px;
-            font-size:0.78rem;font-weight:700;letter-spacing:.06em}}
-    .body{{padding:36px 40px}}
-    .meta{{display:flex;justify-content:space-between;margin-bottom:24px}}
-    .status{{display:inline-block;background:#c6f6d5;color:#276749;padding:3px 12px;
-             border-radius:20px;font-size:0.78rem;font-weight:700}}
-    hr{{border:none;border-top:1px solid #e2e8f0;margin:20px 0}}
-    .line{{display:flex;justify-content:space-between;font-size:0.9rem;padding:8px 0}}
-    .total{{display:flex;justify-content:space-between;font-size:1.1rem;
-            font-weight:700;color:#0d2b6e}}
-    .ftr{{background:#f7fafc;border-top:1px solid #e2e8f0;padding:20px 40px;
-          text-align:center;font-size:0.75rem;color:#718096}}
-    .pbtn{{display:block;margin:20px auto;padding:10px 28px;background:#0d2b6e;
-           color:#fff;border:none;border-radius:8px;font-size:0.9rem;cursor:pointer}}
-  </style>
-</head>
-<body>
-<div class="invoice">
-  <div class="hdr">
-    <div>
-      <div style="font-size:1.8rem;margin-bottom:6px">??</div>
-      <h1>MyPy Tutor</h1>
-      <p>Powered by TeamTega Technologies Limited</p>
-      <p>Certified by Teamsamikoko Global Academy � Reg No: 3508656</p>
-    </div>
-    <div style="text-align:right">
-      <div class="badge">INVOICE</div>
-      <p style="margin-top:10px;font-size:0.85rem;opacity:.9">#{inv['id']}</p>
-      <p style="font-size:0.75rem;opacity:.75">{inv.get('issued_at_fmt','')}</p>
-    </div>
-  </div>
-  <div class="body">
-    <div class="meta">
-      <div>
-        <p style="font-size:.72rem;color:#718096;text-transform:uppercase;
-                  letter-spacing:.08em;margin-bottom:6px">Bill To</p>
-        <p style="font-weight:700;font-size:.95rem">{inv['name']}</p>
-        <p style="color:#718096;font-size:.85rem">{inv['email']}</p>
-      </div>
-      <div style="text-align:right">
-        <span class="status">? PAID</span>
-        <p style="margin-top:8px;font-size:.78rem;color:#718096">
-          Payment ID: {inv['payment_id']}</p>
-      </div>
-    </div>
-    <hr/>
-    <div style="font-size:.75rem;color:#718096;text-transform:uppercase;
-                letter-spacing:.06em;padding-bottom:8px;border-bottom:1px solid #e2e8f0;
-                margin-bottom:12px;display:flex;justify-content:space-between">
-      <span>Description</span><span>Amount</span>
-    </div>
-    <div class="line">
-      <span>{inv['plan']}</span>
-      <span style="font-weight:700">?{inv['amount']:,.0f}</span>
-    </div>
-    <hr/>
-    <div class="total">
-      <span>Total Paid</span>
-      <span>?{inv['amount']:,.0f} {inv['currency']}</span>
-    </div>
-    <p style="margin-top:24px;font-size:.8rem;color:#718096;line-height:1.6">
-      Thank you for investing in your Python education. This invoice is proof of
-      payment for the MyPy Tutor subscription/certification listed above.
-    </p>
-  </div>
-  <div class="ftr">
-    <p>MyPy Tutor � mypytutor.com.ng</p>
-    <p style="margin-top:4px">TeamTega Technologies Limited � Teamsamikoko Global Academy</p>
-    <p style="margin-top:4px;font-style:italic">"Learn Smarter. Code Better. Build the Future."</p>
-  </div>
-</div>
-<button class="pbtn no-print" onclick="window.print()">??? Print / Save as PDF</button>
-</body>
-</html>"""
+    """Render an invoice by loading the static HTML template and substituting data fields.
+
+    Falls back to a minimal inline HTML string if the template file is missing
+    (e.g. during a unit test run without the static/ directory).
+    """
+    import os as _os_inv
+    template_path = _os_inv.path.join("static", "invoice-template.html")
+    try:
+        with open(template_path, "r", encoding="utf-8") as _f:
+            tpl = _f.read()
+    except FileNotFoundError:
+        # Minimal fallback — no CSS, just the essential data
+        tpl = (
+            "<!DOCTYPE html><html><head><meta charset='UTF-8'/>"
+            "<title>Invoice #{{INV_ID}}</title></head><body>"
+            "<h1>Invoice #{{INV_ID}}</h1>"
+            "<p>{{INV_NAME}} · {{INV_EMAIL}}</p>"
+            "<p>Plan: {{INV_PLAN}} · Amount: ₦{{INV_AMOUNT}} {{INV_CURRENCY}}</p>"
+            "<p>Date: {{INV_DATE}} · Payment ID: {{INV_PAYMENT_ID}}</p>"
+            "</body></html>"
+        )
+
+    # Format amount as comma-separated (no decimal for whole numbers)
+    try:
+        amount_fmt = f"{float(inv.get('amount', 0)):,.0f}"
+    except (TypeError, ValueError):
+        amount_fmt = str(inv.get("amount", "0"))
+
+    return (
+        tpl
+        .replace("{{INV_ID}}",         str(inv.get("id", "")))
+        .replace("{{INV_DATE}}",        str(inv.get("issued_at_fmt", "")))
+        .replace("{{INV_NAME}}",        str(inv.get("name", "")))
+        .replace("{{INV_EMAIL}}",       str(inv.get("email", "")))
+        .replace("{{INV_PAYMENT_ID}}", str(inv.get("payment_id", "")))
+        .replace("{{INV_PLAN}}",        str(inv.get("plan", "")))
+        .replace("{{INV_AMOUNT}}",      amount_fmt)
+        .replace("{{INV_CURRENCY}}",    str(inv.get("currency", "NGN")))
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -5890,4 +5741,5 @@ try:
         app.mount("/icons", StaticFiles(directory="static/icons"), name="icons")
 except Exception:
     pass
+
 

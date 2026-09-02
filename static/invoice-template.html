@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Invoice #{{INV_ID}} — MyPy Tutor</title>
+  <style>
+    @media print{.no-print{display:none}body{padding:0}}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,Helvetica,sans-serif;background:#f9fafb;color:#1a202c;padding:40px 20px}
+    .invoice{
+      max-width:700px;margin:0 auto;background:#fff;border-radius:12px;
+      box-shadow:0 4px 20px rgba(0,0,0,.08);overflow:hidden;
+    }
+    .hdr{
+      background:linear-gradient(135deg,#0d2b6e,#1a3f9a);color:#fff;
+      padding:32px 40px;display:flex;justify-content:space-between;align-items:flex-start;
+    }
+    .hdr h1{font-size:1.5rem;margin-bottom:4px}
+    .hdr p{font-size:0.75rem;opacity:.75;margin-top:3px}
+    .badge{
+      background:rgba(255,255,255,.2);padding:6px 14px;border-radius:20px;
+      font-size:0.78rem;font-weight:700;letter-spacing:.06em;
+    }
+    .body{padding:36px 40px}
+    .meta{display:flex;justify-content:space-between;margin-bottom:24px}
+    .status{
+      display:inline-block;background:#c6f6d5;color:#276749;padding:3px 12px;
+      border-radius:20px;font-size:0.78rem;font-weight:700;
+    }
+    hr{border:none;border-top:1px solid #e2e8f0;margin:20px 0}
+    .line{display:flex;justify-content:space-between;font-size:0.9rem;padding:8px 0}
+    .total{
+      display:flex;justify-content:space-between;font-size:1.1rem;
+      font-weight:700;color:#0d2b6e;
+    }
+    .ftr{
+      background:#f7fafc;border-top:1px solid #e2e8f0;padding:20px 40px;
+      text-align:center;font-size:0.75rem;color:#718096;
+    }
+    .pbtn{
+      display:block;margin:20px auto;padding:10px 28px;background:#0d2b6e;
+      color:#fff;border:none;border-radius:8px;font-size:0.9rem;cursor:pointer;
+    }
+  </style>
+</head>
+<body>
+<div class="invoice">
+  <div class="hdr">
+    <div>
+      <div style="font-size:1.8rem;margin-bottom:6px">🐍</div>
+      <h1>MyPy Tutor</h1>
+      <p>Powered by TeamTega Technologies Limited</p>
+      <p>Certified by Teamsamikoko Global Academy · Reg No: 3508656</p>
+    </div>
+    <div style="text-align:right">
+      <div class="badge">INVOICE</div>
+      <p style="margin-top:10px;font-size:0.85rem;opacity:.9">#{{INV_ID}}</p>
+      <p style="font-size:0.75rem;opacity:.75">{{INV_DATE}}</p>
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="meta">
+      <div>
+        <p style="font-size:.72rem;color:#718096;text-transform:uppercase;
+                  letter-spacing:.08em;margin-bottom:6px">Bill To</p>
+        <p style="font-weight:700;font-size:.95rem">{{INV_NAME}}</p>
+        <p style="color:#718096;font-size:.85rem">{{INV_EMAIL}}</p>
+      </div>
+      <div style="text-align:right">
+        <span class="status">✅ PAID</span>
+        <p style="margin-top:8px;font-size:.78rem;color:#718096">
+          Payment ID: {{INV_PAYMENT_ID}}</p>
+      </div>
+    </div>
+
+    <hr/>
+    <div style="font-size:.75rem;color:#718096;text-transform:uppercase;
+                letter-spacing:.06em;padding-bottom:8px;border-bottom:1px solid #e2e8f0;
+                margin-bottom:12px;display:flex;justify-content:space-between">
+      <span>Description</span><span>Amount</span>
+    </div>
+    <div class="line">
+      <span>{{INV_PLAN}}</span>
+      <span style="font-weight:700">₦{{INV_AMOUNT}}</span>
+    </div>
+    <hr/>
+    <div class="total">
+      <span>Total Paid</span>
+      <span>₦{{INV_AMOUNT}} {{INV_CURRENCY}}</span>
+    </div>
+
+    <p style="margin-top:24px;font-size:.8rem;color:#718096;line-height:1.6">
+      Thank you for investing in your Python education. This invoice is proof of
+      payment for the MyPy Tutor subscription/certification listed above.
+    </p>
+  </div>
+
+  <div class="ftr">
+    <p>MyPy Tutor · mypytutor.com.ng</p>
+    <p style="margin-top:4px">TeamTega Technologies Limited · Teamsamikoko Global Academy</p>
+    <p style="margin-top:4px;font-style:italic">"Learn Smarter. Code Better. Build the Future."</p>
+  </div>
+</div>
+
+<button class="pbtn no-print" onclick="window.print()">🖨 Print / Save as PDF</button>
+</body>
+</html>

@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Certificate Verified — MyPy Tutor</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:Arial,sans-serif;background:#0f1117;color:#e2e8f0;
+    display:flex;align-items:center;justify-content:center;
+    min-height:100vh;padding:20px;
+  }
+  .box{
+    background:#1a202c;border:1px solid #276749;border-radius:16px;
+    padding:40px 36px;max-width:520px;width:100%;text-align:center;
+    box-shadow:0 20px 60px rgba(0,0,0,0.5);
+  }
+  .badge{font-size:3.5rem;margin-bottom:8px}
+  h2{color:#68d391;font-size:1.4rem;margin:0 0 8px}
+  .subtitle{color:#a0aec0;font-size:.85rem;margin-bottom:28px}
+  .card{
+    background:#2d3748;border-radius:10px;padding:20px 24px;
+    text-align:left;margin-bottom:24px;
+  }
+  .row{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px}
+  .row:last-child{margin-bottom:0}
+  .label{color:#718096;font-size:.8rem;min-width:120px;padding-top:2px;flex-shrink:0}
+  .value{color:#e2e8f0;font-size:.9rem;font-weight:600;word-break:break-all}
+  .genuine{color:#68d391}
+  .issuer{color:#a0aec0;font-size:.78rem;margin-bottom:24px;line-height:1.7}
+  a.btn{
+    display:inline-block;background:#276749;color:#fff;
+    text-decoration:none;padding:12px 28px;border-radius:10px;
+    font-weight:700;font-size:.95rem;
+  }
+  a.btn:hover{background:#2f855a}
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="badge">✅</div>
+  <h2>Certificate Verified</h2>
+  <p class="subtitle">This certificate is authentic and issued by MyPy Tutor</p>
+
+  <div class="card">
+    <div class="row">
+      <span class="label">Recipient</span>
+      <span class="value">{{LEARNER_NAME}}</span>
+    </div>
+    <div class="row">
+      <span class="label">Programme</span>
+      <span class="value">{{LEVEL_LABEL}} Python Certificate</span>
+    </div>
+    <div class="row">
+      <span class="label">Issued</span>
+      <span class="value">{{ISSUED_STR}}</span>
+    </div>
+    <div class="row">
+      <span class="label">Certificate ID</span>
+      <span class="value" style="font-family:monospace;font-size:.82rem">{{CERT_ID}}</span>
+    </div>
+    <div class="row">
+      <span class="label">Status</span>
+      <span class="value genuine">✔ Genuine</span>
+    </div>
+  </div>
+
+  <p class="issuer">
+    Issued by <strong>Teamsamikoko Global Academy</strong><br/>
+    Reg No: 3508656 · Powered by TeamTega Technologies Limited<br/>
+    MyPy Tutor — Africa's Best AI, Python &amp; Machine Learning Tutor
+  </p>
+
+  <a class="btn" href="{{FRONTEND_URL}}">← Visit MyPy Tutor</a>
+</div>
+</body>
+</html>
