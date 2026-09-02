@@ -5665,17 +5665,18 @@ async def get_payment_metadata(learner_id: str,
 
 
 # ---------------------------------------------------------------------------
-# TTS � text-to-speech via browser Web Speech API (zero extra dependencies)
+# TTS — text-to-speech via browser Web Speech API (zero extra dependencies)
 # Returns clean plain-text for the frontend to speak using speechSynthesis.
-# Falls back gracefully: if Groq summarisation fails, echoes the raw text.
+# /tts/prepare — strip markdown, return speakable text
+# /tts/voices  — return ordered list of preferred English voice names
 # ---------------------------------------------------------------------------
 
 @app.post("/tts/prepare")
 async def tts_prepare(request: Request) -> dict:
     """
     Prepare text for browser TTS.
-    Strips markdown, code blocks and excess whitespace so the browser's
-    speechSynthesis reads naturally.  No audio file is generated server-side �
+    Strips markdown, code blocks, URLs and excess whitespace so the browser's
+    speechSynthesis reads naturally. No audio file is generated server-side —
     the frontend calls window.speechSynthesis.speak() with the returned text.
     """
     import re as _re_tts
@@ -5683,26 +5684,72 @@ async def tts_prepare(request: Request) -> dict:
     raw_text: str = body.get("text", "")
     if not raw_text or not raw_text.strip():
         raise HTTPException(status_code=400, detail="No text provided.")
+    if len(raw_text) > 20_000:
+        raise HTTPException(status_code=400, detail="Text too long. Maximum 20,000 characters.")
 
-    # Strip markdown code fences
-    text = _re_tts.sub(r"```[\s\S]*?```", " [code block] ", raw_text)
-    # Strip inline code
-    text = _re_tts.sub(r"`[^`]+`", lambda m: m.group(0)[1:-1], text)
-    # Strip markdown bold/italic/headings
-    text = _re_tts.sub(r"[*_]{1,3}(.+?)[*_]{1,3}", r"\1", text)
+    # Strip fenced code blocks
+    text = _re_tts.sub(r"```[a-z]*\n?[\s\S]*?```", " [code block] ", raw_text)
+    # Strip inline code — keep the readable content
+    text = _re_tts.sub(r"`([^`\n]{1,120})`", r"\1", text)
+    # Strip markdown bold/italic (handle nested safely)
+    text = _re_tts.sub(r"\*\*\*(.+?)\*\*\*", r"\1", text)
+    text = _re_tts.sub(r"\*\*(.+?)\*\*",     r"\1", text)
+    text = _re_tts.sub(r"\*(.+?)\*",          r"\1", text)
+    text = _re_tts.sub(r"___(.+?)___",        r"\1", text)
+    text = _re_tts.sub(r"__(.+?)__",          r"\1", text)
+    text = _re_tts.sub(r"_(.+?)_",            r"\1", text)
+    # Strip ATX headings
     text = _re_tts.sub(r"^#{1,6}\s+", "", text, flags=_re_tts.MULTILINE)
-    # Strip links [label](url) ? label
-    text = _re_tts.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", text)
+    # Strip markdown links — keep label
+    text = _re_tts.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+    # Strip bare URLs
+    text = _re_tts.sub(r"https?://\S+", "", text)
+    # Strip blockquotes and horizontal rules
+    text = _re_tts.sub(r"^>\s+", "", text, flags=_re_tts.MULTILINE)
+    text = _re_tts.sub(r"^[-*_]{3,}\s*$", "", text, flags=_re_tts.MULTILINE)
+    # Convert list bullets to natural pauses
+    text = _re_tts.sub(r"^[\*\-\+\u2022]\s+", ". ", text, flags=_re_tts.MULTILINE)
+    text = _re_tts.sub(r"^\d+\.\s+",           ". ", text, flags=_re_tts.MULTILINE)
+    # Strip table pipes
+    text = _re_tts.sub(r"\|", " ", text)
     # Collapse excess whitespace
     text = _re_tts.sub(r"\n{3,}", "\n\n", text)
     text = _re_tts.sub(r"[ \t]{2,}", " ", text)
     text = text.strip()
 
-    # Truncate to ~3000 chars so speech stays manageable
-    if len(text) > 3000:
-        text = text[:2997] + "..."
+    # Truncate to 5000 chars — browser TTS engines vary in their limits
+    truncated = len(text) > 5000
+    if truncated:
+        text = text[:4997] + "..."
 
-    return {"text": text, "char_count": len(text)}
+    return {"text": text, "char_count": len(text), "truncated": truncated}
+
+
+@app.get("/tts/voices")
+async def tts_voices() -> dict:
+    """
+    Return a curated priority-ordered list of English voice names.
+    The Web Speech API only exposes voices client-side; this endpoint lets
+    the JS picker find the best available option without trial-and-error.
+    Voice names match SpeechSynthesisVoice.name in the browser.
+    """
+    return {
+        "preferred": [
+            "Google UK English Female",
+            "Google UK English Male",
+            "Microsoft Hazel Desktop - English (Great Britain)",
+            "Microsoft George Desktop - English (Great Britain)",
+            "Google US English",
+            "Microsoft Zira Desktop - English (United States)",
+            "Microsoft David Desktop - English (United States)",
+            "Alex",
+            "Samantha",
+            "Karen",
+            "Daniel",
+        ],
+        "language_priority": ["en-NG", "en-GB", "en-US", "en-AU", "en-ZA", "en"],
+        "fallback": "Use the first voice whose lang starts with 'en'",
+    }
 
 
 # ---------------------------------------------------------------------------
