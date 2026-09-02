@@ -5,41 +5,193 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Certificate Verified — MyPy Tutor</title>
 <style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{
-    font-family:Arial,sans-serif;background:#0f1117;color:#e2e8f0;
-    display:flex;align-items:center;justify-content:center;
-    min-height:100vh;padding:20px;
-  }
-  .box{
-    background:#1a202c;border:1px solid #276749;border-radius:16px;
-    padding:40px 36px;max-width:520px;width:100%;text-align:center;
-    box-shadow:0 20px 60px rgba(0,0,0,0.5);
-  }
-  .badge{font-size:3.5rem;margin-bottom:8px}
-  h2{color:#68d391;font-size:1.4rem;margin:0 0 8px}
-  .subtitle{color:#a0aec0;font-size:.85rem;margin-bottom:28px}
-  .card{
-    background:#2d3748;border-radius:10px;padding:20px 24px;
-    text-align:left;margin-bottom:24px;
-  }
-  .row{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px}
-  .row:last-child{margin-bottom:0}
-  .label{color:#718096;font-size:.8rem;min-width:120px;padding-top:2px;flex-shrink:0}
-  .value{color:#e2e8f0;font-size:.9rem;font-weight:600;word-break:break-all}
-  .genuine{color:#68d391}
-  .issuer{color:#a0aec0;font-size:.78rem;margin-bottom:24px;line-height:1.7}
-  a.btn{
-    display:inline-block;background:#276749;color:#fff;
-    text-decoration:none;padding:12px 28px;border-radius:10px;
-    font-weight:700;font-size:.95rem;
-  }
-  a.btn:hover{background:#2f855a}
+*{box-sizing:border-box;margin:0;padding:0}
+
+/* ── Keyframes ── */
+@keyframes fadeIn    { from{opacity:0}                to{opacity:1} }
+@keyframes slideUp   { from{opacity:0;transform:translateY(28px)} to{opacity:1;transform:translateY(0)} }
+@keyframes popIn     { 0%{transform:scale(.3);opacity:0} 65%{transform:scale(1.18)} 100%{transform:scale(1);opacity:1} }
+@keyframes rotatePop { 0%{transform:scale(.3) rotate(-30deg);opacity:0} 70%{transform:scale(1.12) rotate(4deg)} 100%{transform:scale(1) rotate(0deg);opacity:1} }
+@keyframes pulse     { 0%,100%{box-shadow:0 0 0 0 rgba(72,187,120,.45)} 50%{box-shadow:0 0 0 16px rgba(72,187,120,0)} }
+@keyframes shimmer   { from{background-position:-600px 0} to{background-position:600px 0} }
+@keyframes rowIn     { from{opacity:0;transform:translateX(-14px)} to{opacity:1;transform:translateX(0)} }
+@keyframes float     { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+@keyframes confetti  {
+  0%  {transform:translateY(-20px) rotate(0deg);  opacity:1}
+  100%{transform:translateY(60px)  rotate(720deg);opacity:0}
+}
+@keyframes glow      { 0%,100%{opacity:.6} 50%{opacity:1} }
+@keyframes countUp   { from{opacity:0;transform:scale(.6)} to{opacity:1;transform:scale(1)} }
+
+/* ── Background ── */
+body{
+  font-family:'Segoe UI',Arial,sans-serif;
+  background:#07090f;color:#e2e8f0;
+  display:flex;align-items:center;justify-content:center;
+  min-height:100vh;padding:24px;overflow:hidden;
+  animation:fadeIn .5s ease both;
+}
+body::before{
+  content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% -10%, rgba(72,187,120,.16), transparent),
+    radial-gradient(ellipse 55% 45% at 85% 85%,  rgba(59,130,246,.08), transparent),
+    radial-gradient(ellipse 40% 30% at 10% 60%,  rgba(245,158,11,.05), transparent);
+  animation:glow 5s ease-in-out infinite;
+}
+body::after{
+  content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:radial-gradient(rgba(255,255,255,.022) 1px,transparent 1px);
+  background-size:28px 28px;
+}
+
+/* ── Confetti particles (CSS-only, decorative) ── */
+.confetti-wrap{position:fixed;top:0;left:0;width:100%;pointer-events:none;z-index:2}
+.c{
+  position:absolute;top:-10px;width:8px;height:8px;border-radius:2px;
+  animation:confetti 2.2s ease forwards;
+}
+.c:nth-child(1) {left:10%;background:#68d391;animation-delay:.1s;animation-duration:2.0s}
+.c:nth-child(2) {left:20%;background:#f6ad55;animation-delay:.3s;width:6px;height:6px;border-radius:50%}
+.c:nth-child(3) {left:35%;background:#90cdf4;animation-delay:.15s;animation-duration:2.4s}
+.c:nth-child(4) {left:50%;background:#fbd38d;animation-delay:.5s;width:10px;height:5px}
+.c:nth-child(5) {left:62%;background:#68d391;animation-delay:.2s;animation-duration:2.1s;border-radius:50%}
+.c:nth-child(6) {left:75%;background:#b794f4;animation-delay:.4s;width:6px;height:9px}
+.c:nth-child(7) {left:85%;background:#f6ad55;animation-delay:.35s;animation-duration:2.3s}
+.c:nth-child(8) {left:92%;background:#90cdf4;animation-delay:.6s;width:7px;height:7px;border-radius:50%}
+
+/* ── Main card ── */
+.box{
+  position:relative;z-index:3;
+  background:rgba(22,37,30,.97);
+  border:1px solid rgba(72,187,120,.3);border-radius:22px;
+  padding:44px 40px;max-width:540px;width:100%;text-align:center;
+  box-shadow:
+    0 28px 90px rgba(0,0,0,.65),
+    0 0 0 1px rgba(72,187,120,.1),
+    inset 0 1px 0 rgba(255,255,255,.05);
+  backdrop-filter:blur(20px);
+  animation:slideUp .55s cubic-bezier(.22,.68,0,1.2) .1s both;
+}
+
+/* Animated shimmer top border */
+.box::before{
+  content:'';position:absolute;top:0;left:8%;right:8%;height:2px;
+  background:linear-gradient(90deg,transparent,#48bb78,#68d391,#48bb78,transparent);
+  background-size:600px 2px;
+  border-radius:1px;
+  animation:shimmer 2.5s linear infinite;
+}
+
+/* ── Badge / checkmark ── */
+.badge-wrap{
+  position:relative;display:inline-block;margin-bottom:14px;
+  animation:rotatePop .7s cubic-bezier(.22,.68,0,1.2) .3s both, float 3s ease 1.2s infinite;
+}
+.badge{
+  font-size:3.8rem;display:block;
+  filter:drop-shadow(0 0 18px rgba(72,187,120,.7));
+}
+/* Ripple ring around badge */
+.badge-wrap::after{
+  content:'';position:absolute;inset:-8px;border-radius:50%;
+  border:2px solid rgba(72,187,120,.35);
+  animation:pulse 2.2s ease 1s infinite;
+}
+
+/* ── Typography ── */
+h2{
+  color:#68d391;font-size:1.5rem;font-weight:900;margin-bottom:6px;
+  letter-spacing:-.03em;
+  animation:slideUp .4s ease .5s both;
+}
+.subtitle{
+  color:#a0aec0;font-size:.84rem;margin-bottom:28px;
+  animation:slideUp .4s ease .55s both;
+}
+
+/* ── Data card ── */
+.card{
+  background:rgba(45,55,72,.55);
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:14px;padding:22px 26px;
+  text-align:left;margin-bottom:26px;
+  overflow:hidden;position:relative;
+}
+.card::before{
+  content:'';position:absolute;left:0;top:0;bottom:0;width:3px;
+  background:linear-gradient(180deg,#48bb78,#38a169);border-radius:0 2px 2px 0;
+}
+
+/* Each row animates in with a stagger */
+.row{
+  display:flex;align-items:flex-start;gap:12px;
+  padding:9px 0;border-bottom:1px solid rgba(255,255,255,.05);
+  animation:rowIn .35s ease both;
+}
+.row:last-child{border-bottom:none}
+.row:nth-child(1){animation-delay:.6s}
+.row:nth-child(2){animation-delay:.68s}
+.row:nth-child(3){animation-delay:.76s}
+.row:nth-child(4){animation-delay:.84s}
+.row:nth-child(5){animation-delay:.92s}
+
+.label{
+  color:#718096;font-size:.76rem;font-weight:600;
+  text-transform:uppercase;letter-spacing:.07em;
+  min-width:110px;padding-top:3px;flex-shrink:0;
+}
+.value{
+  color:#e2e8f0;font-size:.9rem;font-weight:700;word-break:break-all;
+  transition:color .2s;
+}
+.row:hover .value{color:#fff}
+.genuine{
+  color:#68d391;display:flex;align-items:center;gap:6px;
+  animation:countUp .5s ease .95s both;
+}
+.genuine::before{
+  content:'';width:8px;height:8px;border-radius:50%;
+  background:#48bb78;flex-shrink:0;
+  box-shadow:0 0 0 0 rgba(72,187,120,.5);
+  animation:pulse 1.8s ease 1.4s infinite;
+}
+.cert-id{font-family:'Courier New',monospace;font-size:.8rem;color:#90cdf4;letter-spacing:.05em}
+
+/* ── Issuer block ── */
+.issuer{
+  color:#718096;font-size:.78rem;margin-bottom:26px;line-height:1.8;
+  animation:slideUp .4s ease 1s both;
+}
+.issuer strong{color:#a0aec0}
+
+/* ── Button ── */
+a.btn{
+  display:inline-block;
+  background:linear-gradient(135deg,#276749,#38a169);color:#fff;
+  text-decoration:none;padding:13px 34px;border-radius:12px;
+  font-weight:800;font-size:.94rem;letter-spacing:.01em;
+  box-shadow:0 4px 20px rgba(72,187,120,.35);
+  transition:transform .15s,box-shadow .15s,filter .15s;
+  animation:slideUp .4s ease 1.05s both;
+}
+a.btn:hover{transform:translateY(-2px) scale(1.03);box-shadow:0 8px 32px rgba(72,187,120,.55);filter:brightness(1.1)}
+a.btn:active{transform:scale(.97)}
 </style>
 </head>
 <body>
+
+<!-- CSS confetti burst on load -->
+<div class="confetti-wrap" aria-hidden="true">
+  <div class="c"></div><div class="c"></div><div class="c"></div><div class="c"></div>
+  <div class="c"></div><div class="c"></div><div class="c"></div><div class="c"></div>
+</div>
+
 <div class="box">
-  <div class="badge">✅</div>
+  <div class="badge-wrap">
+    <span class="badge">✅</span>
+  </div>
+
   <h2>Certificate Verified</h2>
   <p class="subtitle">This certificate is authentic and issued by MyPy Tutor</p>
 
@@ -58,18 +210,18 @@
     </div>
     <div class="row">
       <span class="label">Certificate ID</span>
-      <span class="value" style="font-family:monospace;font-size:.82rem">{{CERT_ID}}</span>
+      <span class="value cert-id">{{CERT_ID}}</span>
     </div>
     <div class="row">
       <span class="label">Status</span>
-      <span class="value genuine">✔ Genuine</span>
+      <span class="value genuine">Genuine</span>
     </div>
   </div>
 
   <p class="issuer">
     Issued by <strong>Teamsamikoko Global Academy</strong><br/>
-    Reg No: 3508656 · Powered by TeamTega Technologies Limited<br/>
-    MyPy Tutor — Africa's Best AI, Python &amp; Machine Learning Tutor
+    Reg No: 3508656 &middot; Powered by TeamTega Technologies Limited<br/>
+    MyPy Tutor &mdash; Africa&rsquo;s Best AI, Python &amp; Machine Learning Tutor
   </p>
 
   <a class="btn" href="{{FRONTEND_URL}}">← Visit MyPy Tutor</a>

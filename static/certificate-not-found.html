@@ -5,37 +5,99 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Certificate Not Found — MyPy Tutor</title>
 <style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{
-    font-family:Arial,sans-serif;background:#0f1117;color:#e2e8f0;
-    display:flex;align-items:center;justify-content:center;
-    min-height:100vh;padding:20px;
-  }
-  .box{
-    background:#1a202c;border:1px solid #2d3748;border-radius:16px;
-    padding:40px 36px;max-width:480px;width:100%;text-align:center;
-    box-shadow:0 20px 60px rgba(0,0,0,0.5);
-  }
-  .icon{font-size:3rem;margin-bottom:16px}
-  h2{color:#f6ad55;font-size:1.3rem;margin-bottom:14px}
-  p{color:#a0aec0;line-height:1.7;margin-bottom:14px;font-size:.9rem}
-  code{background:#2d3748;padding:2px 8px;border-radius:5px;font-size:.85em}
-  a.btn{
-    display:inline-block;margin-top:8px;background:#3182ce;color:#fff;
-    text-decoration:none;padding:12px 28px;border-radius:10px;
-    font-weight:700;font-size:.95rem;
-  }
-  a.btn:hover{background:#2b6cb0}
-  a.support{background:none;color:#63b3ed;padding:0;font-size:.88rem}
+*{box-sizing:border-box;margin:0;padding:0}
+
+/* ── Keyframes ── */
+@keyframes fadeIn  { from{opacity:0} to{opacity:1} }
+@keyframes slideUp { from{opacity:0;transform:translateY(30px)} to{opacity:1;transform:translateY(0)} }
+@keyframes shake   { 0%,100%{transform:translateX(0)} 20%{transform:translateX(-8px)} 40%{transform:translateX(8px)} 60%{transform:translateX(-5px)} 80%{transform:translateX(5px)} }
+@keyframes popIn   { 0%{transform:scale(.4);opacity:0} 70%{transform:scale(1.15)} 100%{transform:scale(1);opacity:1} }
+@keyframes glow    { 0%,100%{opacity:.7} 50%{opacity:1} }
+
+body{
+  font-family:'Segoe UI',Arial,sans-serif;background:#07090f;color:#e2e8f0;
+  display:flex;align-items:center;justify-content:center;
+  min-height:100vh;padding:20px;overflow:hidden;
+  animation:fadeIn .5s ease both;
+}
+body::before{
+  content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(ellipse 70% 50% at 50% -5%, rgba(239,68,68,.12), transparent),
+    radial-gradient(ellipse 50% 40% at 80% 80%,  rgba(245,158,11,.07), transparent);
+  animation:glow 4s ease-in-out infinite;
+}
+body::after{
+  content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:radial-gradient(rgba(255,255,255,.02) 1px,transparent 1px);
+  background-size:28px 28px;
+}
+
+.box{
+  position:relative;z-index:1;
+  background:rgba(26,32,44,.95);
+  border:1px solid rgba(239,68,68,.25);
+  border-radius:20px;padding:44px 36px;max-width:460px;width:100%;text-align:center;
+  box-shadow:0 24px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(239,68,68,.08);
+  backdrop-filter:blur(16px);
+  animation:slideUp .5s cubic-bezier(.22,.68,0,1.2) .1s both;
+}
+.box::before{
+  content:'';position:absolute;top:0;left:10%;right:10%;height:2px;
+  background:linear-gradient(90deg,transparent,#ef4444,#f87171,#ef4444,transparent);
+  border-radius:1px;
+}
+
+/* Icon shakes once on load then settles */
+.icon{
+  font-size:3.2rem;margin-bottom:18px;display:block;
+  animation:popIn .55s cubic-bezier(.22,.68,0,1.2) .25s both;
+  filter:drop-shadow(0 0 14px rgba(239,68,68,.45));
+}
+.icon-shake{animation:shake .5s ease .9s both}
+
+h2{
+  color:#fc8181;font-size:1.35rem;font-weight:800;margin-bottom:14px;
+  letter-spacing:-.02em;
+  animation:slideUp .4s ease .4s both;
+}
+p{
+  color:#94a3b8;line-height:1.75;margin-bottom:12px;font-size:.9rem;
+  animation:slideUp .4s ease .5s both;
+}
+code{
+  background:rgba(45,55,72,.8);border:1px solid rgba(255,255,255,.1);
+  padding:3px 10px;border-radius:6px;font-size:.84em;
+  color:#fcd34d;font-family:'Courier New',monospace;
+  letter-spacing:.03em;
+}
+.support-link{
+  color:#63b3ed;text-decoration:none;font-weight:600;
+  transition:color .15s;
+}
+.support-link:hover{color:#93c5fd;text-decoration:underline}
+
+a.btn{
+  display:inline-block;margin-top:6px;
+  background:linear-gradient(135deg,#c53030,#e53e3e);color:#fff;
+  text-decoration:none;padding:12px 30px;border-radius:12px;
+  font-weight:700;font-size:.93rem;
+  box-shadow:0 4px 18px rgba(239,68,68,.35);
+  transition:transform .15s,box-shadow .15s,filter .15s;
+  animation:slideUp .4s ease .65s both;
+}
+a.btn:hover{transform:translateY(-2px) scale(1.03);box-shadow:0 8px 28px rgba(239,68,68,.5);filter:brightness(1.1)}
+a.btn:active{transform:scale(.97)}
 </style>
 </head>
 <body>
 <div class="box">
-  <div class="icon">❌</div>
+  <span class="icon icon-shake">❌</span>
   <h2>Certificate Not Found</h2>
   <p>No certificate with ID <code>{{CERT_ID}}</code> was found in our records.</p>
   <p>If you believe this is an error, please contact our support team at
-     <a class="support" href="mailto:tega.com.ng@gmail.com">tega.com.ng@gmail.com</a>.</p>
+     <a class="support-link" href="mailto:tega.com.ng@gmail.com">tega.com.ng@gmail.com</a>.
+  </p>
   <a class="btn" href="{{FRONTEND_URL}}">← Return to MyPy Tutor</a>
 </div>
 </body>

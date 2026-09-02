@@ -5,42 +5,149 @@
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Certificate Locked — MyPy Tutor</title>
 <style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{
-    font-family:Arial,sans-serif;background:#0f1117;color:#e2e8f0;
-    display:flex;align-items:center;justify-content:center;
-    min-height:100vh;padding:20px;
-  }
-  .box{
-    background:#1a202c;border:1px solid #2d3748;border-radius:16px;
-    padding:40px 36px;max-width:500px;width:100%;text-align:center;
-    box-shadow:0 20px 60px rgba(0,0,0,0.5);
-  }
-  .icon{font-size:3rem;margin-bottom:16px}
-  h2{color:#f6ad55;font-size:1.3rem;margin-bottom:12px}
-  p{color:#a0aec0;line-height:1.7;margin-bottom:14px;font-size:.92rem}
-  .level{color:#e2e8f0;font-weight:700}
-  .plan{color:#63b3ed;font-weight:700}
-  .divider{color:#4a5568;margin:4px 0;font-size:.85rem}
-  .cta{
-    display:inline-block;margin-top:8px;background:#3182ce;color:#fff;
-    text-decoration:none;padding:12px 28px;border-radius:10px;
-    font-weight:700;font-size:.95rem;transition:background .15s;
-  }
-  .cta:hover{background:#2b6cb0}
-  .back{display:block;margin-top:16px;font-size:.8rem;color:#4a5568}
-  .back a{color:#63b3ed;text-decoration:none}
-  .back a:hover{text-decoration:underline}
+/* ── Reset ── */
+*{box-sizing:border-box;margin:0;padding:0}
+
+/* ── Keyframes ── */
+@keyframes fadeIn    { from{opacity:0} to{opacity:1} }
+@keyframes slideUp   { from{opacity:0;transform:translateY(32px)} to{opacity:1;transform:translateY(0)} }
+@keyframes popIn     { 0%{transform:scale(.4);opacity:0} 70%{transform:scale(1.15)} 100%{transform:scale(1);opacity:1} }
+@keyframes pulse     { 0%,100%{box-shadow:0 0 0 0 rgba(245,158,11,.4)} 50%{box-shadow:0 0 0 14px rgba(245,158,11,0)} }
+@keyframes shimmer   { from{background-position:-400px 0} to{background-position:400px 0} }
+@keyframes float     { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+@keyframes glow      { 0%,100%{opacity:.6} 50%{opacity:1} }
+@keyframes spin-slow { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+
+/* ── Background ── */
+body{
+  font-family:'Segoe UI',Arial,sans-serif;
+  background:#07090f;color:#e2e8f0;
+  display:flex;align-items:center;justify-content:center;
+  min-height:100vh;padding:20px;
+  overflow:hidden;
+  animation:fadeIn .6s ease both;
+}
+body::before{
+  content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% -10%, rgba(245,158,11,.14), transparent),
+    radial-gradient(ellipse 60% 50% at 85% 80%,  rgba(239,68,68,.07),  transparent),
+    radial-gradient(ellipse 40% 30% at 10% 60%,  rgba(59,130,246,.06), transparent);
+  animation:glow 4s ease-in-out infinite;
+}
+/* Subtle dot grid */
+body::after{
+  content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:radial-gradient(rgba(255,255,255,.025) 1px,transparent 1px);
+  background-size:28px 28px;
+}
+
+/* ── Card ── */
+.box{
+  position:relative;z-index:1;
+  background:rgba(26,32,44,.95);
+  border:1px solid rgba(245,158,11,.25);
+  border-radius:20px;
+  padding:44px 40px;max-width:480px;width:100%;text-align:center;
+  box-shadow:0 24px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(245,158,11,.08);
+  backdrop-filter:blur(16px);
+  animation:slideUp .55s cubic-bezier(.22,.68,0,1.2) .1s both;
+}
+
+/* Animated top border */
+.box::before{
+  content:'';position:absolute;top:0;left:10%;right:10%;height:2px;
+  background:linear-gradient(90deg,transparent,#f59e0b,#ef4444,#f59e0b,transparent);
+  border-radius:1px;
+  animation:shimmer 2.4s linear infinite;
+  background-size:400px 2px;
+}
+
+/* ── Lock icon ── */
+.icon{
+  font-size:3.2rem;margin-bottom:18px;display:block;
+  animation:popIn .6s cubic-bezier(.22,.68,0,1.2) .3s both, float 3s ease-in-out 1s infinite;
+  filter:drop-shadow(0 0 12px rgba(245,158,11,.5));
+}
+
+/* ── Headings & text ── */
+h2{
+  color:#fcd34d;font-size:1.4rem;font-weight:800;margin-bottom:14px;
+  letter-spacing:-.02em;
+  animation:slideUp .45s ease .45s both;
+}
+.sub{
+  color:#94a3b8;line-height:1.75;margin-bottom:10px;font-size:.9rem;
+  animation:slideUp .45s ease .5s both;
+}
+.level{color:#e2e8f0;font-weight:700}
+.plan{
+  color:#60a5fa;font-weight:700;
+  background:rgba(59,130,246,.12);border-radius:6px;
+  padding:1px 8px;border:1px solid rgba(59,130,246,.25);
+}
+.divider{
+  color:#4a5568;margin:8px 0;font-size:.82rem;
+  animation:slideUp .45s ease .55s both;
+}
+
+/* ── Steps ── */
+.steps{
+  display:flex;flex-direction:column;gap:8px;
+  margin:18px 0 24px;
+  animation:slideUp .45s ease .6s both;
+}
+.step{
+  display:flex;align-items:center;gap:12px;
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);
+  border-radius:10px;padding:10px 16px;text-align:left;font-size:.88rem;color:#94a3b8;
+  transition:background .2s,border-color .2s,transform .2s;
+}
+.step:hover{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.12);transform:translateX(3px)}
+.step-icon{font-size:1.2rem;flex-shrink:0}
+
+/* ── CTA button ── */
+.cta{
+  display:inline-block;
+  background:linear-gradient(135deg,#d97706,#f59e0b);
+  color:#07090f;border:none;border-radius:12px;
+  padding:13px 32px;font-size:.95rem;font-weight:800;cursor:pointer;
+  text-decoration:none;letter-spacing:.01em;
+  box-shadow:0 4px 20px rgba(245,158,11,.4);
+  transition:transform .15s,box-shadow .15s,filter .15s;
+  animation:slideUp .45s ease .65s both, pulse 2.4s ease 1.5s infinite;
+}
+.cta:hover{transform:translateY(-2px) scale(1.03);box-shadow:0 8px 28px rgba(245,158,11,.55);filter:brightness(1.08)}
+.cta:active{transform:scale(.97)}
+
+/* ── Back link ── */
+.back{
+  display:block;margin-top:18px;font-size:.8rem;color:#4a5568;
+  animation:fadeIn .4s ease .8s both;
+}
+.back a{color:#60a5fa;text-decoration:none;transition:color .15s}
+.back a:hover{color:#93c5fd;text-decoration:underline}
 </style>
 </head>
 <body>
 <div class="box">
-  <div class="icon">🔒</div>
+  <span class="icon">🔒</span>
   <h2>Certificate Locked</h2>
-  <p>To earn the <span class="level">{{LEVEL_TITLE}} Certificate</span>, either:</p>
-  <p>💳 Purchase the <span class="plan">{{PLAN_NAME}}</span></p>
-  <p class="divider">— or —</p>
-  <p>📚 Complete all required courses in this track</p>
+  <p class="sub">
+    To earn your <span class="level">{{LEVEL_TITLE}} Certificate</span>, complete one of the steps below:
+  </p>
+
+  <div class="steps">
+    <div class="step">
+      <span class="step-icon">💳</span>
+      <span>Purchase the <span class="plan">{{PLAN_NAME}}</span></span>
+    </div>
+    <div class="step">
+      <span class="step-icon">📚</span>
+      <span>Complete all required courses in this track</span>
+    </div>
+  </div>
+
   <a class="cta" href="https://paystack.shop/pay/vt_re4d3h52" target="_blank">
     🚀 Upgrade Now
   </a>

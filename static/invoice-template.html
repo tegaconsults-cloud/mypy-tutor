@@ -5,105 +5,260 @@
   <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Invoice #{{INV_ID}} — MyPy Tutor</title>
   <style>
-    @media print{.no-print{display:none}body{padding:0}}
+    /* ── Print override ── */
+    @media print{
+      .no-print{display:none!important}
+      body{background:#fff!important;padding:0!important}
+      .invoice{box-shadow:none!important;border-radius:0!important}
+      *{animation:none!important;transition:none!important}
+    }
+
+    /* ── Keyframes ── */
+    @keyframes fadeIn    { from{opacity:0}                to{opacity:1} }
+    @keyframes slideDown { from{opacity:0;transform:translateY(-20px)} to{opacity:1;transform:translateY(0)} }
+    @keyframes slideUp   { from{opacity:0;transform:translateY(20px)}  to{opacity:1;transform:translateY(0)} }
+    @keyframes rowIn     { from{opacity:0;transform:translateX(-12px)} to{opacity:1;transform:translateX(0)} }
+    @keyframes shimmer   {
+      0%  {background-position:-600px 0}
+      100%{background-position: 600px 0}
+    }
+    @keyframes popIn     { 0%{transform:scale(.5);opacity:0} 70%{transform:scale(1.1)} 100%{transform:scale(1);opacity:1} }
+    @keyframes pulse     { 0%,100%{box-shadow:0 0 0 0 rgba(39,103,73,.5)} 50%{box-shadow:0 0 0 10px rgba(39,103,73,0)} }
+    @keyframes countUp   { from{opacity:0;transform:translateY(8px) scale(.9)} to{opacity:1;transform:translateY(0) scale(1)} }
+    @keyframes hdrGlow   { 0%,100%{filter:brightness(1)} 50%{filter:brightness(1.06)} }
+
+    /* ── Base ── */
     *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:Arial,Helvetica,sans-serif;background:#f9fafb;color:#1a202c;padding:40px 20px}
+    body{
+      font-family:'Segoe UI',Arial,Helvetica,sans-serif;
+      background:linear-gradient(135deg,#eef2ff 0%,#f0fdf4 50%,#fefce8 100%);
+      color:#1a202c;padding:40px 20px;
+      min-height:100vh;
+      animation:fadeIn .5s ease both;
+    }
+
+    /* ── Invoice card ── */
     .invoice{
-      max-width:700px;margin:0 auto;background:#fff;border-radius:12px;
-      box-shadow:0 4px 20px rgba(0,0,0,.08);overflow:hidden;
+      max-width:700px;margin:0 auto;background:#fff;
+      border-radius:18px;overflow:hidden;
+      box-shadow:0 8px 40px rgba(0,0,0,.12),0 2px 8px rgba(0,0,0,.06);
+      animation:slideUp .5s cubic-bezier(.22,.68,0,1.2) .1s both;
     }
+
+    /* ── Header ── */
     .hdr{
-      background:linear-gradient(135deg,#0d2b6e,#1a3f9a);color:#fff;
-      padding:32px 40px;display:flex;justify-content:space-between;align-items:flex-start;
+      background:linear-gradient(135deg,#0d2b6e 0%,#1a3f9a 60%,#2563eb 100%);
+      color:#fff;padding:34px 40px;
+      display:flex;justify-content:space-between;align-items:flex-start;
+      position:relative;overflow:hidden;
+      animation:hdrGlow 4s ease-in-out 1s infinite;
     }
-    .hdr h1{font-size:1.5rem;margin-bottom:4px}
-    .hdr p{font-size:0.75rem;opacity:.75;margin-top:3px}
-    .badge{
-      background:rgba(255,255,255,.2);padding:6px 14px;border-radius:20px;
-      font-size:0.78rem;font-weight:700;letter-spacing:.06em;
+    /* Animated shimmer strip at bottom of header */
+    .hdr::after{
+      content:'';position:absolute;bottom:0;left:0;right:0;height:2px;
+      background:linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent);
+      background-size:600px 2px;
+      animation:shimmer 2.5s linear infinite;
     }
+    /* Subtle radial glow overlay */
+    .hdr::before{
+      content:'';position:absolute;inset:0;pointer-events:none;
+      background:radial-gradient(ellipse 60% 80% at 30% 50%,rgba(255,255,255,.07),transparent);
+    }
+    .hdr-left{position:relative;z-index:1;animation:slideDown .45s ease .2s both}
+    .hdr-right{position:relative;z-index:1;text-align:right;animation:slideDown .45s ease .3s both}
+
+    .snake{
+      font-size:2rem;margin-bottom:8px;display:block;
+      filter:drop-shadow(0 0 8px rgba(255,255,255,.3));
+    }
+    .hdr h1{font-size:1.5rem;font-weight:800;margin-bottom:4px;letter-spacing:-.02em}
+    .hdr p{font-size:.74rem;opacity:.72;margin-top:3px;line-height:1.5}
+
+    .badge-inv{
+      background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);
+      padding:6px 16px;border-radius:20px;
+      font-size:.75rem;font-weight:800;letter-spacing:.1em;
+      text-transform:uppercase;
+      backdrop-filter:blur(4px);
+      animation:popIn .5s cubic-bezier(.22,.68,0,1.2) .4s both;
+    }
+    .inv-num{
+      margin-top:12px;font-size:.88rem;opacity:.9;font-weight:700;
+      animation:fadeIn .4s ease .5s both;
+    }
+    .inv-date{font-size:.74rem;opacity:.65;margin-top:3px;animation:fadeIn .4s ease .55s both}
+
+    /* ── Body ── */
     .body{padding:36px 40px}
-    .meta{display:flex;justify-content:space-between;margin-bottom:24px}
-    .status{
-      display:inline-block;background:#c6f6d5;color:#276749;padding:3px 12px;
-      border-radius:20px;font-size:0.78rem;font-weight:700;
+
+    /* ── Meta row ── */
+    .meta{
+      display:flex;justify-content:space-between;align-items:flex-start;
+      margin-bottom:28px;gap:20px;flex-wrap:wrap;
     }
-    hr{border:none;border-top:1px solid #e2e8f0;margin:20px 0}
-    .line{display:flex;justify-content:space-between;font-size:0.9rem;padding:8px 0}
-    .total{
-      display:flex;justify-content:space-between;font-size:1.1rem;
-      font-weight:700;color:#0d2b6e;
+    .meta-left{animation:rowIn .4s ease .6s both}
+    .meta-right{text-align:right;animation:rowIn .4s ease .65s both}
+    .bill-label{
+      font-size:.68rem;color:#718096;text-transform:uppercase;
+      letter-spacing:.1em;font-weight:700;margin-bottom:8px;
     }
+    .bill-name{font-weight:800;font-size:.98rem;color:#1a202c;margin-bottom:3px}
+    .bill-email{color:#718096;font-size:.84rem}
+
+    /* Animated PAID badge */
+    .status-badge{
+      display:inline-flex;align-items:center;gap:6px;
+      background:#f0fdf4;color:#276749;
+      border:1.5px solid #86efac;
+      padding:5px 14px;border-radius:20px;
+      font-size:.78rem;font-weight:800;
+      animation:popIn .5s cubic-bezier(.22,.68,0,1.2) .7s both, pulse 2s ease 1.5s infinite;
+    }
+    .status-dot{
+      width:7px;height:7px;border-radius:50%;
+      background:#22c55e;flex-shrink:0;
+    }
+    .payment-id{margin-top:8px;font-size:.76rem;color:#a0aec0}
+
+    /* ── Dividers & table ── */
+    hr{border:none;border-top:1px solid #e8ecf0;margin:20px 0}
+    .table-header{
+      display:flex;justify-content:space-between;
+      font-size:.7rem;color:#a0aec0;text-transform:uppercase;
+      letter-spacing:.1em;font-weight:700;
+      padding-bottom:10px;border-bottom:2px solid #e8ecf0;margin-bottom:4px;
+      animation:fadeIn .4s ease .75s both;
+    }
+    .line-item{
+      display:flex;justify-content:space-between;align-items:center;
+      padding:12px 0;font-size:.92rem;border-bottom:1px dashed #f1f5f9;
+      animation:rowIn .4s ease .8s both;
+      transition:background .2s;border-radius:6px;padding-left:6px;padding-right:6px;
+    }
+    .line-item:hover{background:#f8fafc}
+    .line-plan{font-weight:600;color:#374151}
+    .line-amount{font-weight:800;color:#0d2b6e;font-size:.96rem}
+
+    /* ── Total ── */
+    .total-row{
+      display:flex;justify-content:space-between;align-items:center;
+      padding:16px;margin-top:8px;
+      background:linear-gradient(135deg,#eff6ff,#f0fdf4);
+      border-radius:12px;border:1px solid #dbeafe;
+      animation:countUp .5s cubic-bezier(.22,.68,0,1.2) .85s both;
+    }
+    .total-label{font-size:1rem;font-weight:800;color:#0d2b6e}
+    .total-amount{
+      font-size:1.3rem;font-weight:900;color:#0d2b6e;letter-spacing:-.02em;
+    }
+
+    /* ── Thank-you note ── */
+    .thankyou{
+      margin-top:22px;padding:14px 18px;
+      background:#fafafa;border-left:3px solid #3b82f6;border-radius:0 8px 8px 0;
+      font-size:.82rem;color:#718096;line-height:1.7;
+      animation:slideUp .4s ease .9s both;
+    }
+
+    /* ── Footer ── */
     .ftr{
-      background:#f7fafc;border-top:1px solid #e2e8f0;padding:20px 40px;
-      text-align:center;font-size:0.75rem;color:#718096;
+      background:linear-gradient(135deg,#f7fafc,#f0f9ff);
+      border-top:1px solid #e8ecf0;padding:22px 40px;text-align:center;
+      font-size:.75rem;color:#a0aec0;line-height:1.9;
+      animation:fadeIn .4s ease 1s both;
     }
+    .ftr strong{color:#718096}
+    .ftr em{color:#94a3b8}
+
+    /* ── Print button ── */
     .pbtn{
-      display:block;margin:20px auto;padding:10px 28px;background:#0d2b6e;
-      color:#fff;border:none;border-radius:8px;font-size:0.9rem;cursor:pointer;
+      display:block;width:fit-content;margin:24px auto 0;
+      padding:11px 32px;
+      background:linear-gradient(135deg,#0d2b6e,#1a3f9a);
+      color:#fff;border:none;border-radius:10px;
+      font-size:.9rem;font-weight:700;cursor:pointer;letter-spacing:.01em;
+      box-shadow:0 4px 16px rgba(13,43,110,.3);
+      transition:transform .15s,box-shadow .15s,filter .15s;
+      animation:slideUp .4s ease 1.05s both;
     }
+    .pbtn:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(13,43,110,.4);filter:brightness(1.1)}
+    .pbtn:active{transform:scale(.97)}
   </style>
 </head>
 <body>
 <div class="invoice">
+
+  <!-- Header -->
   <div class="hdr">
-    <div>
-      <div style="font-size:1.8rem;margin-bottom:6px">🐍</div>
+    <div class="hdr-left">
+      <span class="snake">🐍</span>
       <h1>MyPy Tutor</h1>
       <p>Powered by TeamTega Technologies Limited</p>
-      <p>Certified by Teamsamikoko Global Academy · Reg No: 3508656</p>
+      <p>Certified by Teamsamikoko Global Academy &middot; Reg No: 3508656</p>
     </div>
-    <div style="text-align:right">
-      <div class="badge">INVOICE</div>
-      <p style="margin-top:10px;font-size:0.85rem;opacity:.9">#{{INV_ID}}</p>
-      <p style="font-size:0.75rem;opacity:.75">{{INV_DATE}}</p>
+    <div class="hdr-right">
+      <div class="badge-inv">Invoice</div>
+      <p class="inv-num">#{{INV_ID}}</p>
+      <p class="inv-date">{{INV_DATE}}</p>
     </div>
   </div>
 
+  <!-- Body -->
   <div class="body">
+
+    <!-- Billing meta -->
     <div class="meta">
-      <div>
-        <p style="font-size:.72rem;color:#718096;text-transform:uppercase;
-                  letter-spacing:.08em;margin-bottom:6px">Bill To</p>
-        <p style="font-weight:700;font-size:.95rem">{{INV_NAME}}</p>
-        <p style="color:#718096;font-size:.85rem">{{INV_EMAIL}}</p>
+      <div class="meta-left">
+        <div class="bill-label">Bill To</div>
+        <div class="bill-name">{{INV_NAME}}</div>
+        <div class="bill-email">{{INV_EMAIL}}</div>
       </div>
-      <div style="text-align:right">
-        <span class="status">✅ PAID</span>
-        <p style="margin-top:8px;font-size:.78rem;color:#718096">
-          Payment ID: {{INV_PAYMENT_ID}}</p>
+      <div class="meta-right">
+        <div class="status-badge">
+          <span class="status-dot"></span>
+          PAID
+        </div>
+        <div class="payment-id">Payment ID: {{INV_PAYMENT_ID}}</div>
       </div>
     </div>
 
+    <!-- Line items -->
     <hr/>
-    <div style="font-size:.75rem;color:#718096;text-transform:uppercase;
-                letter-spacing:.06em;padding-bottom:8px;border-bottom:1px solid #e2e8f0;
-                margin-bottom:12px;display:flex;justify-content:space-between">
-      <span>Description</span><span>Amount</span>
+    <div class="table-header">
+      <span>Description</span>
+      <span>Amount</span>
     </div>
-    <div class="line">
-      <span>{{INV_PLAN}}</span>
-      <span style="font-weight:700">₦{{INV_AMOUNT}}</span>
+    <div class="line-item">
+      <span class="line-plan">{{INV_PLAN}}</span>
+      <span class="line-amount">₦{{INV_AMOUNT}}</span>
     </div>
     <hr/>
-    <div class="total">
-      <span>Total Paid</span>
-      <span>₦{{INV_AMOUNT}} {{INV_CURRENCY}}</span>
+
+    <!-- Total -->
+    <div class="total-row">
+      <span class="total-label">Total Paid</span>
+      <span class="total-amount">₦{{INV_AMOUNT}} <span style="font-size:.8rem;font-weight:600;color:#4b6cb7">{{INV_CURRENCY}}</span></span>
     </div>
 
-    <p style="margin-top:24px;font-size:.8rem;color:#718096;line-height:1.6">
+    <!-- Thank you -->
+    <div class="thankyou">
       Thank you for investing in your Python education. This invoice is proof of
       payment for the MyPy Tutor subscription/certification listed above.
-    </p>
+    </div>
   </div>
 
+  <!-- Footer -->
   <div class="ftr">
-    <p>MyPy Tutor · mypytutor.com.ng</p>
-    <p style="margin-top:4px">TeamTega Technologies Limited · Teamsamikoko Global Academy</p>
-    <p style="margin-top:4px;font-style:italic">"Learn Smarter. Code Better. Build the Future."</p>
+    <strong>MyPy Tutor</strong> &middot; mypytutor.com.ng<br/>
+    <strong>TeamTega Technologies Limited</strong> &middot; Teamsamikoko Global Academy<br/>
+    <em>&ldquo;Learn Smarter. Code Better. Build the Future.&rdquo;</em>
   </div>
 </div>
 
-<button class="pbtn no-print" onclick="window.print()">🖨 Print / Save as PDF</button>
+<!-- Print button (hidden in print) -->
+<button class="pbtn no-print" onclick="window.print()">
+  🖨&nbsp; Print / Save as PDF
+</button>
 </body>
 </html>
