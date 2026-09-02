@@ -830,6 +830,13 @@ def delete_account(learner_id: str, email: str) -> dict:
                     UPDATE learner_profiles SET email='', display_name='[deleted]'
                     WHERE learner_id=%s
                 """, (learner_id,))
+                # Mark as deleted so it is excluded from admin user listings
+                # We keep the row (not DELETE) to preserve XP/progress for audit,
+                # but the display_name sentinel filters it out of the UI.
+                cur.execute("""
+                    UPDATE learner_profiles SET tier='deleted'
+                    WHERE learner_id=%s
+                """, (learner_id,))
                 cur.execute("""
                     UPDATE prompt_history SET content='[deleted]' WHERE learner_id=%s
                 """, (learner_id,))

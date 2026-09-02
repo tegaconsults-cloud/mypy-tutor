@@ -581,9 +581,7 @@ let token = localStorage.getItem(TK) || '';
 const ADMIN_EMAIL = localStorage.getItem('mpt_admin_email') || '';
 // Dynamic API_BASE: use the current host so the dashboard works on any deployment
 // (local dev, staging, production) without hard-coding a URL.
-const API_BASE = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
-  ? 'http://' + location.host
-  : 'https://mypytutor.onrender.com';
+const API_BASE = location.origin;
 
 function api(path, opts={}) {
   return fetch(API_BASE + path, {...opts, headers:{'Content-Type':'application/json','X-Admin-Token':token,...(opts.headers||{})}});
@@ -684,7 +682,7 @@ async function loadDashboard(){
     const tiers=Object.entries(d.users_by_tier||{});
     document.getElementById('d-tiers').innerHTML=tiers.length?tiers.map(([t,c])=>
       `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #2d3748;font-size:.83rem">
-      <span class="badge ${t==='free'?'grey':t==='tier1'?'bg':t==='tier2'?'gy':'gr'}">${t}</span>
+      <span class="badge ${t==='free'?'grey':t==='tier1'?'bg':t==='tier2'?'gy':t==='tier3'?'gr':'gold'}">${t}</span>
       <strong>${c} users</strong></div>`).join(''):'<span style="color:#4a5568">No users yet.</span>';
     const plans=Object.entries((d.revenue||{}).by_plan||{});
     document.getElementById('d-plans').innerHTML=plans.length?plans.map(([p,v])=>
@@ -705,7 +703,7 @@ async function loadUsers(){
     if(r.status===403){doLogout();return;}
     const d=await r.json();
     document.getElementById('users-body').innerHTML=(d.learner_profiles||[]).map(u=>{
-      const tc={free:'grey',tier1:'bg',tier2:'gy',tier3:'gr'}[u.tier]||'grey';
+      const tc={free:'grey',tier1:'bg',tier2:'gy',tier3:'gr',tier4:'gold'}[u.tier]||'grey';
       const email = u.email || '—';
       const name  = u.name  || u.learner_id.substring(0,14)+'…';
       const avatar = u.picture
@@ -757,9 +755,12 @@ async function viewUser(lid){
 }
 
 async function setTier(lid){
-  const tier=prompt('Set tier for '+lid+'\nOptions: free, tier1, tier2, tier3');
+  const tier=prompt('Set tier for '+lid+'\nOptions: free, tier1, tier2, tier3, tier4');
   if(!tier)return;
-  const r=await api('/admin/users/'+lid+'/set-tier',{method:'POST',body:JSON.stringify({tier})});
+  if(!['free','tier1','tier2','tier3','tier4'].includes(tier.trim().toLowerCase())){
+    toast('Invalid tier. Use: free, tier1, tier2, tier3 or tier4','red');return;
+  }
+  const r=await api('/admin/users/'+lid+'/set-tier',{method:'POST',body:JSON.stringify({tier:tier.trim().toLowerCase()})});
   const d=await r.json();
   if(r.ok){toast('Tier updated to '+tier);loadUsers();}else toast(d.error||'Failed','red');
 }

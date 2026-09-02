@@ -2768,6 +2768,8 @@ async def admin_list_users(request: Request) -> dict:
                            ea.created_at AS joined_ts, ea.name AS ea_name
                     FROM learner_profiles lp
                     LEFT JOIN email_accounts ea ON ea.learner_id = lp.learner_id
+                    WHERE lp.display_name != '[deleted]'
+                      AND lp.tier != 'deleted'
                 """)
                 rows = _cur.fetchall()
             for r in rows:
@@ -2804,6 +2806,9 @@ async def admin_list_users(request: Request) -> dict:
 
     # 2. Overlay live in-memory data (fresher XP/tier if not yet flushed)
     for lid, profile in ls.items():
+        # Skip deleted/terminated accounts
+        if profile.tier == "deleted" or getattr(profile, "display_name", "") == "[deleted]":
+            continue
         auth_info = _auth_users.get(lid)
         existing  = users_map.get(lid, {})
         users_map[lid] = {
@@ -2822,6 +2827,20 @@ async def admin_list_users(request: Request) -> dict:
         }
 
     # 3. Add email-account-only users (signed up but never chatted, not yet in learner_profiles)
+    # Also build a set of deleted learner_ids so we don't re-add them from email_accounts
+    deleted_ids: set = set()
+    try:
+        from app.db import get_db as _gdb3
+        with _gdb3() as _c3:
+            with _c3.cursor() as _cur3:
+                _cur3.execute(
+                    "SELECT learner_id FROM learner_profiles "
+                    "WHERE display_name='[deleted]' OR tier='deleted'"
+                )
+                deleted_ids = {row[0] for row in _cur3.fetchall()}
+    except Exception:
+        pass
+
     try:
         db_emails = get_all_confirmed_emails()
     except Exception:
@@ -2833,6 +2852,9 @@ async def admin_list_users(request: Request) -> dict:
 
     for r in db_emails:
         lid = r["learner_id"]
+        # Skip deleted accounts
+        if lid in deleted_ids:
+            continue
         # Format join date from email_accounts.created_at
         try:
             joined_at = _dt.datetime.fromtimestamp(float(r.get("created_at", 0))).strftime("%Y-%m-%d %H:%M") if r.get("created_at") else ""
@@ -2866,7 +2888,10 @@ async def admin_list_users(request: Request) -> dict:
                 users_map[lid]["joined_at"] = joined_at
                 users_map[lid]["joined_ts"] = joined_ts
 
-    users = sorted(users_map.values(), key=lambda u: u.get("joined_ts", 0.0), reverse=True)
+    users = sorted(
+        [u for u in users_map.values() if u.get("name") != "[deleted]" and u.get("tier") != "deleted"],
+        key=lambda u: u.get("joined_ts", 0.0), reverse=True
+    )
 
     return {
         "learner_profiles": users,
