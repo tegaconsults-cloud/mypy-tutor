@@ -876,7 +876,7 @@ def save_prompt_history(learner_id: str, role: str, content: str,
             cur.execute(
                 "INSERT INTO prompt_history (learner_id,role,content,intent,topic) "
                 "VALUES (%s,%s,%s,%s,%s)",
-                (learner_id, role, content[:4000], intent[:50], topic[:100])
+                (learner_id, role, content[:16000], intent[:50], topic[:100])
             )
             # Trim to last PROMPT_HISTORY_LIMIT rows for this learner
             cur.execute("""

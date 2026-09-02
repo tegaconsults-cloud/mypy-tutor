@@ -45,7 +45,7 @@ ENQUIRY_RATE_LIMIT_REQUESTS  = 3      # max 3 enquiries
 ENQUIRY_RATE_LIMIT_WINDOW    = 3600   # per hour per IP
 
 # Input size limits
-MAX_MESSAGE_LEN     = 4_000       # characters in a single user message
+MAX_MESSAGE_LEN     = 8_000       # characters in a single user message — matches ChatRequest.message max_length
 MAX_CODE_LEN        = 8_000       # characters of pasted code (embedded in message)
 MAX_HISTORY_ITEMS   = 20          # max conversation turns sent per request
 MAX_HISTORY_MSG_LEN = 2_000       # characters per history message — trimmed to prevent token bloat

@@ -97,7 +97,8 @@ class ChatRequest(BaseModel):
     learner_id:      str          = Field(default="default", min_length=1, max_length=64,
                                           pattern=r"^[a-zA-Z0-9_\-]+$")
     level:           Literal["beginner", "intermediate", "advanced"] = "beginner"
-    conversation_id: str | None   = None   # Supabase conversation UUID; None = auto-resolve
+    # conversation_id validated to prevent oversized injection via this field
+    conversation_id: str | None   = Field(default=None, max_length=64)
 
 
 class ChatResponse(BaseModel):

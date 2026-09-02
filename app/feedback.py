@@ -31,7 +31,7 @@ def _send_feedback_email(subject: str, html_body: str, text_body: str) -> None:
     threading.Thread(
         target=_do_send_feedback,
         args=(subject, html_body, text_body),
-        daemon=True,
+        daemon=False,
     ).start()
 
 

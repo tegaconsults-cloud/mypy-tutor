@@ -1094,8 +1094,7 @@ async def auth_signup(request: EmailSignUpWithCode) -> dict:
                 logger.warning("Direct coupon record failed: %s", exc)
 
     # Mirror to Supabase
-    import threading as _thr
-    _thr.Thread(
+    threading.Thread(
         target=sb_upsert_profile,
         args=(learner_id, request.email, request.name),
         daemon=False,
@@ -1138,8 +1137,7 @@ async def auth_signin(request: EmailSignInRequest) -> AuthResponse:
         raise HTTPException(status_code=401, detail=message)
     token = create_session_token(user_data["learner_id"])
     # Ensure Supabase profile row exists before any conversation inserts (Bug 4 fix)
-    import threading as _thr
-    _thr.Thread(
+    threading.Thread(
         target=sb_upsert_profile,
         args=(user_data["learner_id"], user_data["email"], user_data["name"]),
         daemon=False,
@@ -1184,20 +1182,24 @@ async def auth_confirm(token: str) -> JSONResponse:
     msg_encoded = _up.quote(message)
     greeting    = ""
     if success:
-        # Look up the just-confirmed user to build a personalised greeting
-        # and fire off the welcome + greeting emails in background threads.
+        # Decode the token directly to get the just-confirmed user's email —
+        # never iterate _confirmed (that picks up a random user in multi-user deploys).
         try:
-            from app.email_auth import _confirmed as _conf_store
-            _confirmed_name = ""
+            from app.email_auth import _confirmed as _conf_store, _get_token_serializer, CONFIRM_MAX_AGE
+            _confirmed_name  = ""
             _confirmed_email = ""
             _confirmed_lid   = ""
-            for _cemail, _entry in _conf_store.items():
-                # The most recently confirmed entry is the one we want
-                _confirmed_name  = _entry.get("name", "")
-                _confirmed_email = _cemail
-                _confirmed_lid   = _entry.get("learner_id", "")
-                if _confirmed_lid:
-                    break
+            try:
+                # token payload IS the email address
+                _confirmed_email = _get_token_serializer().loads(
+                    token, salt="email-confirm", max_age=CONFIRM_MAX_AGE
+                )
+            except Exception:
+                pass
+            if _confirmed_email:
+                _entry = _conf_store.get(_confirmed_email.lower(), {})
+                _confirmed_name = _entry.get("name", "")
+                _confirmed_lid  = _entry.get("learner_id", "")
             if _confirmed_name:
                 greeting = _up.quote(_wat_greeting(_confirmed_name, is_new=True))
                 # Fire greeting + welcome emails non-blocking
@@ -1567,8 +1569,8 @@ async def get_certificate(
     clean_name = _re.sub(r'[<>&"\']', '', name).strip()[:80] or "Learner"
     cert_id    = get_cert_id(learner_id, level)
     log_certificate(cert_id, learner_id, clean_name, level)
-    # Non-blocking Supabase write � cert HTML is generated immediately
-    _thr_cert.Thread(
+    # Non-blocking Supabase write — cert HTML is generated immediately
+    threading.Thread(
         target=sb_save_certificate,
         args=(cert_id, learner_id, clean_name, level),
         daemon=False,
@@ -2336,7 +2338,7 @@ async def paystack_webhook(request: Request) -> dict:
                               customer.get("name", email),
                               f"Course: {course_meta}", amount_ngn)
             # Non-blocking Supabase mirror
-            _thr_cp.Thread(
+            threading.Thread(
                 target=sb_save_payment,
                 args=(payment.id, email, customer.get("name", email),
                       amount_ngn, f"Course: {course_meta}", "paystack"),
@@ -2366,17 +2368,14 @@ async def paystack_webhook(request: Request) -> dict:
             if not tier:
                 # Infer tier from amount using canonical bundle prices:
                 # Premium ₦150,000 (tier4) | Advanced ₦100,000 (tier3) | Intermediate ₦60,000 (tier2) | Beginner ₦30,000 (tier1)
-                # When amount is ₦100k and plan_meta is empty, default to tier3 (Advanced Bundle)
-                # tier4 (Premium Bundle ₦150,000) requires explicit "premium bundle" in plan name
-                if amount_ngn >= 100000:
-                    if "premium" in plan_meta:
-                        tier = "tier4"   # Premium Bundle — ₦150,000 (all 17 courses)
-                    else:
-                        tier = "tier3"   # Advanced Bundle — ₦100,000 (14 courses)
+                if amount_ngn >= 140000:
+                    tier = "tier4"   # Premium Bundle — ₦150,000 (all 17 courses)
+                elif amount_ngn >= 100000:
+                    tier = "tier3"   # Advanced Bundle — ₦100,000 (14 courses)
                 elif amount_ngn >= 50000:
-                    tier = "tier2"   # Intermediate Bundle ?60,000
+                    tier = "tier2"   # Intermediate Bundle ₦60,000
                 elif amount_ngn >= 25000:
-                    tier = "tier1"   # Beginner Bundle ?30,000
+                    tier = "tier1"   # Beginner Bundle ₦30,000
 
             # -- TYPE 3: Prompt plan (parallel check) ---------------------
             prompt_plan = _PAYSTACK_PROMPT_PLAN.get(plan_meta)
@@ -2429,13 +2428,13 @@ async def paystack_webhook(request: Request) -> dict:
                 create_invoice_db(invoice_id, payment.id, learner_id, email,
                                   customer.get("name", email), plan_label, amount_ngn)
                 # Non-blocking Supabase mirror � webhook must return 200 fast
-                _thr_wb.Thread(
+                threading.Thread(
                     target=sb_save_payment,
                     args=(payment.id, email, customer.get("name", email),
                           amount_ngn, plan_label, "paystack"),
                     daemon=False,
                 ).start()
-                _thr_wb.Thread(
+                threading.Thread(
                     target=sb_update_tier,
                     args=(learner_id, tier),
                     daemon=False,
@@ -3160,7 +3159,8 @@ async def admin_confirm_payment(payment_id: str, request: Request) -> dict:
                     break
             if not tier:
                 amt = float(row["amount"] or 0)
-                if amt >= 100000: tier = "tier3"
+                if amt >= 140000: tier = "tier4"
+                elif amt >= 100000: tier = "tier3"
                 elif amt >= 50000: tier = "tier2"
                 elif amt >= 25000: tier = "tier1"
             if tier:
@@ -3421,7 +3421,8 @@ async def admin_approve_bank_transfer(
     tier = next((v for k, v in tier_map.items() if k in plan_lower), None)
     if not tier:
         amt = float(proof.get("amount") or 0)
-        if amt >= 100000: tier = "tier3"
+        if amt >= 140000: tier = "tier4"
+        elif amt >= 100000: tier = "tier3"
         elif amt >= 50000: tier = "tier2"
         elif amt >= 25000: tier = "tier1"
         else: tier = "tier1"
@@ -4258,8 +4259,7 @@ async def get_my_referral(learner_id: str,
     profile = get_profile(learner_id)
     email   = profile.email or learner_id
     create_referral_code(code, learner_id, email)
-    import threading as _rt
-    _rt.Thread(
+    threading.Thread(
         target=_mirror_referral_code_to_supabase,
         args=(code, learner_id, email),
         daemon=False,
@@ -5060,11 +5060,11 @@ def _run_new_month_job(force: bool = False) -> dict:
 # ---------------------------------------------------------------------------
 
 def _email_automation_scheduler() -> None:
-    """Hourly background thread. Waits 6 h on first boot, then checks all
-    email jobs every hour. Each job has its own day/cooldown guard so
-    running hourly never causes duplicate sends."""
+    """Hourly background thread. Waits 60 s on first boot (lets uvicorn fully
+    start), then checks all email jobs every hour. Each job has its own
+    day/cooldown guard so running hourly never causes duplicate sends."""
     import time as _t
-    _t.sleep(6 * 3600)
+    _t.sleep(60)  # brief startup pause — removed 6h delay that blocked all emails after restart
     while True:
         for _jname, _jfn in [
             ("reengagement",        _run_reengagement_job),
@@ -5082,8 +5082,7 @@ def _email_automation_scheduler() -> None:
         _t.sleep(3600)
 
 
-import threading as _email_sched_thread
-_email_sched_thread.Thread(
+threading.Thread(
     target=_email_automation_scheduler,
     daemon=True,
     name="email-automation-scheduler",
@@ -5300,8 +5299,7 @@ def _recover_from_supabase() -> None:
 
 # Run recovery in a background thread.
 # daemon=True � never blocks Render's uvicorn worker from completing startup.
-import threading as _startup_threading
-_startup_threading.Thread(
+threading.Thread(
     target=_recover_from_supabase,
     daemon=True,
     name="startup-recovery",
@@ -5384,9 +5382,8 @@ async def update_profile(learner_id: str, body: UserProfileUpdate,
     from app.progress import save_profile as _sp
     _sp(lp)
     # Mirror to Supabase
-    import threading as _t
     if body.display_name or lp.email:
-        _t.Thread(
+        threading.Thread(
             target=sb_upsert_profile,
             args=(learner_id, lp.email, body.display_name or lp.display_name),
             daemon=False,
@@ -5467,7 +5464,7 @@ async def delete_account(body: _DeleteAccountRequest,
                     sb.table("learner_progress").delete().eq("learner_id", user.learner_id).execute()
             except Exception as _se:
                 logger.debug("Supabase cleanup after deletion failed (non-fatal): %s", _se)
-        _thr_del.Thread(target=_supabase_cleanup, daemon=False).start()
+        threading.Thread(target=_supabase_cleanup, daemon=False).start()
     except Exception:
         pass
 
