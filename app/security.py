@@ -48,7 +48,7 @@ ENQUIRY_RATE_LIMIT_WINDOW    = 3600   # per hour per IP
 MAX_MESSAGE_LEN     = 4_000       # characters in a single user message
 MAX_CODE_LEN        = 8_000       # characters of pasted code (embedded in message)
 MAX_HISTORY_ITEMS   = 20          # max conversation turns sent per request
-MAX_HISTORY_MSG_LEN = 12_000      # characters per history message (AI responses are long)
+MAX_HISTORY_MSG_LEN = 2_000       # characters per history message — trimmed to prevent token bloat
 
 # Allowed field values
 ALLOWED_LEVELS  = {"beginner", "intermediate", "advanced"}
@@ -57,7 +57,7 @@ COURSE_NAME_RE  = re.compile(r"^[a-zA-Z0-9_\-]{1,80}$")
 TOPIC_RE        = re.compile(r"^[a-zA-Z0-9 _\-&/]{1,100}$")
 
 # Free tier daily prompt limit — resets at 5am WAT (UTC+1)
-FREE_DAILY_LIMIT = 10
+FREE_DAILY_LIMIT = 20
 
 # ---------------------------------------------------------------------------
 # In-memory rate limit stores

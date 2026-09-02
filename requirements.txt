@@ -22,7 +22,7 @@ pydantic==2.9.2
 psycopg2-binary==2.9.12
 
 # ── Supabase cloud persistence ────────────────────────────────────────────
-supabase>=2.11.0
+supabase==2.11.0
 
 # ── Observability — Sentry error tracking (free tier) ────────────────────
 sentry-sdk[fastapi]==2.19.2

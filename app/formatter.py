@@ -154,7 +154,7 @@ _TOPIC_ALIASES: list[tuple[str, str]] = [
     ("exception",            "Python Exceptions"),
     # I/O
     ("input(",               "User Input"),
-    ("none",                 "Python None"),
+    (r"\bnone\b",            "Python None"),
     # Collections
     ("dict",                 "Python Dictionaries"),
     ("dictionary",           "Python Dictionaries"),
@@ -226,14 +226,25 @@ _SORTED_TOPIC_PATTERNS: list[tuple[re.Pattern, str]] = [
 
 
 def _detect_topic(content: str) -> str | None:
-    """Detect canonical topic from message or response text."""
+    """Detect canonical topic from message or response text.
+
+    Aliases that start with ``r'\\b`` are treated as regex patterns so we can
+    apply word-boundary matching (e.g. ``r'\\bnone\\b'`` to avoid matching
+    ``"function"`` just because it contains the substring ``"none"``).
+    Plain aliases are matched as case-insensitive substrings.
+    """
     lowered = content.lower()
     for pattern, canonical in _SORTED_TOPIC_PATTERNS:
         if pattern.search(content):
             return canonical
     for alias, canonical in _TOPIC_ALIASES:
-        if alias in lowered:
-            return canonical
+        if alias.startswith(r"\b"):
+            # Regex alias — compile and match against lowered content
+            if re.search(alias, lowered):
+                return canonical
+        else:
+            if alias in lowered:
+                return canonical
     return None
 
 

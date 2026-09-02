@@ -32,7 +32,7 @@ _SMART_INTENTS = {"concept", "debug", "codegen", "general"}
 # Token caps per model — balanced for quality vs. latency on Render free tier
 _MAX_TOKENS: dict[str, int] = {
     _SMART_MODEL: 3000,   # concept/debug/codegen — reduced from 4096 (saves ~1s)
-    _FAST_MODEL:  1500,   # quiz/exercise/course — reduced from 2048 (saves ~0.5s)
+    _FAST_MODEL:  2048,   # quiz/exercise/course — raised from 1500 for fuller responses
 }
 
 

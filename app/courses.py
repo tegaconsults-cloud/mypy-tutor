@@ -707,9 +707,10 @@ TIER_PLANS: dict[str, dict] = {
         "name":         "Advanced Bundle",
         "price_ngn":    100000,  # = Executive Masters Certificate (₦100,000)
         "description":  "Unlock ALL 14 courses — Beginner through Advanced including DSA, Data Science, Web APIs.",
-        "eligible_courses": [k for k in list(COURSE_CATALOG.keys())
-                             if COURSE_CATALOG[k]["category"] not in ("AI & Prompting","Machine Learning")
-                             or k in ("prompt-engineering",)],
+        "eligible_courses": [
+            k for k, v in COURSE_CATALOG.items()
+            if any(t in ("tier1", "tier2", "tier3") for t in v.get("tier_unlocks", []))
+        ],
         "unlocks_count": 14,
         "paystack_url": "https://paystack.shop/pay/vt_re4d3h52",
     },

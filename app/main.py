@@ -1953,11 +1953,13 @@ async def next_course_step(learner_id: str,
     if not course:
         raise HTTPException(status_code=404, detail="Course not found.")
 
-    advance_course(learner_id)
     profile  = get_profile(learner_id)
-    step_idx = profile.current_course_step - 1
+    # Read the current step index BEFORE advancing — so on LLM failure the
+    # position is not lost (advance only happens on success below).
+    step_idx = profile.current_course_step   # 0-indexed: current_course_step starts at 1 after /course/start
 
     if step_idx >= len(course.steps):
+        # All steps already delivered — mark course complete
         from app.progress import _award_badge, save_profile, XP_PROJECT
         profile.completed_projects.append(profile.current_course)
         profile.xp += XP_PROJECT
@@ -1968,7 +1970,7 @@ async def next_course_step(learner_id: str,
         return {
             "completed": True, "course": course.name,
             "xp_gained": XP_PROJECT, "badge": badge,
-            "content": f"?? Congratulations! You've completed **{course.name}**. You earned {XP_PROJECT} XP!",
+            "content": f"🎉 Congratulations! You've completed **{course.name}**. You earned {XP_PROJECT} XP!",
         }
 
     step          = course.steps[step_idx]
@@ -1997,6 +1999,8 @@ async def next_course_step(learner_id: str,
             detail="Sir. Tega is warming up. Please wait a moment and try again.",
         )
 
+    # Advance position AFTER successful LLM call — prevents step loss on failure
+    advance_course(learner_id)
     xp, badge = record_lesson(learner_id, step.title, step.intent)
     return {
         "completed": False, "course": course.name,
@@ -2126,7 +2130,7 @@ async def evaluate_quiz_answer(request: QuizAnswerRequest,
     except Exception as exc:
         logger.error("Quiz answer LLM error: %s", exc)
         raise HTTPException(status_code=502, detail="AI service error. Please try again.")
-    correct = "correct: true" in content.lower()
+    correct = bool(re.search(r'\bcorrect\s*:\s*true\b', content, re.IGNORECASE))
     score   = 100 if correct else 0
     xp, _   = record_quiz(request.learner_id, request.topic, score)
     # Persist full quiz attempt record
@@ -2171,8 +2175,13 @@ def _parse_quiz(raw: str) -> tuple[str, list[str]]:
     options     = [f"{letter}) {text}" for letter, text in opt_matches]
     if not question:
         question = raw.split("\n")[0].strip()
-    if not options:
-        options = ["A) See full response", "B) �", "C) �", "D) �"]
+    if not options or len(options) < 2:
+        # LLM returned a malformed response -- surface a clean 422 instead of
+        # sending dummy placeholder options that confuse the frontend.
+        raise HTTPException(
+            status_code=422,
+            detail="Quiz question could not be parsed. Please try again.",
+        )
     return question, options
 
 # ---------------------------------------------------------------------------
@@ -2359,7 +2368,7 @@ async def paystack_webhook(request: Request) -> dict:
                 # Premium ₦150,000 (tier4) | Advanced ₦100,000 (tier3) | Intermediate ₦60,000 (tier2) | Beginner ₦30,000 (tier1)
                 # When amount is ₦100k and plan_meta is empty, default to tier3 (Advanced Bundle)
                 # tier4 (Premium Bundle ₦150,000) requires explicit "premium bundle" in plan name
-                if amount_ngn >= 90000:
+                if amount_ngn >= 100000:
                     if "premium" in plan_meta:
                         tier = "tier4"   # Premium Bundle — ₦150,000 (all 17 courses)
                     else:
@@ -2484,7 +2493,7 @@ async def paystack_webhook(request: Request) -> dict:
 async def request_validation_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     try:
         first  = exc.errors()[0]
-        field  = " ? ".join(str(loc) for loc in first.get("loc", []) if loc != "body")
+        field  = " → ".join(str(loc) for loc in first.get("loc", []) if loc != "body")
         msg    = first.get("msg", "Invalid value")
         detail = f"{field}: {msg}" if field else msg
     except Exception:
@@ -2492,12 +2501,21 @@ async def request_validation_handler(request: Request, exc: RequestValidationErr
     return JSONResponse(status_code=422, content={"error": detail})
 
 
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+    """Standardise ALL HTTPException responses to {"error": "..."} shape.
+    FastAPI's default emits {"detail": "..."} which is inconsistent with the
+    custom handlers below that already use {"error": "..."}."""
+    detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
+    return JSONResponse(status_code=exc.status_code, content={"error": detail})
+
+
 @app.exception_handler(400)
 async def bad_request_handler(request: Request, exc: Exception) -> JSONResponse:
     detail = getattr(exc, "detail", None)
     if isinstance(detail, str):
-        return JSONResponse(status_code=400, content={"detail": detail, "error": detail})
-    return JSONResponse(status_code=400, content={"detail": "Bad request", "error": "Bad request"})
+        return JSONResponse(status_code=400, content={"error": detail})
+    return JSONResponse(status_code=400, content={"error": "Bad request"})
 
 
 @app.exception_handler(404)
@@ -3142,7 +3160,7 @@ async def admin_confirm_payment(payment_id: str, request: Request) -> dict:
                     break
             if not tier:
                 amt = float(row["amount"] or 0)
-                if amt >= 90000: tier = "tier3"
+                if amt >= 100000: tier = "tier3"
                 elif amt >= 50000: tier = "tier2"
                 elif amt >= 25000: tier = "tier1"
             if tier:
@@ -3403,7 +3421,7 @@ async def admin_approve_bank_transfer(
     tier = next((v for k, v in tier_map.items() if k in plan_lower), None)
     if not tier:
         amt = float(proof.get("amount") or 0)
-        if amt >= 90000: tier = "tier3"
+        if amt >= 100000: tier = "tier3"
         elif amt >= 50000: tier = "tier2"
         elif amt >= 25000: tier = "tier1"
         else: tier = "tier1"

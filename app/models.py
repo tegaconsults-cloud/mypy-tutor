@@ -92,7 +92,7 @@ class Message(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    message:         str          = Field(..., min_length=1, max_length=4_000)
+    message:         str          = Field(..., min_length=1, max_length=8_000)
     history:         list[Message]= Field(default=[], max_length=20)
     learner_id:      str          = Field(default="default", min_length=1, max_length=64,
                                           pattern=r"^[a-zA-Z0-9_\-]+$")
@@ -296,9 +296,9 @@ class UserProfileUpdate(BaseModel):
     bio:          str = Field(default="", max_length=500)
     location:     str = Field(default="", max_length=100)
     website:      str = Field(default="", max_length=200)
-    # Max 2.8MB base64 string (~2MB decoded image) — matches route handler validation.
+    # Max 4096 chars for URL/base64 prefix — route handler enforces full size limit.
     # Route handler additionally enforces content-type (https:// or data:image/).
-    photo_url:    str = Field(default="", max_length=2_800_000)
+    photo_url:    str = Field(default="", max_length=4_096)
 
 
 # ---------------------------------------------------------------------------
