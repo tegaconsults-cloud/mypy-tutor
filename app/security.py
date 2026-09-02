@@ -70,6 +70,26 @@ _auth_store:    dict[str, deque] = defaultdict(deque)   # brute-force protection
 _enquiry_store: dict[str, deque] = defaultdict(deque)   # enquiry spam protection
 _RATE_STORE_MAX = 10_000
 
+# Per-store locks — _check_rate is called from async handlers running on threads;
+# without a lock, two concurrent requests can both pass the len(dq) < limit check
+# simultaneously, defeating brute-force protection on auth endpoints.
+_general_lock: threading.Lock = threading.Lock()
+_llm_lock:     threading.Lock = threading.Lock()
+_auth_lock:    threading.Lock = threading.Lock()
+_enquiry_lock: threading.Lock = threading.Lock()
+
+# Map each store to its lock (populated at module load time)
+_STORE_LOCKS: dict[int, threading.Lock] = {}
+
+# Register all four stores immediately after creation
+def _register_stores() -> None:
+    _STORE_LOCKS[id(_general_store)] = _general_lock
+    _STORE_LOCKS[id(_llm_store)]     = _llm_lock
+    _STORE_LOCKS[id(_auth_store)]    = _auth_lock
+    _STORE_LOCKS[id(_enquiry_store)] = _enquiry_lock
+
+_register_stores()
+
 
 def _evict_rate_store(store: dict) -> None:
     """Drop the 20% of entries whose most-recent timestamp is oldest."""
@@ -84,15 +104,24 @@ def _evict_rate_store(store: dict) -> None:
 
 
 def _check_rate(store: dict, ip: str, limit: int, window: int) -> bool:
-    """Return True if request is allowed, False if rate-limited."""
-    now = time.monotonic()
-    dq  = store[ip]
-    while dq and dq[0] < now - window:
-        dq.popleft()
-    if len(dq) >= limit:
-        return False
-    dq.append(now)
-    _evict_rate_store(store)
+    """Return True if request is allowed, False if rate-limited.
+    Thread-safe: each store has a dedicated lock so concurrent requests
+    cannot both sneak through the len(dq) < limit check simultaneously."""
+    # Resolve the lock for this store at call time
+    lock = _STORE_LOCKS.get(id(store))
+    if lock is None:
+        # Fallback: create and register a lock for any unregistered store
+        lock = threading.Lock()
+        _STORE_LOCKS[id(store)] = lock
+    with lock:
+        now = time.monotonic()
+        dq  = store[ip]
+        while dq and dq[0] < now - window:
+            dq.popleft()
+        if len(dq) >= limit:
+            return False
+        dq.append(now)
+        _evict_rate_store(store)
     return True
 
 

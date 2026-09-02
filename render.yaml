@@ -67,7 +67,7 @@ services:
       - key: BANK_ACCOUNT_NAME
         sync: false          # e.g. "Teamsamikoko Global Academy"
       - key: BANK_ACCOUNT_NUMBER
-        sync: false          # e.g. "1228732577"
+        sync: false          # Set your account number in Render Dashboard → Environment
       # Python optimisations for low-memory deployment
       - key: PYTHONOPTIMIZE
         value: "1"              # removes assert statements and docstrings from .pyc

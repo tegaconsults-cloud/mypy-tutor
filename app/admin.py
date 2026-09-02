@@ -52,16 +52,28 @@ def verify_admin_login(email: str, password: str) -> bool:
     if not admin_email or not stored_pw:
         return False
     email_ok = email.lower().strip() == admin_email.lower()
-    # Auto-detect whether ADMIN_PASSWORD is stored as plain text or SHA-256 hash.
-    # A SHA-256 hex digest is always exactly 64 lowercase hex characters.
-    # This lets existing Render deployments with plain-text passwords continue
-    # working while also accepting the more secure hashed form.
+
+    # Support three password formats, checked in order of security:
+    # 1. bcrypt hash ($2b$ prefix) — most secure, recommended for new deployments
+    # 2. SHA-256 hex (64 lowercase hex chars) — legacy, still supported
+    # 3. Plain text — original deployments; still safe on Render's encrypted env vars
     import re as _re
+    try:
+        import bcrypt as _bcrypt
+        if stored_pw.startswith("$2b$") or stored_pw.startswith("$2a$"):
+            try:
+                pw_ok = _bcrypt.checkpw(password.encode(), stored_pw.encode())
+            except Exception:
+                pw_ok = False
+            return email_ok and pw_ok
+    except ImportError:
+        pass  # bcrypt not available — fall through to hash/plaintext checks
+
     is_hashed = bool(_re.fullmatch(r'[0-9a-f]{64}', stored_pw))
     if is_hashed:
         pw_ok = stored_pw == _hash(password)
     else:
-        # Plain-text comparison — still secure at rest on Render's encrypted env vars
+        # Plain-text comparison — safe on Render's encrypted env vars
         pw_ok = stored_pw == password
     return email_ok and pw_ok
 

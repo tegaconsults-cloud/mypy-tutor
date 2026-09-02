@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # Email config — read lazily at send time so Render env vars are always current
 # ---------------------------------------------------------------------------
 
-ADMIN_EMAIL = "tega.com.ng@gmail.com"   # all feedback forwarded here
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "")   # set in Render environment — never hardcode
 
 
 def _send_feedback_email(subject: str, html_body: str, text_body: str) -> None:
