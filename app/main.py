@@ -5798,6 +5798,18 @@ async def redirect_admin():
     return RedirectResponse(url="/admin.html", status_code=302)
 
 
+@app.get("/voice", response_class=HTMLResponse, include_in_schema=False)
+async def serve_voice_integration() -> HTMLResponse:
+    """Serve the voice feature integration guide at /voice"""
+    import os as _os3
+    path = _os3.path.join("static", "voice-integration.html")
+    if not _os3.path.exists(path):
+        raise HTTPException(status_code=404, detail="Voice integration guide not found.")
+    with open(path, "r", encoding="utf-8") as f:
+        content = f.read()
+    return HTMLResponse(content=content)
+
+
 # ---------------------------------------------------------------------------
 # AI Automation course landing page
 # ---------------------------------------------------------------------------

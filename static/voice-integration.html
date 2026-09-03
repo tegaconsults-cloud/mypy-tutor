@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Sir. Tega Voice — Integration Guide</title>
+<style>
+:root{--bg:#07090f;--surface:#0d1120;--card:#111827;--accent:#3b82f6;
+--text:#f1f5f9;--muted:#64748b;--sub:#94a3b8;--green:#10b981;
+--font:'Inter',-apple-system,BlinkMacSystemFont,sans-serif}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--font);
+line-height:1.7;padding:40px 20px;max-width:860px;margin:0 auto}
+h1{font-size:1.7rem;color:#93c5fd;margin-bottom:6px}
+h2{font-size:1.15rem;color:#e2e8f0;margin:32px 0 10px;padding-bottom:6px;
+border-bottom:1px solid rgba(255,255,255,.07)}
+h3{font-size:.95rem;color:#93c5fd;margin:20px 0 8px}
+p{color:var(--sub);margin-bottom:12px;font-size:.9rem}
+pre{background:var(--card);border:1px solid rgba(59,130,246,.2);border-radius:10px;
+padding:18px 20px;overflow-x:auto;margin:10px 0 20px;font-size:.82rem;line-height:1.65}
+code{color:#86efac;font-family:'Fira Code','Cascadia Code',monospace}
+pre code{color:#e2e8f0}
+.tag{display:inline-block;padding:2px 9px;border-radius:12px;font-size:.72rem;
+font-weight:600;letter-spacing:.04em}
+.tag-new{background:rgba(16,185,129,.15);color:#6ee7b7;border:1px solid rgba(16,185,129,.3)}
+.tag-req{background:rgba(239,68,68,.12);color:#fca5a5;border:1px solid rgba(239,68,68,.25)}
+.tag-opt{background:rgba(59,130,246,.12);color:#93c5fd;border:1px solid rgba(59,130,246,.25)}
+.api-row{display:flex;gap:10px;align-items:baseline;margin:6px 0}
+.method{font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:6px}
+.get{background:rgba(16,185,129,.15);color:#6ee7b7}
+.post{background:rgba(59,130,246,.15);color:#93c5fd}
+.path{font-family:monospace;font-size:.85rem;color:#e2e8f0}
+.desc{color:var(--sub);font-size:.82rem}
+.note{background:rgba(251,191,36,.07);border-left:3px solid #f59e0b;
+border-radius:0 8px 8px 0;padding:12px 16px;margin:12px 0;font-size:.84rem;color:#fcd34d}
+.ok{color:var(--green)}
+ul{margin-left:20px;margin-bottom:12px}
+li{color:var(--sub);font-size:.88rem;margin-bottom:4px}
+</style>
+</head>
+<body>
+
+<h1>🎙 Sir. Tega Voice — Integration Guide</h1>
+<p style="color:#64748b;font-size:.82rem;margin-bottom:24px">
+  How to add TTS (text-to-speech) and STT (speech-to-text) to the MyPy Tutor
+  Vercel frontend using the <code>voice.js</code> module served from the backend.
+</p>
+
+<!-- ── WHAT'S INCLUDED ─────────────────────────────────────────────────── -->
+<h2>What's included</h2>
+<ul>
+  <li><strong>🔊 Text-to-Speech (TTS)</strong> — Sir. Tega reads AI responses aloud using the browser Web Speech API. Zero external dependencies, zero cost.</li>
+  <li><strong>🎤 Speech-to-Text (STT)</strong> — user speaks questions into the chat input. Defaults to Nigerian English (en-NG).</li>
+  <li><strong>🎙 Voice settings panel</strong> — floating button opens a panel: voice picker, speed, pitch, volume, auto-speak toggle.</li>
+  <li><strong>💾 Persistent prefs</strong> — voice preferences saved to <code>localStorage</code>, survive page reloads.</li>
+  <li><strong>📱 iOS-safe chunked TTS</strong> — long responses split into sentence chunks to avoid the iOS 15 speech cut-off bug.</li>
+</ul>
+
+<!-- ── BACKEND ENDPOINTS ───────────────────────────────────────────────── -->
+<h2>Backend endpoints</h2>
+<div class="api-row">
+  <span class="method post">POST</span>
+  <span class="path">/tts/prepare</span>
+  <span class="desc">— strips markdown, returns clean speakable text</span>
+</div>
+<div class="api-row">
+  <span class="method get">GET</span>
+  <span class="path">/tts/voices</span>
+  <span class="desc">— returns priority-ordered voice name list for the picker</span>
+</div>
+<p>Both are served from the same origin as the API. No auth required.</p>
+
+<h3>/tts/prepare request</h3>
+<pre><code>POST /tts/prepare
+Content-Type: application/json
+
+{ "text": "Your **markdown** AI response here..." }
+
+// Response:
+{ "text": "Your markdown AI response here...", "char_count": 43, "truncated": false }</code></pre>
+
+<!-- ── STEP 1: LOAD SCRIPT ─────────────────────────────────────────────── -->
+<h2>Step 1 — Load the script</h2>
+<p>Add this <strong>once</strong> in your HTML, just before <code>&lt;/body&gt;</code>:</p>
+<pre><code>&lt;script src="https://mypytutor.onrender.com/static/voice.js"&gt;&lt;/script&gt;</code></pre>
+<p>Or, if the frontend is served from the same origin as the API (Vercel + CORS configured):</p>
+<pre><code>&lt;script src="/static/voice.js"&gt;&lt;/script&gt;</code></pre>
+
+<!-- ── STEP 2: INIT ────────────────────────────────────────────────────── -->
+<h2>Step 2 — Initialise</h2>
+<p>Call <code>SirTegaVoice.init()</code> once when the page loads:</p>
+<pre><code>SirTegaVoice.init({
+  // Required
+  apiBase:       'https://mypytutor.onrender.com',   // or window.location.origin
+
+  // Optional — defaults shown
+  inputSelector: '#chat-input',    // CSS selector for the chat message input field
+  micBtnId:      'voice-mic-btn',  // id for mic button (auto-created next to input)
+  speakBtnClass: 'sir-tega-speak-btn', // class added to every 🔊 button
+  autoSpeak:     false,            // auto-read every new AI response
+});</code></pre>
+
+<div class="note">
+  ⚡ <strong>inputSelector</strong> must point to your chat text input. The mic button is inserted
+  immediately after it in the DOM. If your input doesn't exist yet (SPA routing), call
+  <code>SirTegaVoice.init()</code> after the chat panel is rendered.
+</div>
+
+<!-- ── STEP 3: WIRE TO CHAT ────────────────────────────────────────────── -->
+<h2>Step 3 — Wire to your chat messages</h2>
+<p>Every time a new AI response arrives, call <code>onNewResponse()</code>:</p>
+<pre><code>// After you render an AI message bubble into the DOM:
+function handleAIResponse(responseText) {
+  // 1. Render the bubble (your existing code)
+  const bubble = document.createElement('div');
+  bubble.className = 'message assistant';
+  bubble.innerHTML = marked.parse(responseText);  // or however you render markdown
+  chatContainer.appendChild(bubble);
+
+  // 2. Wire voice — attaches 🔊 button + auto-speaks if enabled
+  SirTegaVoice.onNewResponse(bubble, responseText);
+}</code></pre>
+
+<p>That's it. The 🔊 Listen button appears on the bubble automatically. Users can also
+open Voice Settings via the floating 🎙 button (bottom-right corner).</p>
+
+<!-- ── STEP 4: WIRE MIC SUBMIT ─────────────────────────────────────────── -->
+<h2>Step 4 — Auto-submit on voice input (optional)</h2>
+<p>If you want voice input to submit the form automatically after the user stops speaking:</p>
+<pre><code>// In your SpeechRecognition onend handler, or listen for the input event:
+document.getElementById('chat-input').addEventListener('input', function (e) {
+  // Only auto-submit if the value was set by voice (not manual typing)
+  if (SirTegaVoice.isMicActive()) return; // still speaking — wait for onend
+  // You can check a flag you set in your own mic flow, or just let the user submit
+});
+
+// Alternatively, pass a submit callback to the voice module's onend:
+// Override the mic button's click to show a "Send?" confirmation toast
+document.getElementById('voice-mic-btn')?.addEventListener('click', () => {
+  if (!SirTegaVoice.isMicActive()) return;
+  // recognition is running — clicking again stops it; onend will fire
+});</code></pre>
+
+<!-- ── FULL EXAMPLE ────────────────────────────────────────────────────── -->
+<h2>Minimal full-page example</h2>
+<pre><code>&lt;!DOCTYPE html&gt;
+&lt;html lang="en"&gt;
+&lt;head&gt;
+  &lt;meta charset="UTF-8"/&gt;
+  &lt;title&gt;MyPy Tutor Chat&lt;/title&gt;
+&lt;/head&gt;
+&lt;body&gt;
+  &lt;div id="chat-messages"&gt;&lt;/div&gt;
+  &lt;div id="chat-bar"&gt;
+    &lt;input id="chat-input" type="text" placeholder="Ask Sir. Tega…"/&gt;
+    &lt;!-- mic button auto-inserted next to input by voice.js --&gt;
+    &lt;button onclick="sendMessage()"&gt;Send&lt;/button&gt;
+  &lt;/div&gt;
+
+  &lt;script src="https://mypytutor.onrender.com/static/voice.js"&gt;&lt;/script&gt;
+  &lt;script&gt;
+    const API = 'https://mypytutor.onrender.com';
+    const token = localStorage.getItem('mpt_token') || '';
+
+    // ── Init voice ──────────────────────────────────────────────────────
+    SirTegaVoice.init({
+      apiBase:       API,
+      inputSelector: '#chat-input',
+      autoSpeak:     false,
+    });
+
+    // ── Send message ────────────────────────────────────────────────────
+    async function sendMessage() {
+      const input = document.getElementById('chat-input');
+      const text  = input.value.trim();
+      if (!text) return;
+      input.value = '';
+
+      // Stop any ongoing speech when user sends a new message
+      SirTegaVoice.stop();
+
+      // Append user bubble
+      appendBubble(text, 'user');
+
+      const res  = await fetch(API + '/chat', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json',
+                   'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({ message: text, learner_id: 'demo', level: 'beginner' }),
+      });
+      const data = await res.json();
+
+      // Append AI bubble and wire voice
+      const bubble = appendBubble(data.content || data.error, 'assistant');
+      SirTegaVoice.onNewResponse(bubble, data.content || '');
+    }
+
+    function appendBubble(text, role) {
+      const el = document.createElement('div');
+      el.className = 'message ' + role;
+      el.textContent = text;
+      document.getElementById('chat-messages').appendChild(el);
+      el.scrollIntoView({ behavior: 'smooth' });
+      return el;
+    }
+
+    // Submit on Enter
+    document.getElementById('chat-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter' &amp;&amp; !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    });
+  &lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</code></pre>
+
+<!-- ── PUBLIC API ──────────────────────────────────────────────────────── -->
+<h2>Full SirTegaVoice API</h2>
+<pre><code>// Lifecycle
+SirTegaVoice.init(options)              // initialise (call once)
+
+// TTS
+SirTegaVoice.speak(text)               // speak text (async, handles markdown strip)
+SirTegaVoice.stop()                    // cancel speech immediately
+SirTegaVoice.toggle(text)              // speak if silent, stop if speaking
+SirTegaVoice.isSpeaking()             // → boolean
+
+// STT
+SirTegaVoice.toggleMic()              // start/stop microphone
+SirTegaVoice.isMicActive()            // → boolean
+
+// UI
+SirTegaVoice.onNewResponse(el, text)  // attach 🔊 button + auto-speak
+SirTegaVoice.attachSpeakButton(el, text) // attach 🔊 button only (no auto-speak)
+SirTegaVoice.openSettings()           // open voice settings panel
+SirTegaVoice.closeSettings()          // close voice settings panel
+SirTegaVoice.toggleSettings()         // toggle settings panel
+SirTegaVoice.isSupported()            // → boolean (false = no Web Speech API)</code></pre>
+
+<!-- ── BROWSER SUPPORT ─────────────────────────────────────────────────── -->
+<h2>Browser support</h2>
+<ul>
+  <li><span class="ok">✓</span> Chrome / Edge / Brave — full TTS + STT</li>
+  <li><span class="ok">✓</span> Safari 14.1+ (iOS + macOS) — TTS works; STT requires user gesture</li>
+  <li><span class="ok">✓</span> Firefox 49+ — TTS works; STT not supported (mic button hidden automatically)</li>
+  <li><span class="ok">✓</span> Android Chrome — full TTS + STT</li>
+  <li>⚠ Firefox Android — TTS only, no STT</li>
+</ul>
+<p>The module checks <code>'speechSynthesis' in window</code> before any call.
+All voice UI is hidden automatically when not supported — your chat works fine without it.</p>
+
+<!-- ── LIVE DEMO ──────────────────────────────────────────────────────── -->
+<h2>Live demo</h2>
+<p>Click below to hear Sir. Tega introduce himself:</p>
+<button onclick="demoSpeak()" id="demo-btn"
+  style="background:rgba(59,130,246,.15);color:#93c5fd;border:1px solid rgba(59,130,246,.3);
+  border-radius:8px;padding:10px 20px;font-size:.9rem;cursor:pointer;margin-bottom:8px">
+  🔊 Hear Sir. Tega
+</button>
+<script src="/static/voice.js"></script>
+<script>
+SirTegaVoice.init({ apiBase: location.origin, autoSpeak: false });
+function demoSpeak() {
+  const btn = document.getElementById('demo-btn');
+  if (SirTegaVoice.isSpeaking()) {
+    SirTegaVoice.stop();
+    btn.textContent = '🔊 Hear Sir. Tega';
+  } else {
+    const hour = new Date().getHours();
+    const t = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
+    SirTegaVoice.speak(
+      `Good ${t}! I am Sir. Tega, your personal Python and AI tutor. ` +
+      `I am here to guide you through every concept, from the basics of Python syntax ` +
+      `all the way to machine learning and automation. Ask me anything, ` +
+      `and let us start learning together!`
+    );
+    btn.textContent = '⏹ Stop';
+    setTimeout(() => { btn.textContent = '🔊 Hear Sir. Tega'; }, 8000);
+  }
+}
+</script>
+
+</body>
+</html>

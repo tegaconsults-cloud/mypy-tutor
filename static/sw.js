@@ -1,4 +1,4 @@
-/**
+﻿/**
  * MyPy Tutor — Service Worker v10
  *
  * Cache strategy:
@@ -8,7 +8,7 @@
  *  - Cross-origin requests (Google, CDN, analytics) → PASS THROUGH (never cache)
  */
 
-const CACHE_VERSION = 'mypy-tutor-v11';
+const CACHE_VERSION = 'mypy-tutor-v12';
 const OFFLINE_URL   = '/';
 
 // Only pre-cache files we KNOW exist in the build output.
@@ -18,6 +18,7 @@ const OFFLINE_URL   = '/';
 const PRECACHE_URLS = [
   '/',
   '/manifest.json',
+  '/static/voice.js',
 ];
 
 // Same-origin API path prefixes — always network-first

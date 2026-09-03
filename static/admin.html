@@ -423,10 +423,14 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
             <option value="tier1">Tier 1 Only</option>
             <option value="tier2">Tier 2 Only</option>
             <option value="tier3">Tier 3 Only</option>
+            <option value="tier4">Tier 4 (Premium) Only</option>
           </select></div>
           <div class="fr"><label>Subject</label><input id="ann-subj" placeholder="e.g. New features now live!"/></div>
           <div class="fr"><label>Message</label><textarea id="ann-body" rows="5" placeholder="Write your announcement..."></textarea></div>
-          <button class="btn" onclick="sendAnnouncement()">📢 Send Announcement</button>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button class="btn" onclick="sendAnnouncement()">📢 Send Announcement</button>
+            <button class="bsm" type="button" onclick="previewAnnounce()" title="Hear the announcement before sending" style="background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.3);color:#93c5fd">🔊 Preview Voice</button>
+          </div>
           <span id="ann-msg" style="margin-left:10px;font-size:.8rem;color:#68d391;display:none"></span>
         </div>
         <div class="sec"><h3>Sent History</h3><div id="ann-history">Loading…</div></div>
@@ -1325,7 +1329,41 @@ async function resolveEnquiry(id){
   const r=await api('/admin/enquiries/'+id+'/resolve',{method:'POST'});
   const d=await r.json();
   if(r.ok&&d.ok){toast('Enquiry #'+id+' resolved');loadEnquiries();}
-  else toast(d.detail||'Failed',false);
+  else toast(d.detail||d.error||'Failed',false);
+}
+</script>
+
+<!-- ── Sir. Tega Voice Feature ──────────────────────────────────────────── -->
+<script src="/static/voice.js"></script>
+<script>
+// Initialise voice module when the page loads.
+// The floating 🎙 button (bottom-right) opens voice settings.
+// Admin can preview announcement text before sending using "🔊 Preview Voice".
+document.addEventListener('DOMContentLoaded', function () {
+  if (typeof SirTegaVoice !== 'undefined') {
+    SirTegaVoice.init({
+      apiBase:       location.origin,
+      inputSelector: '#lemail',   // not a chat input — mic not needed on admin
+      autoSpeak:     false,
+    });
+  }
+});
+
+// Preview the announcement message text via TTS before sending
+function previewAnnounce() {
+  if (typeof SirTegaVoice === 'undefined' || !SirTegaVoice.isSupported()) {
+    toast('Voice not supported in this browser', false); return;
+  }
+  const subj = (document.getElementById('ann-subj')?.value || '').trim();
+  const body = (document.getElementById('ann-body')?.value || '').trim();
+  if (!body) { toast('Write an announcement message first', false); return; }
+  const preview = subj ? `Announcement: ${subj}. ${body}` : body;
+  if (SirTegaVoice.isSpeaking()) {
+    SirTegaVoice.stop();
+  } else {
+    SirTegaVoice.speak(preview);
+    toast('🔊 Playing announcement preview…');
+  }
 }
 </script>
 </body>
