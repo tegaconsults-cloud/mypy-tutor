@@ -58,7 +58,7 @@ COURSE_NAME_RE  = re.compile(r"^[a-zA-Z0-9_\-]{1,80}$")
 TOPIC_RE        = re.compile(r"^[a-zA-Z0-9 _\-&/]{1,100}$")
 
 # Free tier daily prompt limit — resets at 5am WAT (UTC+1)
-FREE_DAILY_LIMIT = 20
+FREE_DAILY_LIMIT = 10
 
 # ---------------------------------------------------------------------------
 # In-memory rate limit stores
