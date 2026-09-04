@@ -325,7 +325,7 @@ async def chat(request: ChatRequest, req: Request,
     history_messages = [{"role": m.role, "content": m.content[:MAX_HISTORY_MSG_LEN]} for m in request.history]
     if not history_messages and sb_enabled() and request.conversation_id and not request.conversation_id.startswith("local_"):
         try:
-            # Run in thread executor � sb_load_messages is synchronous (httpx/supabase-py)
+            # Run in thread executor — sb_load_messages is synchronous (httpx/supabase-py)
             # Running it directly would block the uvicorn event loop.
             loop = asyncio.get_running_loop()
             sb_history = await loop.run_in_executor(
@@ -1516,10 +1516,11 @@ async def get_certificate(
         name = session_name or "Learner"
 
     # Certificate eligibility: check EITHER tier bundle purchase OR relevant courses completed
+    # tier4 (Premium Bundle) unlocks ALL certificates — it is the highest tier
     CERT_TIER_REQUIRED = {
-        "basic":     {"tier1", "tier2", "tier3"},
-        "advanced":  {"tier2", "tier3"},
-        "executive": {"tier3"},
+        "basic":     {"tier1", "tier2", "tier3", "tier4"},
+        "advanced":  {"tier2", "tier3", "tier4"},
+        "executive": {"tier3", "tier4"},
     }
     CERT_COURSES_REQUIRED = {
         "basic":     {"python-fundamentals", "python-strings", "python-collections", "python-control-flow"},

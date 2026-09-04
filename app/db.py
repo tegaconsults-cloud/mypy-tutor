@@ -505,9 +505,18 @@ def init_db() -> None:
                 "CREATE INDEX IF NOT EXISTS idx_daily_prompts_key ON daily_prompt_counts (key, date_str)",
                 "CREATE INDEX IF NOT EXISTS idx_feedback_ratings_learner ON feedback_ratings (learner_id, ts)",
                 "CREATE INDEX IF NOT EXISTS idx_feedback_surveys_learner ON feedback_surveys (learner_id, ts)",
-            "CREATE INDEX IF NOT EXISTS idx_btp_learner ON bank_transfer_proofs (learner_id)",
-            "CREATE INDEX IF NOT EXISTS idx_btp_status ON bank_transfer_proofs (status)",
-            "CREATE INDEX IF NOT EXISTS idx_email_automation_opted ON email_automation (opted_out)",
+                "CREATE INDEX IF NOT EXISTS idx_btp_learner ON bank_transfer_proofs (learner_id)",
+                "CREATE INDEX IF NOT EXISTS idx_btp_status ON bank_transfer_proofs (status)",
+                "CREATE INDEX IF NOT EXISTS idx_email_automation_opted ON email_automation (opted_out)",
+                # Admin user listing: JOIN learner_profiles + email_accounts — needs both indexed
+                "CREATE INDEX IF NOT EXISTS idx_learner_profiles_tier ON learner_profiles (tier)",
+                "CREATE INDEX IF NOT EXISTS idx_email_accounts_learner ON email_accounts (learner_id)",
+                "CREATE INDEX IF NOT EXISTS idx_email_accounts_email ON email_accounts (email)",
+                # Payments dashboard query speed
+                "CREATE INDEX IF NOT EXISTS idx_payments_status ON payments (status)",
+                "CREATE INDEX IF NOT EXISTS idx_payments_created ON payments (created_at DESC)",
+                # Certificate verification
+                "CREATE INDEX IF NOT EXISTS idx_certificates_learner ON certificates (learner_id)",
             ]:
                 cur.execute(sql)
 
