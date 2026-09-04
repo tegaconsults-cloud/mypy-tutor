@@ -109,7 +109,7 @@ def get_db():
             logger.warning("Pool.getconn() failed (%s) — falling back to direct connect", exc)
 
     if conn is None:
-        conn = psycopg2.connect(DATABASE_URL)
+        conn = psycopg2.connect(DATABASE_URL, connect_timeout=10)
 
     conn.autocommit = False
     try:

@@ -63,7 +63,7 @@ from app.security import (
     validate_course_name, validate_topic,
     validate_chat_request,
     check_free_prompt_limit, increment_free_prompt_count, get_free_prompt_count,
-    _get_ip,
+    _get_ip, MAX_HISTORY_MSG_LEN,
 )
 from app.auth import (
     verify_google_token, verify_google_token_strict, get_or_create_user,
@@ -321,7 +321,8 @@ async def chat(request: ChatRequest, req: Request,
     # -- Build message list -----------------------------------------------
     # If client sends no history AND Supabase is up AND we have a real conv_id
     # (not the synthetic local_ one), load last 6 turns so Sir. Tega has context.
-    history_messages = [{"role": m.role, "content": m.content} for m in request.history]
+    # Trim each history message to MAX_HISTORY_MSG_LEN to prevent token bloat
+    history_messages = [{"role": m.role, "content": m.content[:MAX_HISTORY_MSG_LEN]} for m in request.history]
     if not history_messages and sb_enabled() and request.conversation_id and not request.conversation_id.startswith("local_"):
         try:
             # Run in thread executor � sb_load_messages is synchronous (httpx/supabase-py)
@@ -330,7 +331,7 @@ async def chat(request: ChatRequest, req: Request,
             sb_history = await loop.run_in_executor(
                 None, lambda: sb_load_messages(request.conversation_id, limit=6)
             )
-            history_messages = [{"role": m["role"], "content": m["content"]} for m in sb_history]
+            history_messages = [{"role": m["role"], "content": str(m["content"])[:MAX_HISTORY_MSG_LEN]} for m in sb_history]
         except Exception:
             pass  # non-fatal � continue without history
     history_messages.append({"role": "user", "content": request.message})
