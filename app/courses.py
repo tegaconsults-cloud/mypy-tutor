@@ -404,7 +404,7 @@ COURSES: dict[str, Course] = {
                        description="Identify automation candidates using the RICE framework (Repetitive, Input-driven, Consistent output, Error-prone manually). Map your own workflow and spot three automation opportunities.",
                        intent="concept"),
             CourseStep(step=3,  title="Automation Tools Landscape",
-                       description="Survey of tools: pure Python scripts, n8n, Zapier/Make, LangChain agents, AutoGen, CrewAI, and custom FastAPI services. When to use each. No-code vs low-code vs full-code trade-offs.",
+                       description="Survey of tools: pure Python scripts, n8n, Opal, Zapier/Make, LangChain agents, AutoGen, CrewAI, and custom FastAPI services. When to use each. No-code vs low-code vs full-code trade-offs.",
                        intent="concept"),
             CourseStep(step=4,  title="Foundations Practical",
                        description="Workflow: Map a real business process (order confirmation email → update CRM → notify Slack) into a trigger-action diagram. Then identify which steps benefit from an LLM and which don't.",
@@ -619,6 +619,11 @@ PROJECT_PATHS: dict[str, list[str]] = {
         "pandas-mastery",
         "data-science-python",
         "python-databases",
+        "web-apis",
+        "prompt-engineering",
+        "ai-prompt-engineering",
+        "machine-learning",
+        "ai-automation",
     ],
 }
 

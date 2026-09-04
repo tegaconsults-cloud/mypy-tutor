@@ -31,9 +31,23 @@ _SMART_INTENTS = {"concept", "debug", "codegen", "general"}
 
 # Token caps per model — balanced for quality vs. latency on Render free tier
 _MAX_TOKENS: dict[str, int] = {
-    _SMART_MODEL: 3000,   # concept/debug/codegen — reduced from 4096 (saves ~1s)
-    _FAST_MODEL:  2048,   # quiz/exercise/course — raised from 1500 for fuller responses
+    _SMART_MODEL: 2048,   # concept/debug/codegen — trimmed from 3000 (~1s latency saving)
+    _FAST_MODEL:  1500,   # quiz/exercise/course steps — balanced for quality vs speed
 }
+
+# Course steps need more tokens than quiz — override per intent
+_INTENT_MAX_TOKENS: dict[str, int] = {
+    "quiz":       512,    # question + 4 options + answer + brief explanation
+    "quiz_eval":  512,    # correct/false + explanation + encouragement
+    "exercise":   800,    # exercise description + starter code
+    "course":     1500,   # full lesson content
+}
+
+def _get_max_tokens(model: str, intent: str) -> int:
+    """Return token cap: intent-specific override first, then model default."""
+    if intent in _INTENT_MAX_TOKENS:
+        return _INTENT_MAX_TOKENS[intent]
+    return _MAX_TOKENS.get(model, 1500)
 
 
 def get_completion(
@@ -46,16 +60,20 @@ def get_completion(
     """
     Calls Groq Chat Completions and returns the assistant message content.
     Auto-selects model and max_tokens based on intent when model="" (default).
+    Uses intent-specific token caps so quiz/eval calls return fast (~512 tok)
+    while concept/debug/codegen calls get full quality (~2048 tok).
+    stream=False is explicit — ensures we never accidentally block on a stream.
     """
     if not model:
         model = _SMART_MODEL if intent in _SMART_INTENTS else _FAST_MODEL
 
-    max_tokens = _MAX_TOKENS.get(model, 2048)
+    max_tokens = _get_max_tokens(model, intent)
 
     response = _client.chat.completions.create(
         model=model,
         temperature=temperature,
         max_tokens=max_tokens,
+        stream=False,          # explicit — prevents accidental streaming block
         messages=[{"role": "system", "content": system_prompt}, *messages],
     )
     return response.choices[0].message.content

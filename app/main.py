@@ -2170,15 +2170,18 @@ async def generate_exercise(learner_id: str, topic: str,
 def _parse_quiz(raw: str) -> tuple[str, list[str]]:
     question    = ""
     options     = []
-    q_match     = re.search(r"\*\*Question:\*\*\s*(.+?)(?=\n[A-D]\))", raw, re.DOTALL)
+    # Allow zero or more blank lines between **Question:** and the first option
+    q_match     = re.search(r"\*\*Question:\*\*\s*(.+?)(?=\n\s*\n?\s*[A-D]\))", raw, re.DOTALL)
     if q_match:
         question = q_match.group(1).strip()
     opt_matches = re.findall(r"^([A-D])\)\s*(.+)$", raw, re.MULTILINE)
-    options     = [f"{letter}) {text}" for letter, text in opt_matches]
+    options     = [f"{letter}) {text.strip()}" for letter, text in opt_matches]
     if not question:
-        question = raw.split("\n")[0].strip()
+        # Strip leading markdown bold marker if it ends up on the first line
+        first_line = raw.split("\n")[0].strip()
+        question   = re.sub(r"^\*\*Question:\*\*\s*", "", first_line).strip() or first_line
     if not options or len(options) < 2:
-        # LLM returned a malformed response -- surface a clean 422 instead of
+        # LLM returned a malformed response — surface a clean 422 instead of
         # sending dummy placeholder options that confuse the frontend.
         raise HTTPException(
             status_code=422,

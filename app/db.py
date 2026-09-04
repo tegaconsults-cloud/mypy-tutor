@@ -46,6 +46,7 @@ def _get_pool():
                 minconn=2,
                 maxconn=10,
                 dsn=DATABASE_URL,
+                connect_timeout=10,   # fail fast if DB is unreachable (vs hanging 30s+)
             )
             logger.info("PostgreSQL connection pool initialised (min=2 max=10)")
         except Exception as exc:
@@ -80,8 +81,30 @@ def get_db():
 
     if pool:
         try:
-            conn = pool.getconn()
-            from_pool = True
+            # getconn() can block indefinitely if all connections are in use.
+            # Wrap with a 5s timeout using a background thread so the request
+            # fails fast instead of hanging the Render worker.
+            import threading as _pt
+            _conn_holder: list = [None]
+            _conn_exc:    list = [None]
+
+            def _fetch():
+                try:
+                    _conn_holder[0] = pool.getconn()
+                except Exception as e:
+                    _conn_exc[0] = e
+
+            _t = _pt.Thread(target=_fetch, daemon=True)
+            _t.start()
+            _t.join(timeout=5)   # wait at most 5s for a pool slot
+
+            if _conn_holder[0] is not None:
+                conn      = _conn_holder[0]
+                from_pool = True
+            elif _conn_exc[0] is not None:
+                logger.warning("Pool.getconn() error (%s) — falling back to direct connect", _conn_exc[0])
+            else:
+                logger.warning("Pool.getconn() timed out after 5s — falling back to direct connect")
         except Exception as exc:
             logger.warning("Pool.getconn() failed (%s) — falling back to direct connect", exc)
 

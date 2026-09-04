@@ -6,9 +6,8 @@ services:
     plan: free                    # Render free tier: 512MB RAM, 0.1 CPU
     buildCommand: pip install --no-cache-dir -r requirements.txt
     # Single worker — free tier only has 0.1 CPU, multiple workers thrash
-    # --timeout 120 — Groq LLM can take up to 30s, with retries up to 60s
-    # --keep-alive 5 — keep connections alive briefly to avoid reconnect overhead
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --timeout-keep-alive 5
+    # --timeout-keep-alive 30 — hold connections open 30s to avoid frontend reconnect overhead
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --timeout-keep-alive 30
     healthCheckPath: /health
     envVars:
       - key: GROQ_API_KEY
