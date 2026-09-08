@@ -57,7 +57,7 @@ services:
         sync: false          # Get from sentry.io → Project → Settings → Client Keys
       - key: DATABASE_URL
         sync: false          # Set to the Internal Database URL from Render PostgreSQL dashboard
-                             # Format: postgresql://mypytutor_user:PASSWORD@dpg-d9t11o6417fc73bj9aig-a/mypytutor
+                             # Format: postgresql://mypytutor_user:PASSWORD@<your-db-host>/mypytutor
                              # Copy the Internal Database URL from: mypy-tutor-db → Connections → Internal Database URL
       # Bank transfer account details — set these in Render Dashboard → Environment (NOT here)
       # Storing financial details in render.yaml commits them to git history permanently.

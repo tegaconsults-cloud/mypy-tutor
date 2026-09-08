@@ -512,6 +512,7 @@ def init_db() -> None:
                 "CREATE INDEX IF NOT EXISTS idx_learner_profiles_tier ON learner_profiles (tier)",
                 "CREATE INDEX IF NOT EXISTS idx_email_accounts_learner ON email_accounts (learner_id)",
                 "CREATE INDEX IF NOT EXISTS idx_email_accounts_email ON email_accounts (email)",
+                "CREATE INDEX IF NOT EXISTS idx_email_accounts_confirmed ON email_accounts (confirmed)",
                 # Payments dashboard query speed
                 "CREATE INDEX IF NOT EXISTS idx_payments_status ON payments (status)",
                 "CREATE INDEX IF NOT EXISTS idx_payments_created ON payments (created_at DESC)",

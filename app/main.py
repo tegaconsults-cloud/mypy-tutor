@@ -1571,6 +1571,28 @@ async def get_certificate(
     clean_name = _re.sub(r'[<>&"\']', '', name).strip()[:80] or "Learner"
     cert_id    = get_cert_id(learner_id, level)
     log_certificate(cert_id, learner_id, clean_name, level)
+
+    # Look up the original issue date from the DB so regenerated certs
+    # always show the real issue date, not today's date.
+    _cert_issue_date: str | None = None
+    try:
+        from app.db import get_db as _gdb_cert
+        import psycopg2.extras as _pge_cert
+        with _gdb_cert() as _cert_conn:
+            with _cert_conn.cursor(cursor_factory=_pge_cert.RealDictCursor) as _cert_cur:
+                _cert_cur.execute(
+                    "SELECT issued_at FROM certificates WHERE cert_id=%s LIMIT 1",
+                    (cert_id,)
+                )
+                _cert_row = _cert_cur.fetchone()
+                if _cert_row and _cert_row.get("issued_at"):
+                    import datetime as _dt_cert
+                    _cert_issue_date = _dt_cert.datetime.fromtimestamp(
+                        float(_cert_row["issued_at"])
+                    ).strftime("%B %d, %Y")
+    except Exception:
+        pass  # non-fatal — falls back to today's date in generate_certificate_html
+
     # Non-blocking Supabase write — cert HTML is generated immediately
     threading.Thread(
         target=sb_save_certificate,
@@ -1581,6 +1603,7 @@ async def get_certificate(
         learner_name=clean_name,
         level=level,
         cert_id=cert_id,
+        issue_date=_cert_issue_date,
         course_name=profile.current_course or (profile.completed_projects[-1] if profile.completed_projects else None),
     )
 
@@ -1958,9 +1981,11 @@ async def next_course_step(learner_id: str,
         raise HTTPException(status_code=404, detail="Course not found.")
 
     profile  = get_profile(learner_id)
-    # Read the current step index BEFORE advancing — so on LLM failure the
-    # position is not lost (advance only happens on success below).
-    step_idx = profile.current_course_step   # 0-indexed: current_course_step starts at 1 after /course/start
+    # step_idx is 1-based (current_course_step starts at 1 after /course/start).
+    # steps[] is 0-indexed, so step_idx=1 correctly maps to steps[1] (the second step),
+    # since steps[0] was already delivered by /course/start.
+    # We read BEFORE advancing so LLM failures don't lose the user's position.
+    step_idx = profile.current_course_step
 
     if step_idx >= len(course.steps):
         # All steps already delivered — mark course complete
