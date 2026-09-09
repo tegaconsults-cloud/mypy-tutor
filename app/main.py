@@ -1605,6 +1605,7 @@ async def get_certificate(
         cert_id=cert_id,
         issue_date=_cert_issue_date,
         course_name=profile.current_course or (profile.completed_projects[-1] if profile.completed_projects else None),
+        completed_courses=list(profile.completed_projects) if profile.completed_projects else None,
     )
 
     # Send certificate email via email_service (non-blocking)

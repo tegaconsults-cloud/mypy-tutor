@@ -26,7 +26,7 @@ MPT_LOGO_URI = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAoKCgoKC
 CERT_CONFIGS = {
     "basic": {
         "title":       "Certificate of Completion",
-        "subtitle":    "Python Programming & Technology",
+        "subtitle":    "Python Programming Fundamentals",
         "credential":  "MyPy Tutor Basic Certificate",
         "color_primary":   "#1a3a8a",
         "color_accent":    "#3182ce",
@@ -84,6 +84,129 @@ CERT_CONFIGS = {
     },
 }
 
+# ---------------------------------------------------------------------------
+# Course → certificate subtitle and skills mapping
+# Allows each course to produce a proper, non-generic certificate title
+# rather than falling back to the level default "Python Programming..." text.
+# ---------------------------------------------------------------------------
+_COURSE_CERT_OVERRIDES: dict[str, dict] = {
+    # ── AI Automation ─────────────────────────────────────────────────────
+    "ai-automation": {
+        "subtitle": "AI Automation & Intelligent Workflow Engineering",
+        "description": (
+            "has successfully completed the AI Automation Programme at MyPy Tutor, "
+            "demonstrating expert proficiency in designing and deploying intelligent automation pipelines, "
+            "LLM-powered workflows, n8n/Zapier integrations, API-driven orchestration, "
+            "Python scripting for automation, testing, monitoring, and production deployment."
+        ),
+        "skills": ["AI Automation Fundamentals", "LLM-Powered Pipelines",
+                   "Python Scripting & APIs", "n8n / Zapier Integration",
+                   "Workflow Testing & Monitoring", "Production Deployment"],
+    },
+    # ── Machine Learning ──────────────────────────────────────────────────
+    "machine-learning": {
+        "subtitle": "Machine Learning & Predictive Analytics",
+        "description": (
+            "has successfully completed the Machine Learning Programme at MyPy Tutor, "
+            "demonstrating proficiency in supervised and unsupervised learning, "
+            "data preprocessing, model evaluation, scikit-learn, neural networks, "
+            "and end-to-end ML system deployment with FastAPI."
+        ),
+        "skills": ["Supervised & Unsupervised Learning", "Data Preprocessing",
+                   "Model Evaluation & Tuning", "scikit-learn & NumPy",
+                   "Neural Networks", "ML Deployment"],
+    },
+    # ── AI & Prompt Engineering ───────────────────────────────────────────
+    "ai-prompt-engineering": {
+        "subtitle": "AI & Prompt Engineering",
+        "description": (
+            "has successfully completed the AI & Prompt Engineering Programme at MyPy Tutor, "
+            "demonstrating proficiency in LLM mechanics, advanced prompting techniques, "
+            "RAG systems, AI agents, LLM API integration, ethical AI usage, "
+            "and building production-grade AI-powered Python applications."
+        ),
+        "skills": ["LLM Mechanics & Architecture", "Advanced Prompting Techniques",
+                   "RAG Systems", "AI Agents", "LLM API Integration",
+                   "Production AI Applications"],
+    },
+    # ── Data Science ──────────────────────────────────────────────────────
+    "data-science-python": {
+        "subtitle": "Python for Data Science & Analytics",
+        "description": (
+            "has successfully completed the Data Science Programme at MyPy Tutor, "
+            "demonstrating proficiency in NumPy, Pandas, Matplotlib, exploratory data analysis, "
+            "statistical reasoning, and building end-to-end data pipelines in Python."
+        ),
+        "skills": ["NumPy & Pandas", "Exploratory Data Analysis",
+                   "Data Visualisation", "Statistical Reasoning",
+                   "Data Pipelines", "Python for Analytics"],
+    },
+    # ── Web APIs & Databases ──────────────────────────────────────────────
+    "web-apis": {
+        "subtitle": "Python Web APIs & REST Services",
+        "description": (
+            "has successfully completed the Web APIs Programme at MyPy Tutor, "
+            "demonstrating proficiency in building, testing, and deploying REST APIs with FastAPI, "
+            "HTTP fundamentals, authentication, database integration, and API best practices."
+        ),
+        "skills": ["FastAPI & REST APIs", "HTTP & Authentication",
+                   "Database Integration", "API Testing", "Deployment", "OpenAPI"],
+    },
+    "python-databases": {
+        "subtitle": "Python Database Engineering",
+        "description": (
+            "has successfully completed the Python Databases Programme at MyPy Tutor, "
+            "demonstrating proficiency in SQL, PostgreSQL, SQLite, ORMs, "
+            "database design, query optimisation, and transaction management in Python."
+        ),
+        "skills": ["SQL & PostgreSQL", "SQLite", "ORM Frameworks",
+                   "Database Design", "Query Optimisation", "Transaction Management"],
+    },
+    # ── DSA ───────────────────────────────────────────────────────────────
+    "python-dsa": {
+        "subtitle": "Python Data Structures & Algorithms",
+        "description": (
+            "has successfully completed the Data Structures & Algorithms Programme at MyPy Tutor, "
+            "demonstrating proficiency in arrays, linked lists, stacks, queues, trees, graphs, "
+            "sorting algorithms, recursion, and algorithmic complexity analysis in Python."
+        ),
+        "skills": ["Arrays & Linked Lists", "Trees & Graphs",
+                   "Sorting & Searching", "Recursion", "Big-O Analysis", "Dynamic Programming"],
+    },
+    # ── NumPy / Pandas ────────────────────────────────────────────────────
+    "numpy-mastery": {
+        "subtitle": "NumPy Scientific Computing",
+        "description": (
+            "has successfully completed the NumPy Mastery Programme at MyPy Tutor, "
+            "demonstrating expert proficiency in array operations, broadcasting, "
+            "vectorisation, mathematical computing, and performance optimisation with NumPy."
+        ),
+        "skills": ["N-Dimensional Arrays", "Broadcasting", "Vectorisation",
+                   "Mathematical Operations", "Performance Optimisation", "Scientific Computing"],
+    },
+    "pandas-mastery": {
+        "subtitle": "Pandas Data Analysis & Engineering",
+        "description": (
+            "has successfully completed the Pandas Mastery Programme at MyPy Tutor, "
+            "demonstrating expert proficiency in DataFrames, data cleaning, "
+            "aggregation, merging, time series analysis, and data pipeline construction."
+        ),
+        "skills": ["DataFrame Operations", "Data Cleaning", "GroupBy & Aggregation",
+                   "Merging & Joining", "Time Series", "Data Pipelines"],
+    },
+    # ── Prompt Engineering (tier3) ────────────────────────────────────────
+    "prompt-engineering": {
+        "subtitle": "Prompt Engineering & AI Interaction",
+        "description": (
+            "has successfully completed the Prompt Engineering Programme at MyPy Tutor, "
+            "demonstrating proficiency in crafting effective prompts, chain-of-thought reasoning, "
+            "few-shot learning, role prompting, and practical AI interaction strategies."
+        ),
+        "skills": ["Prompt Design Principles", "Chain-of-Thought Reasoning",
+                   "Few-Shot Learning", "Role Prompting", "AI Interaction", "Output Control"],
+    },
+}
+
 
 # ---------------------------------------------------------------------------
 # HTML certificate generator
@@ -95,27 +218,61 @@ def generate_certificate_html(
     cert_id: str,
     issue_date: str | None = None,
     course_name: str | None = None,
+    completed_courses: list | None = None,
 ) -> str:
-    """Generate a premium printable HTML certificate. Three distinct designs."""
-    cfg = CERT_CONFIGS.get(level, CERT_CONFIGS["basic"])
+    """Generate a premium printable HTML certificate. Three distinct designs.
 
-    # Override subtitle and skills dynamically if a specific course is provided
-    if course_name:
-        try:
-            from app.courses import COURSES
-            course_obj = COURSES.get(course_name)
-            if course_obj:
-                # Build subtitle from course description
-                desc = course_obj.description
-                display = desc.split(" — ")[0] if " — " in desc else course_name.replace("-", " ").title()
-                cfg = dict(cfg)   # shallow copy so we don't mutate global
-                cfg["subtitle"] = display
-                # Build skills from course step titles (first 6 steps)
-                step_titles = [s.title for s in course_obj.steps[:6]]
-                if step_titles:
-                    cfg["skills"] = step_titles
-        except Exception:
-            pass  # fall back to level defaults
+    The subtitle, description and skills on the certificate reflect the
+    ACTUAL programme the learner completed — not a generic "Python Programming"
+    fallback.  Resolution order:
+
+    1. Explicit course_name (e.g. "ai-automation") → use _COURSE_CERT_OVERRIDES
+    2. completed_courses list → pick most advanced/specific course with an override
+    3. CERT_CONFIGS defaults for the level (Python-centric wording)
+    """
+    cfg = dict(CERT_CONFIGS.get(level, CERT_CONFIGS["basic"]))   # always copy
+
+    # ── Priority 1: explicit course_name ──────────────────────────────────
+    resolved_course = course_name
+
+    # ── Priority 2: pick best course from completed_courses list ──────────
+    if not resolved_course and completed_courses:
+        # Preference order: most specialised courses first
+        PREFERENCE_ORDER = [
+            "ai-automation", "machine-learning", "ai-prompt-engineering",
+            "data-science-python", "web-apis", "python-databases",
+            "numpy-mastery", "pandas-mastery", "python-dsa",
+            "prompt-engineering",
+        ]
+        for preferred in PREFERENCE_ORDER:
+            if preferred in (completed_courses or []):
+                resolved_course = preferred
+                break
+        # If none matched the preference list, use the last completed course
+        if not resolved_course and completed_courses:
+            resolved_course = completed_courses[-1]
+
+    # ── Apply course-specific override ────────────────────────────────────
+    if resolved_course:
+        override = _COURSE_CERT_OVERRIDES.get(resolved_course)
+        if override:
+            cfg["subtitle"]     = override["subtitle"]
+            cfg["description"]  = override["description"]
+            cfg["skills"]       = override["skills"]
+        else:
+            # No dedicated override — try to build subtitle from course description
+            try:
+                from app.courses import COURSES
+                course_obj = COURSES.get(resolved_course)
+                if course_obj:
+                    desc = course_obj.description
+                    display = desc.split(" — ")[0] if " — " in desc else resolved_course.replace("-", " ").title()
+                    cfg["subtitle"] = display
+                    step_titles = [s.title for s in course_obj.steps[:6]]
+                    if step_titles:
+                        cfg["skills"] = step_titles
+            except Exception:
+                pass  # fall back to level defaults
     date_str = issue_date or datetime.utcnow().strftime("%B %d, %Y")
     name_safe = html.escape(learner_name)
 
