@@ -33,7 +33,7 @@ load_dotenv()
 
 # ── Credentials ──────────────────────────────────────────────────────────────
 SOURCE_URL   = os.getenv("SOURCE_DATABASE_URL", "")
-DEST_URL     = os.getenv("SUPABASE_POSTGRES_URL", "")
+DEST_URL     = os.getenv("SUPABASE_POSTGRES_URL", "") or os.getenv("DATABASE_URL", "")
 
 if not SOURCE_URL:
     print("❌  SOURCE_DATABASE_URL is not set.")

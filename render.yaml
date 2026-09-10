@@ -56,9 +56,9 @@ services:
       - key: SENTRY_DSN
         sync: false          # Get from sentry.io → Project → Settings → Client Keys
       - key: DATABASE_URL
-        sync: false          # Set to the Internal Database URL from Render PostgreSQL dashboard
-                             # Format: postgresql://mypytutor_user:PASSWORD@<your-db-host>/mypytutor
-                             # Copy the Internal Database URL from: mypy-tutor-db → Connections → Internal Database URL
+        sync: false          # PRIMARY DATABASE — Supabase PostgreSQL Transaction Pooler
+                             # Format: postgresql://postgres.YOURREF:PASSWORD@aws-0-us-east-1.pooler.supabase.com:6543/postgres
+                             # Get it from: Supabase → Settings → Database → Connection string → URI → Transaction pooler (port 6543)
       # Bank transfer account details — set these in Render Dashboard → Environment (NOT here)
       # Storing financial details in render.yaml commits them to git history permanently.
       - key: BANK_NAME

@@ -1,11 +1,23 @@
 """
 PostgreSQL persistence layer for MyPy Tutor.
-Drop-in replacement for the previous SQLite layer — all function signatures
-are identical so nothing else in the codebase needs to change.
 
-Connection string is read from DATABASE_URL env var (Render PostgreSQL add-on).
+PRIMARY DATABASE: Supabase PostgreSQL (free tier, permanent — no expiry).
+All application data is stored here. The Supabase PostgREST / JS client
+(supabase_client.py) is used for a small subset of real-time features,
+but ALL structured data goes through this psycopg2 layer.
+
+Connection string is read from DATABASE_URL env var.
 Set DATABASE_URL in Render → mypy-tutor → Environment:
-  postgresql://mypytutor_user:PASSWORD@dpg-d9t11o6417fc73bj9aig-a/mypytutor
+
+  Supabase format (Transaction Pooler — port 6543):
+    postgresql://postgres.YOURREF:PASSWORD@aws-0-us-east-1.pooler.supabase.com:6543/postgres
+
+  How to get it:
+    Supabase dashboard → Settings → Database
+    → Connection string → URI → Transaction pooler (port 6543)
+
+IMPORTANT: Supabase's transaction pooler requires ?sslmode=require
+This is added automatically by db.py if not already present.
 """
 
 import os
@@ -19,12 +31,27 @@ logger = logging.getLogger(__name__)
 DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 # ---------------------------------------------------------------------------
+# Supabase requires sslmode=require on the transaction pooler.
+# Add it automatically so operators don't need to remember.
+# ---------------------------------------------------------------------------
+def _ensure_ssl(url: str) -> str:
+    """Append ?sslmode=require (or &sslmode=require) if not already present."""
+    if not url:
+        return url
+    if "sslmode" in url:
+        return url
+    sep = "&" if "?" in url else "?"
+    return url + sep + "sslmode=require"
+
+_DB_URL: str = _ensure_ssl(DATABASE_URL)
+
+# ---------------------------------------------------------------------------
 # Connection pool — reuse connections instead of open/close per query.
-# ThreadedConnectionPool is safe for multi-threaded WSGI/ASGI workers.
+# ThreadedConnectionPool is safe for multi-threaded ASGI workers.
 #
-# minconn=2  — keep 2 connections warm at all times (covers idle periods)
-# maxconn=10 — Render free PostgreSQL allows up to 25 concurrent connections;
-#              we cap at 10 so other services sharing the DB have headroom.
+# Supabase transaction pooler limits:
+#   Free tier: 15 concurrent connections (PgBouncer)
+#   We cap at 8 to stay safely under that limit.
 # ---------------------------------------------------------------------------
 _pool = None
 _pool_lock = threading.Lock()
@@ -38,17 +65,17 @@ def _get_pool():
     with _pool_lock:
         if _pool is not None:          # double-checked locking
             return _pool
-        if not DATABASE_URL:
+        if not _DB_URL:
             return None
         try:
             import psycopg2.pool
             _pool = psycopg2.pool.ThreadedConnectionPool(
-                minconn=2,
-                maxconn=10,
-                dsn=DATABASE_URL,
-                connect_timeout=10,   # fail fast if DB is unreachable (vs hanging 30s+)
+                minconn=1,
+                maxconn=8,             # Supabase free tier: 15 pooler connections; cap at 8
+                dsn=_DB_URL,
+                connect_timeout=15,    # Supabase pooler can take a moment on cold start
             )
-            logger.info("PostgreSQL connection pool initialised (min=2 max=10)")
+            logger.info("PostgreSQL connection pool initialised (min=1 max=8) → Supabase")
         except Exception as exc:
             logger.error("Failed to create connection pool: %s", exc)
             _pool = None
@@ -63,14 +90,17 @@ def _get_pool():
 def get_db():
     """Yield a PostgreSQL connection from the pool (auto-commit/rollback).
 
-    Falls back to a plain single connection if the pool is unavailable
-    (e.g. during init_db() before the pool exists, or in unit tests).
+    Falls back to a plain single connection if the pool is unavailable.
+    Primary database is Supabase PostgreSQL — set DATABASE_URL to the
+    Supabase Transaction Pooler connection string (port 6543).
     """
-    if not DATABASE_URL:
+    if not _DB_URL:
         raise RuntimeError(
-            "DATABASE_URL environment variable is not set. "
-            "Go to Render → mypy-tutor → Environment and add DATABASE_URL "
-            "with the Internal Database URL from the mypy-tutor-db PostgreSQL service."
+            "DATABASE_URL is not set. "
+            "Go to Render → mypy-tutor → Environment and set DATABASE_URL "
+            "to your Supabase Transaction Pooler connection string:\n"
+            "  postgresql://postgres.YOURREF:PASSWORD@aws-0-us-east-1.pooler.supabase.com:6543/postgres\n"
+            "Get it from: Supabase → Settings → Database → Connection string → URI"
         )
     import psycopg2
     import psycopg2.extras
@@ -109,7 +139,7 @@ def get_db():
             logger.warning("Pool.getconn() failed (%s) — falling back to direct connect", exc)
 
     if conn is None:
-        conn = psycopg2.connect(DATABASE_URL, connect_timeout=10)
+        conn = psycopg2.connect(_DB_URL, connect_timeout=15)
 
     conn.autocommit = False
     try:
@@ -141,7 +171,7 @@ def get_db():
 def init_db() -> None:
     """Create all tables and indexes. Safe to call multiple times (IF NOT EXISTS).
     Logs a warning and skips gracefully if DATABASE_URL is not configured yet."""
-    if not DATABASE_URL:
+    if not _DB_URL:
         logger.warning(
             "DATABASE_URL not set — skipping database initialisation. "
             "Set DATABASE_URL in Render → mypy-tutor → Environment to enable PostgreSQL."
