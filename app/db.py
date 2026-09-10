@@ -9,15 +9,13 @@ but ALL structured data goes through this psycopg2 layer.
 Connection string is read from DATABASE_URL env var.
 Set DATABASE_URL in Render → mypy-tutor → Environment:
 
-  Supabase format (Transaction Pooler — port 6543):
-    postgresql://postgres.YOURREF:PASSWORD@aws-0-us-east-1.pooler.supabase.com:6543/postgres
+  Direct connection (port 5432):
+    postgresql://postgres:PASSWORD@db.fzgllhmstxrshsfzcrqu.supabase.co:5432/postgres
 
   How to get it:
-    Supabase dashboard → Settings → Database
-    → Connection string → URI → Transaction pooler (port 6543)
+    Supabase dashboard → Settings → Database → Connection string → URI
 
-IMPORTANT: Supabase's transaction pooler requires ?sslmode=require
-This is added automatically by db.py if not already present.
+IMPORTANT: Supabase requires SSL. This is added automatically by db.py.
 """
 
 import os
