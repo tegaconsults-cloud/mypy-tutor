@@ -71,17 +71,24 @@ if not DEST_URL:
 # ── Connection test ───────────────────────────────────────────────────────────
 def test_connect(url: str, label: str):
     print(f"  Testing {label}...", end=" ", flush=True)
-    try:
-        conn = psycopg2.connect(url, connect_timeout=20)
-        cur  = conn.cursor()
-        cur.execute("SELECT version()")
-        ver = cur.fetchone()[0].split(",")[0]
-        conn.close()
-        print(f"✓  {ver}")
-        return True
-    except Exception as e:
-        print(f"❌  {e}")
-        return False
+    # Try with sslmode=require first, then without SSL (suspended Render DBs may reject SSL)
+    urls_to_try = [url]
+    if "sslmode" not in url:
+        urls_to_try.append(url + ("&" if "?" in url else "?") + "sslmode=disable")
+        urls_to_try.append(url + ("&" if "?" in url else "?") + "sslmode=allow")
+    for attempt_url in urls_to_try:
+        try:
+            conn = psycopg2.connect(attempt_url, connect_timeout=20)
+            cur  = conn.cursor()
+            cur.execute("SELECT version()")
+            ver = cur.fetchone()[0].split(",")[0]
+            conn.close()
+            print(f"✓  {ver}")
+            return attempt_url   # return the URL that worked
+        except Exception as e:
+            last_err = e
+    print(f"❌  {last_err}")
+    return None
 
 # ── Schema on destination ─────────────────────────────────────────────────────
 DEST_SCHEMA_STATEMENTS = [
@@ -348,23 +355,28 @@ def main():
 
     # ── Step 1: Connectivity tests ────────────────────────────────
     print("\n[1/4] Testing connections...")
-    src_ok  = test_connect(SOURCE_URL, "Render DB (source — suspended but readable)")
-    dest_ok = test_connect(DEST_URL,   "Supabase PostgreSQL (destination)")
+    src_url  = test_connect(SOURCE_URL, "Render DB (source — suspended but readable)")
+    dest_url = test_connect(DEST_URL,   "Supabase PostgreSQL (destination)")
 
-    if not src_ok:
+    if not src_url:
         print("\n❌  Cannot reach Render source DB.")
-        print("    The DB may be fully deleted, or the password/hostname is wrong.")
-        print("    Check: Render → mypy-tutor-db → Connect → External Database URL")
+        print("    Options:")
+        print("    1. The password in SOURCE_DATABASE_URL may be wrong — check .env")
+        print("    2. The Render DB is fully deleted (only 13 days after expiry)")
+        print("    3. Try the Render dashboard: mypy-tutor-db → Connect → External URL")
+        print("\n    If Render DB is gone, check Supabase for existing data:")
+        print("    Supabase → Table Editor → learner_profiles")
         sys.exit(1)
 
-    if not dest_ok:
+    if not dest_url:
         print("\n❌  Cannot reach Supabase destination DB.")
-        print("    Check: DATABASE_URL in your .env file")
+        print("    Check DATABASE_URL in your .env file:")
+        print("    Should be: postgresql://postgres:PASS@db.fzgllhmstxrshsfzcrqu.supabase.co:5432/postgres")
         sys.exit(1)
 
     # ── Step 2: Create schema on Supabase ─────────────────────────
     print("\n[2/4] Creating schema on Supabase (IF NOT EXISTS)...", end=" ", flush=True)
-    dst = psycopg2.connect(DEST_URL, connect_timeout=20)
+    dst = psycopg2.connect(dest_url, connect_timeout=20)
     dst.autocommit = False
     try:
         with dst.cursor() as cur:
@@ -385,7 +397,7 @@ def main():
 
     # ── Step 3: Migrate all tables ────────────────────────────────
     print("\n[3/4] Migrating tables...\n")
-    src = psycopg2.connect(SOURCE_URL, connect_timeout=20)
+    src = psycopg2.connect(src_url, connect_timeout=20)
     src.autocommit = True           # read-only — no transaction needed
     src_cur = src.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
