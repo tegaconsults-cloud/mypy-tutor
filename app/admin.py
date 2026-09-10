@@ -408,12 +408,13 @@ class CertRecord:
 _certs: list[CertRecord] = []
 
 
-def log_certificate(cert_id: str, learner_id: str, learner_name: str, level: str) -> None:
+def log_certificate(cert_id: str, learner_id: str, learner_name: str,
+                    level: str, programme: str = "") -> None:
     _certs.append(CertRecord(cert_id=cert_id, learner_id=learner_id,
                               learner_name=learner_name, level=level))
     try:
         from app.db import save_certificate_db
-        save_certificate_db(cert_id, learner_id, learner_name, level)
+        save_certificate_db(cert_id, learner_id, learner_name, level, programme)
     except Exception as e:
         logger.warning("log_certificate SQLite write failed: %s", e)
 

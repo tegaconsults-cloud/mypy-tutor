@@ -198,6 +198,7 @@ def init_db() -> None:
                 learner_id      TEXT NOT NULL,
                 learner_name    TEXT NOT NULL,
                 level           TEXT NOT NULL,
+                programme       TEXT DEFAULT '',
                 issued_at       DOUBLE PRECISION DEFAULT EXTRACT(EPOCH FROM NOW())
             )""")
 
@@ -491,6 +492,15 @@ def init_db() -> None:
             )""")
 
             # ── Indexes ──────────────────────────────────────────────────────
+            # ── Migrations: add columns to existing tables safely ─────────────
+            for migration_sql in [
+                "ALTER TABLE certificates ADD COLUMN IF NOT EXISTS programme TEXT DEFAULT ''",
+            ]:
+                try:
+                    cur.execute(migration_sql)
+                except Exception:
+                    pass  # column already exists or table doesn't exist yet — safe to ignore
+
             for sql in [
                 "CREATE INDEX IF NOT EXISTS idx_prompt_history_learner ON prompt_history (learner_id, id)",
                 "CREATE INDEX IF NOT EXISTS idx_quiz_attempts_learner ON quiz_attempts (learner_id)",
@@ -733,13 +743,16 @@ def get_activity_log(limit: int = 200) -> list[dict]:
 # Certificates
 # ---------------------------------------------------------------------------
 
-def save_certificate_db(cert_id: str, learner_id: str, learner_name: str, level: str) -> None:
+def save_certificate_db(cert_id: str, learner_id: str, learner_name: str,
+                        level: str, programme: str = "") -> None:
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO certificates (cert_id,learner_id,learner_name,level) "
-                "VALUES (%s,%s,%s,%s) ON CONFLICT(cert_id) DO NOTHING",
-                (cert_id, learner_id, learner_name, level)
+                "INSERT INTO certificates (cert_id,learner_id,learner_name,level,programme) "
+                "VALUES (%s,%s,%s,%s,%s) ON CONFLICT(cert_id) DO UPDATE SET "
+                "programme = CASE WHEN EXCLUDED.programme <> '' "
+                "THEN EXCLUDED.programme ELSE certificates.programme END",
+                (cert_id, learner_id, learner_name, level, programme or "")
             )
 
 

@@ -295,20 +295,19 @@ def send_course_completion_email(name: str, email: str, course_name: str,
 
 
 # ── 5. Certificate ────────────────────────────────────────────────────────────
-def send_certificate_email(name: str, email: str, cert_level: str, cert_id: str) -> None:
+def send_certificate_email(name: str, email: str, cert_level: str, cert_id: str,
+                           programme: str = "") -> None:
     first        = name.split()[0] if name else "Learner"
-    # cert view → FRONTEND_URL (custom domain, e.g. mypytutor.com.ng)
-    # verify endpoint → APP_URL  (backend API, e.g. mypytutor.onrender.com)
     frontend     = _frontend_url()
     api          = _app_url()
     verify_url   = api + "/verify/" + cert_id
-    # Certificate view link goes to the frontend so the user sees the branded site
     cert_url     = (frontend + "/certificate/" + cert_level
                     + "?name=" + name.replace(" ", "%20") + "&admin_view=false")
-    label        = cert_level.title()
+    # Use specific programme name if provided, otherwise fall back to level title
+    label        = programme if programme else cert_level.title() + " Python Programme"
     details = (
         "<strong>Certificate Details</strong><br/>"
-        "&#127885;&nbsp;Level: <strong>" + label + "</strong><br/>"
+        "&#127885;&nbsp;Programme: <strong>" + label + "</strong><br/>"
         "&#128218;&nbsp;Certificate ID: <code style='background:#e2e8f0;padding:2px 6px;"
         "border-radius:4px;'>" + cert_id + "</code><br/>"
         "&#9989;&nbsp;Issuer: Teamsamikoko Global Academy (Reg No: 3508656)<br/>"
@@ -318,9 +317,9 @@ def send_certificate_email(name: str, email: str, cert_level: str, cert_id: str)
     body = (
         "<p style='color:#1e293b;margin:0 0 12px;'>Dear <strong>" + first + "</strong>,</p>"
         "<h2 style='color:" + PRIMARY + ";font-size:1.25rem;margin:0 0 8px;'>"
-        "&#127891; Your " + label + " Certificate is Ready!</h2>"
+        "&#127891; Your Certificate is Ready!</h2>"
         "<p style='color:#475569;line-height:1.7;margin:0 0 16px;'>"
-        "Congratulations on completing the <strong>" + label + " Python Programme</strong> at "
+        "Congratulations on completing the <strong>" + label + "</strong> programme at "
         "MyPy Tutor. Your certificate, issued by <strong>Teamsamikoko Global Academy</strong>, "
         "is now available.</p>"
         + _box(details, bg="#f0fdf4", border="#16A34A")

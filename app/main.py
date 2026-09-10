@@ -1570,7 +1570,32 @@ async def get_certificate(
     import re as _re
     clean_name = _re.sub(r'[<>&"\']', '', name).strip()[:80] or "Learner"
     cert_id    = get_cert_id(learner_id, level)
-    log_certificate(cert_id, learner_id, clean_name, level)
+
+    # Derive programme label from the most relevant completed course so the
+    # certificate, verification page, and email all say the right thing.
+    from app.certificates import _COURSE_CERT_OVERRIDES
+    _completed_list = list(profile.completed_projects) if profile.completed_projects else []
+    _explicit_course = profile.current_course or (_completed_list[-1] if _completed_list else None)
+    _PREF = ["ai-automation","machine-learning","ai-prompt-engineering",
+             "data-science-python","web-apis","python-databases",
+             "numpy-mastery","pandas-mastery","python-dsa","prompt-engineering"]
+    _best_course: str | None = None
+    if _explicit_course and _explicit_course in _COURSE_CERT_OVERRIDES:
+        _best_course = _explicit_course
+    if not _best_course:
+        for _p in _PREF:
+            if _p in _completed_list:
+                _best_course = _p
+                break
+    _programme_label: str = ""
+    if _best_course and _best_course in _COURSE_CERT_OVERRIDES:
+        _programme_label = _COURSE_CERT_OVERRIDES[_best_course]["subtitle"]
+    else:
+        # Fall back to the level default subtitle from CERT_CONFIGS
+        from app.certificates import CERT_CONFIGS as _CC
+        _programme_label = _CC.get(level, _CC["basic"])["subtitle"]
+
+    log_certificate(cert_id, learner_id, clean_name, level, _programme_label)
 
     # Look up the original issue date from the DB so regenerated certs
     # always show the real issue date, not today's date.
@@ -1604,8 +1629,8 @@ async def get_certificate(
         level=level,
         cert_id=cert_id,
         issue_date=_cert_issue_date,
-        course_name=profile.current_course or (profile.completed_projects[-1] if profile.completed_projects else None),
-        completed_courses=list(profile.completed_projects) if profile.completed_projects else None,
+        course_name=_best_course,
+        completed_courses=_completed_list or None,
     )
 
     # Send certificate email via email_service (non-blocking)
@@ -1623,7 +1648,8 @@ async def get_certificate(
             if _edu:
                 _email_for_cert = _edu.get("email", "")
         if _email_for_cert:
-            _svc_cert(clean_name, _email_for_cert, level, cert_id)
+            _svc_cert(clean_name, _email_for_cert, level, cert_id,
+                      programme=_programme_label)
     except Exception as _cert_email_exc:
         logger.warning("Certificate email dispatch failed (non-fatal): %s", _cert_email_exc)
 
@@ -1691,7 +1717,10 @@ async def verify_certificate(cert_id: str) -> HTMLResponse:
     except Exception:
         issued_str = str(record.get("issued_at", ""))
 
-    level_label  = str(record.get("level", "")).title()
+    # Use the stored programme label (specific course name) if available,
+    # otherwise fall back to level title (e.g. "Advanced")
+    stored_programme = (record.get("programme") or "").strip()
+    level_label  = stored_programme if stored_programme else str(record.get("level", "")).title()
     learner_name = record.get("learner_name", "Learner")
 
     html = _load_verify_tpl("certificate-verified.html", {
