@@ -5825,6 +5825,42 @@ async def tts_voices() -> dict:
 # ---------------------------------------------------------------------------
 
 # Serve icons, manifest, premium.css, sw.js etc. under /static/
+@app.get("/debug/db", include_in_schema=False)
+async def debug_db() -> dict:
+    """Temporary diagnostic endpoint — shows exact DB connection error."""
+    import os as _os_dbg
+    from app.db import _get_db_url
+    db_url = _get_db_url()
+    masked = db_url[:30] + "***" + db_url[-20:] if db_url else "(not set)"
+    try:
+        import psycopg2
+        for mode in ("require", "allow", "disable"):
+            try:
+                import re as _re_dbg
+                test_url = db_url
+                if "sslmode=" in test_url:
+                    test_url = _re_dbg.sub(r'sslmode=\w+', f'sslmode={mode}', test_url)
+                else:
+                    sep = "&" if "?" in test_url else "?"
+                    test_url = test_url + sep + f"sslmode={mode}"
+                conn = psycopg2.connect(test_url, connect_timeout=15)
+                cur = conn.cursor()
+                cur.execute("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='public'")
+                table_count = cur.fetchone()[0]
+                conn.close()
+                return {
+                    "status": "connected",
+                    "ssl_mode": mode,
+                    "url_prefix": masked,
+                    "public_tables": table_count,
+                }
+            except Exception as e:
+                last_err = str(e)
+        return {"status": "failed", "error": last_err, "url_prefix": masked}
+    except Exception as e:
+        return {"status": "error", "error": str(e), "url_prefix": masked}
+
+
 app.mount("/static", StaticFiles(directory="static"), name="static_assets")
 
 
