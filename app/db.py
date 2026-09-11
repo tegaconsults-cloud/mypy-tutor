@@ -574,20 +574,35 @@ def init_db() -> None:
                 # Certificate verification
                 "CREATE INDEX IF NOT EXISTS idx_certificates_learner ON certificates (learner_id)",
             ]:
-                cur.execute(sql)
+                try:
+                    cur.execute(sql)
+                except Exception as _idx_exc:
+                    logger.debug("Index creation skipped (non-fatal): %s — %s", sql[:60], _idx_exc)
 
             logger.info("PostgreSQL database initialised")
 
             # ── Safe column migrations for existing databases ─────────────
-            # These are no-ops if the column already exists.
+            # These are no-ops if the column already exists (ADD COLUMN IF NOT EXISTS).
+            # Handles schema differences between fresh Supabase and existing deployments.
             _col_migrations = [
-                "ALTER TABLE access_codes ADD COLUMN IF NOT EXISTS discount_pct INTEGER DEFAULT 0",
+                "ALTER TABLE access_codes   ADD COLUMN IF NOT EXISTS discount_pct INTEGER DEFAULT 0",
+                "ALTER TABLE certificates   ADD COLUMN IF NOT EXISTS programme TEXT DEFAULT ''",
+                "ALTER TABLE payments       ADD COLUMN IF NOT EXISTS user_email TEXT DEFAULT ''",
+                "ALTER TABLE payments       ADD COLUMN IF NOT EXISTS user_name  TEXT DEFAULT ''",
+                "ALTER TABLE payments       ADD COLUMN IF NOT EXISTS currency   TEXT DEFAULT 'NGN'",
+                "ALTER TABLE payments       ADD COLUMN IF NOT EXISTS notes      TEXT DEFAULT ''",
+                "ALTER TABLE email_accounts ADD COLUMN IF NOT EXISTS name TEXT DEFAULT ''",
+                "ALTER TABLE learner_profiles ADD COLUMN IF NOT EXISTS prompt_plan TEXT DEFAULT ''",
+                # Migrate data from old Supabase column names to new ones
+                "UPDATE payments       SET user_email=email     WHERE user_email='' AND email    IS NOT NULL AND email    <> ''",
+                "UPDATE payments       SET user_name=name       WHERE user_name=''  AND name     IS NOT NULL AND name     <> ''",
+                "UPDATE email_accounts SET name=full_name       WHERE name=''       AND full_name IS NOT NULL AND full_name <> ''",
             ]
             for _sql in _col_migrations:
                 try:
                     cur.execute(_sql)
                 except Exception:
-                    pass  # column already exists or unsupported syntax
+                    pass  # column already exists, table missing, or not applicable
 
     except Exception as _init_exc:
         logger.error(
