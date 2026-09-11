@@ -27,8 +27,9 @@ logger = logging.getLogger(__name__)
 # after module import (e.g. some WSGI launchers inject env vars late).
 # ---------------------------------------------------------------------------
 def _get_db_url() -> str:
-    """Return the database URL with sslmode appended if missing."""
-    url = os.getenv("DATABASE_URL", "")
+    """Return the database URL with sslmode appended if missing.
+    Strips whitespace/newlines that can sneak in from copy-paste in Render dashboard."""
+    url = os.getenv("DATABASE_URL", "").strip()
     if not url:
         return ""
     if "sslmode" in url:
