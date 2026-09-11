@@ -56,9 +56,10 @@ services:
       - key: SENTRY_DSN
         sync: false          # Get from sentry.io → Project → Settings → Client Keys
       - key: DATABASE_URL
-        sync: false          # PRIMARY DATABASE — Supabase PostgreSQL
-                             # Format: postgresql://postgres:PASSWORD@db.fzgllhmstxrshsfzcrqu.supabase.co:5432/postgres
-                             # Get it from: Supabase → Settings → Database → Connection string → URI → Direct connection
+        sync: false          # PRIMARY DATABASE — Supabase PostgreSQL Session Pooler (IPv4)
+                             # Format: postgresql://postgres.YOURREF:PASSWORD@aws-0-eu-west-1.pooler.supabase.com:5432/postgres
+                             # Get from: Supabase → Settings → Database → Connection string → URI → Session pooler
+                             # IMPORTANT: Use Session Pooler NOT direct connection (direct is IPv6, Render blocks IPv6)
       # Bank transfer account details — set these in Render Dashboard → Environment (NOT here)
       # Storing financial details in render.yaml commits them to git history permanently.
       - key: BANK_NAME

@@ -1,21 +1,16 @@
 """
 PostgreSQL persistence layer for MyPy Tutor.
 
-PRIMARY DATABASE: Supabase PostgreSQL (free tier, permanent — no expiry).
-All application data is stored here. The Supabase PostgREST / JS client
-(supabase_client.py) is used for a small subset of real-time features,
-but ALL structured data goes through this psycopg2 layer.
+PRIMARY DATABASE: Supabase PostgreSQL Session Pooler (IPv4, permanent, free tier).
 
-Connection string is read from DATABASE_URL env var.
+CRITICAL: Use the SESSION POOLER URL, NOT the direct connection.
+- Direct connection (db.YOURREF.supabase.co) uses IPv6 which Render cannot reach.
+- Session Pooler (aws-0-REGION.pooler.supabase.com) uses IPv4 and works from Render.
+
 Set DATABASE_URL in Render → mypy-tutor → Environment:
+  postgresql://postgres.fzgllhmstxrshsfzcrqu:PASSWORD@aws-0-eu-west-1.pooler.supabase.com:5432/postgres
 
-  Direct connection (port 5432):
-    postgresql://postgres:PASSWORD@db.fzgllhmstxrshsfzcrqu.supabase.co:5432/postgres
-
-  How to get it:
-    Supabase dashboard → Settings → Database → Connection string → URI
-
-IMPORTANT: Supabase requires SSL. This is added automatically by db.py.
+Get it from: Supabase → Settings → Database → Connection string → URI → Session pooler
 """
 
 import os
