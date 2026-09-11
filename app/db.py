@@ -26,30 +26,26 @@ from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
 
-DATABASE_URL = os.getenv("DATABASE_URL", "")
-
 # ---------------------------------------------------------------------------
-# Supabase requires sslmode=require on the transaction pooler.
-# Add it automatically so operators don't need to remember.
+# _get_db_url() — read DATABASE_URL lazily at connection time.
+# This ensures the correct value is always used even if the env var is set
+# after module import (e.g. some WSGI launchers inject env vars late).
 # ---------------------------------------------------------------------------
-def _ensure_ssl(url: str) -> str:
-    """Append ?sslmode=require (or &sslmode=require) if not already present."""
+def _get_db_url() -> str:
+    """Return the database URL with sslmode appended if missing."""
+    url = os.getenv("DATABASE_URL", "")
     if not url:
-        return url
+        return ""
     if "sslmode" in url:
         return url
     sep = "&" if "?" in url else "?"
     return url + sep + "sslmode=require"
 
-_DB_URL: str = _ensure_ssl(DATABASE_URL)
+# Keep a module-level reference updated on first real use
+DATABASE_URL = os.getenv("DATABASE_URL", "")
 
 # ---------------------------------------------------------------------------
-# Connection pool — reuse connections instead of open/close per query.
-# ThreadedConnectionPool is safe for multi-threaded ASGI workers.
-#
-# Supabase transaction pooler limits:
-#   Free tier: 15 concurrent connections (PgBouncer)
-#   We cap at 8 to stay safely under that limit.
+# Connection pool
 # ---------------------------------------------------------------------------
 _pool = None
 _pool_lock = threading.Lock()
@@ -61,22 +57,36 @@ def _get_pool():
     if _pool is not None:
         return _pool
     with _pool_lock:
-        if _pool is not None:          # double-checked locking
+        if _pool is not None:
             return _pool
-        if not _DB_URL:
+        db_url = _get_db_url()
+        if not db_url:
             return None
-        try:
-            import psycopg2.pool
-            _pool = psycopg2.pool.ThreadedConnectionPool(
-                minconn=1,
-                maxconn=8,             # Supabase free tier: 15 pooler connections; cap at 8
-                dsn=_DB_URL,
-                connect_timeout=15,    # Supabase pooler can take a moment on cold start
-            )
-            logger.info("PostgreSQL connection pool initialised (min=1 max=8) → Supabase")
-        except Exception as exc:
-            logger.error("Failed to create connection pool: %s", exc)
-            _pool = None
+        # Try SSL modes in order: require → allow → disable
+        # Supabase direct connection (port 5432) works with sslmode=require
+        # on most Render regions; fall back if SSL handshake fails.
+        for ssl_mode in ("require", "allow", "disable"):
+            try:
+                import psycopg2.pool
+                test_url = db_url
+                if "sslmode=" in test_url:
+                    import re as _re
+                    test_url = _re.sub(r'sslmode=\w+', f'sslmode={ssl_mode}', test_url)
+                else:
+                    sep = "&" if "?" in test_url else "?"
+                    test_url = test_url + sep + f"sslmode={ssl_mode}"
+                _pool = psycopg2.pool.ThreadedConnectionPool(
+                    minconn=1,
+                    maxconn=8,
+                    dsn=test_url,
+                    connect_timeout=15,
+                )
+                logger.info("PostgreSQL pool initialised (sslmode=%s, min=1 max=8)", ssl_mode)
+                return _pool
+            except Exception as exc:
+                logger.warning("Pool init failed with sslmode=%s: %s", ssl_mode, exc)
+                _pool = None
+        logger.error("All SSL modes failed — cannot create connection pool")
         return _pool
 
 
@@ -89,16 +99,14 @@ def get_db():
     """Yield a PostgreSQL connection from the pool (auto-commit/rollback).
 
     Falls back to a plain single connection if the pool is unavailable.
-    Primary database is Supabase PostgreSQL — set DATABASE_URL to the
-    Supabase Transaction Pooler connection string (port 6543).
+    Tries multiple SSL modes automatically to handle Supabase direct connections.
     """
-    if not _DB_URL:
+    db_url = _get_db_url()
+    if not db_url:
         raise RuntimeError(
             "DATABASE_URL is not set. "
-            "Go to Render → mypy-tutor → Environment and set DATABASE_URL "
-            "to your Supabase Transaction Pooler connection string:\n"
-            "  postgresql://postgres.YOURREF:PASSWORD@aws-0-us-east-1.pooler.supabase.com:6543/postgres\n"
-            "Get it from: Supabase → Settings → Database → Connection string → URI"
+            "Go to Render → mypy-tutor → Environment and set DATABASE_URL.\n"
+            "Format: postgresql://postgres:PASSWORD@db.YOURREF.supabase.co:5432/postgres"
         )
     import psycopg2
     import psycopg2.extras
@@ -109,9 +117,6 @@ def get_db():
 
     if pool:
         try:
-            # getconn() can block indefinitely if all connections are in use.
-            # Wrap with a 5s timeout using a background thread so the request
-            # fails fast instead of hanging the Render worker.
             import threading as _pt
             _conn_holder: list = [None]
             _conn_exc:    list = [None]
@@ -124,20 +129,36 @@ def get_db():
 
             _t = _pt.Thread(target=_fetch, daemon=True)
             _t.start()
-            _t.join(timeout=5)   # wait at most 5s for a pool slot
+            _t.join(timeout=8)
 
             if _conn_holder[0] is not None:
                 conn      = _conn_holder[0]
                 from_pool = True
             elif _conn_exc[0] is not None:
-                logger.warning("Pool.getconn() error (%s) — falling back to direct connect", _conn_exc[0])
+                logger.warning("Pool.getconn() error (%s) — direct connect fallback", _conn_exc[0])
             else:
-                logger.warning("Pool.getconn() timed out after 5s — falling back to direct connect")
+                logger.warning("Pool.getconn() timed out — direct connect fallback")
         except Exception as exc:
-            logger.warning("Pool.getconn() failed (%s) — falling back to direct connect", exc)
+            logger.warning("Pool.getconn() failed (%s) — direct connect fallback", exc)
 
     if conn is None:
-        conn = psycopg2.connect(_DB_URL, connect_timeout=15)
+        # Try multiple SSL modes for direct connection
+        import re as _re2
+        last_exc = None
+        for ssl_mode in ("require", "allow", "disable"):
+            try:
+                test_url = db_url
+                if "sslmode=" in test_url:
+                    test_url = _re2.sub(r'sslmode=\w+', f'sslmode={ssl_mode}', test_url)
+                else:
+                    sep = "&" if "?" in test_url else "?"
+                    test_url = test_url + sep + f"sslmode={ssl_mode}"
+                conn = psycopg2.connect(test_url, connect_timeout=15)
+                break
+            except Exception as e:
+                last_exc = e
+        if conn is None:
+            raise RuntimeError(f"Cannot connect to database: {last_exc}")
 
     conn.autocommit = False
     try:
@@ -169,7 +190,7 @@ def get_db():
 def init_db() -> None:
     """Create all tables and indexes. Safe to call multiple times (IF NOT EXISTS).
     Logs a warning and skips gracefully if DATABASE_URL is not configured yet."""
-    if not _DB_URL:
+    if not _get_db_url():
         logger.warning(
             "DATABASE_URL not set — skipping database initialisation. "
             "Set DATABASE_URL in Render → mypy-tutor → Environment to enable PostgreSQL."
