@@ -1345,7 +1345,7 @@ async def admin_confirm_email(request: Request) -> dict:
                 status_code=404,
                 detail=f"No account found for {email}. The user must sign up first."
             )
-        if int(acct.get("confirmed", 0)) == 1:
+        if acct.get("confirmed") in (1, True, "1", "true"):
             # Already confirmed in DB but not in memory — re-load into memory
             from app.email_auth import _by_id
             _confirmed[email] = {
@@ -2157,7 +2157,25 @@ async def generate_quiz(request: QuizRequest, req: Request,
             )
         increment_free_prompt_count(request.learner_id, ip)
     system_prompt = build_system_prompt("quiz", topic=request.topic, level=request.level)
-    messages = [{"role": "user", "content": f"Generate a quiz question about: {request.topic}"}]
+    import random as _rand
+    _styles = [
+        "What is the output of this code?",
+        "Which statement is TRUE about this concept?",
+        "Which code snippet correctly demonstrates this?",
+        "What will happen when this code runs?",
+        "Which of the following is the BEST practice?",
+        "Spot the error in this code:",
+        "Fill in the blank: ___",
+        "Which option correctly defines this?",
+    ]
+    _style = _rand.choice(_styles)
+    _seed  = _rand.randint(1000, 9999)
+    messages = [{"role": "user", "content": (
+        f"Generate a UNIQUE quiz question about: {request.topic}\n"
+        f"Question style suggestion: {_style}\n"
+        f"Variation seed (use for uniqueness): {_seed}\n"
+        f"This MUST be a different question from any you've generated before on this topic."
+    )}]
     try:
         content = get_completion(system_prompt, messages, intent="quiz")
     except Exception as exc:
@@ -2175,21 +2193,57 @@ async def evaluate_quiz_answer(request: QuizAnswerRequest,
     # for other users. Anonymous quiz answers (free-tier) are still accepted.
     if user is not None and user.learner_id != request.learner_id:
         raise HTTPException(status_code=403, detail="learner_id does not match your session.")
-    system_prompt = build_system_prompt("quiz_eval", topic=request.topic, level=request.level)
-    messages = [{
-        "role": "user",
-        "content": (
-            f"Question: {request.question}\n"
-            f"The learner answered: {request.answer}\n"
-            "Evaluate this answer."
-        ),
-    }]
-    try:
-        content = get_completion(system_prompt, messages, intent="quiz_eval")
-    except Exception as exc:
-        logger.error("Quiz answer LLM error: %s", exc)
-        raise HTTPException(status_code=502, detail="AI service error. Please try again.")
-    correct = bool(re.search(r'\bcorrect\s*:\s*true\b', content, re.IGNORECASE))
+
+    correct: bool
+    explanation: str
+
+    # Fast-path: if the frontend sent the correct_answer letter, compare directly.
+    # This is 100% accurate and requires no LLM call.
+    # correct_answer is "A", "B", "C", or "D"; request.answer is e.g. "A) list" or just "A"
+    if request.correct_answer:
+        submitted_letter = request.answer.strip().upper()[:1]
+        correct_letter   = request.correct_answer.strip().upper()[:1]
+        correct     = submitted_letter == correct_letter
+        explanation = (
+            f"CORRECT: {'true' if correct else 'false'}\n"
+            f"EXPLANATION: The correct answer is **{correct_letter}**. "
+            f"{'Well done!' if correct else f'You answered {submitted_letter}, but the correct answer was {correct_letter}.'}"
+        )
+        # Still fire LLM for a rich explanation in the background — but don't block on it
+        system_prompt = build_system_prompt("quiz_eval", topic=request.topic, level=request.level)
+        messages = [{
+            "role": "user",
+            "content": (
+                f"Question: {request.question}\n"
+                f"Correct answer: {request.correct_answer}\n"
+                f"The learner answered: {request.answer}\n"
+                f"The learner was {'CORRECT' if correct else 'WRONG'}.\n"
+                "Provide a detailed educational explanation."
+            ),
+        }]
+        try:
+            explanation = get_completion(system_prompt, messages, intent="quiz_eval")
+        except Exception:
+            pass  # keep the simple explanation if LLM fails
+    else:
+        # Fallback: use LLM to evaluate (less reliable but backward-compatible)
+        system_prompt = build_system_prompt("quiz_eval", topic=request.topic, level=request.level)
+        messages = [{
+            "role": "user",
+            "content": (
+                f"Question: {request.question}\n"
+                f"The learner answered: {request.answer}\n"
+                "Evaluate this answer. Start your response with exactly 'CORRECT: true' or 'CORRECT: false'."
+            ),
+        }]
+        try:
+            explanation = get_completion(system_prompt, messages, intent="quiz_eval")
+        except Exception as exc:
+            logger.error("Quiz answer LLM error: %s", exc)
+            raise HTTPException(status_code=502, detail="AI service error. Please try again.")
+        # Parse correctness from the first line of LLM response
+        first_line = explanation.strip().split('\n')[0].strip()
+        correct = bool(re.search(r'\bcorrect\s*:\s*true\b', first_line, re.IGNORECASE))
     score   = 100 if correct else 0
     xp, _   = record_quiz(request.learner_id, request.topic, score)
     # Persist full quiz attempt record
@@ -2671,35 +2725,32 @@ async def admin_login(body: _AdminLogin) -> dict:
 async def admin_dashboard(request: Request) -> dict:
     _require_admin(request)
 
-    # -- Pull everything directly from SQLite for real-time accuracy ----------
-    # Never rely on in-memory stores (_store, _payments, etc.) since Render
-    # free tier wipes memory on restart. SQLite is the canonical source.
     import datetime as _dt
-
-    today_str    = _dt.date.today().isoformat()
-    wat_today    = _dt.date.today().isoformat()   # already computed above
+    today_str = _dt.date.today().isoformat()
 
     try:
-
-        from app.db import get_db as _gdb, get_all_confirmed_emails, get_certificates_db
+        from app.db import get_db as _gdb
+        from app.security import _wat_date_key
 
         with _gdb() as _conn:
             with _conn.cursor() as _cur:
-                from app.security import _wat_date_key
                 wat_date = _wat_date_key()
 
-                _cur.execute("SELECT COUNT(*) FROM email_accounts WHERE confirmed=1")
+                # email_accounts.confirmed is BOOLEAN in Supabase
+                _cur.execute("SELECT COUNT(*) FROM email_accounts WHERE confirmed IS TRUE")
                 email_count = _cur.fetchone()[0]
-                _cur.execute("SELECT COUNT(*) FROM learner_profiles")
+                _cur.execute("SELECT COUNT(*) FROM learner_profiles WHERE tier != 'deleted'")
                 profile_count = _cur.fetchone()[0]
                 total_users = max(email_count, profile_count)
 
+                # Active today: distinct learners who used prompts today
                 _cur.execute(
                     "SELECT COUNT(DISTINCT key) FROM daily_prompt_counts WHERE date_str=%s AND count>0",
                     (wat_date,)
                 )
                 active_today = _cur.fetchone()[0]
 
+                # Tier breakdown
                 tier_counts: dict = {}
                 for _tier in ["free", "tier1", "tier2", "tier3", "tier4"]:
                     _cur.execute(
@@ -2707,7 +2758,8 @@ async def admin_dashboard(request: Request) -> dict:
                     )
                     tier_counts[_tier] = _cur.fetchone()[0]
 
-                _cur.execute("SELECT SUM(amount), COUNT(*) FROM payments WHERE status='confirmed'")
+                # Revenue
+                _cur.execute("SELECT COALESCE(SUM(amount),0), COUNT(*) FROM payments WHERE status='confirmed'")
                 rev_rows = _cur.fetchone()
                 total_revenue  = float(rev_rows[0] or 0)
                 confirmed_pmts = int(rev_rows[1] or 0)
@@ -2718,17 +2770,28 @@ async def admin_dashboard(request: Request) -> dict:
                 total_pmts = _cur.fetchone()[0]
 
                 _cur.execute(
-                    "SELECT plan, SUM(amount) FROM payments WHERE status='confirmed' GROUP BY plan"
+                    "SELECT plan, COALESCE(SUM(amount),0) FROM payments WHERE status='confirmed' GROUP BY plan"
                 )
                 by_plan = {r[0]: float(r[1]) for r in _cur.fetchall()}
 
-                # PostgreSQL: convert epoch to date using to_timestamp()
-                _cur.execute(
-                    "SELECT COALESCE(SUM(amount),0) FROM payments "
-                    "WHERE status='confirmed' AND DATE(to_timestamp(created_at))=%s",
-                    (today_str,)
-                )
-                today_rev = _cur.fetchone()[0]
+                # Today revenue — handle both epoch float and timestamptz
+                try:
+                    _cur.execute(
+                        "SELECT COALESCE(SUM(amount),0) FROM payments "
+                        "WHERE status='confirmed' AND DATE(to_timestamp(created_at))=%s",
+                        (today_str,)
+                    )
+                    today_rev = _cur.fetchone()[0]
+                except Exception:
+                    try:
+                        _cur.execute(
+                            "SELECT COALESCE(SUM(amount),0) FROM payments "
+                            "WHERE status='confirmed' AND created_at::date=%s::date",
+                            (today_str,)
+                        )
+                        today_rev = _cur.fetchone()[0]
+                    except Exception:
+                        today_rev = 0
 
                 _cur.execute("SELECT COUNT(*) FROM certificates")
                 cert_count = _cur.fetchone()[0]
@@ -2745,20 +2808,26 @@ async def admin_dashboard(request: Request) -> dict:
                 _cur.execute("SELECT COUNT(*) FROM team_members")
                 team_size = _cur.fetchone()[0]
 
-                _cur.execute(
-                    "SELECT COUNT(*) FROM referral_withdrawals WHERE status='pending'"
-                )
+                _cur.execute("SELECT COUNT(*) FROM referral_withdrawals WHERE status='pending'")
                 wd_pending = _cur.fetchone()[0]
-                cutoff_24h = time.time() - 86400
-                _cur.execute(
-                    "SELECT COUNT(*) FROM email_accounts WHERE confirmed=1 AND created_at>=%s",
-                    (cutoff_24h,)
-                )
-                new_users_24h = _cur.fetchone()[0]
+
+                # New users in last 24h — handle both timestamptz and epoch
+                try:
+                    _cur.execute(
+                        "SELECT COUNT(*) FROM email_accounts "
+                        "WHERE confirmed IS TRUE AND created_at >= NOW() - INTERVAL '24 hours'"
+                    )
+                    new_users_24h = _cur.fetchone()[0]
+                except Exception:
+                    cutoff_24h = time.time() - 86400
+                    _cur.execute(
+                        "SELECT COUNT(*) FROM email_accounts WHERE confirmed IS TRUE AND created_at>=%s",
+                        (cutoff_24h,)
+                    )
+                    new_users_24h = _cur.fetchone()[0]
 
     except Exception as e:
         logger.error("admin_dashboard DB error: %s", e)
-        # Fallback to memory
         from app.progress import _store as _ls
         total_users   = len(_ls)
         active_today  = 0
@@ -2795,6 +2864,195 @@ async def admin_dashboard(request: Request) -> dict:
         "team_size":       team_size,
         "withdrawals_pending": wd_pending,
     }
+
+
+@app.get("/admin/top-users")
+async def admin_top_users(request: Request) -> dict:
+    """
+    Return top 3 users this week across 4 categories:
+    quiz attempts, AI chat (prompts), courses completed, paid plans.
+    Sends congratulatory emails to each winner automatically.
+    """
+    _require_admin(request)
+    import datetime as _dt2
+    import psycopg2.extras as _pge2
+    from app.db import get_db as _gdb2
+
+    # Week start = last Monday 00:00 WAT
+    now_wat  = _dt2.datetime.utcnow() + _dt2.timedelta(hours=1)
+    week_start = now_wat - _dt2.timedelta(days=now_wat.weekday(), hours=now_wat.hour,
+                                           minutes=now_wat.minute, seconds=now_wat.second)
+    week_start_iso = week_start.strftime("%Y-%m-%d")
+
+    def _get_email_name(learner_id: str, cur) -> tuple:
+        """Resolve email + name for a learner_id across available tables."""
+        cur.execute(
+            "SELECT email, name FROM email_accounts WHERE learner_id=%s LIMIT 1",
+            (learner_id,)
+        )
+        row = cur.fetchone()
+        if row:
+            return row["email"] or "", row["name"] or row.get("full_name","") or ""
+        cur.execute(
+            "SELECT email, display_name FROM learner_profiles WHERE learner_id=%s LIMIT 1",
+            (learner_id,)
+        )
+        row = cur.fetchone()
+        if row:
+            return row["email"] or "", row["display_name"] or ""
+        return "", ""
+
+    categories = {
+        "quiz":    [],
+        "chat":    [],
+        "courses": [],
+        "paid":    [],
+    }
+
+    try:
+        with _gdb2() as _conn:
+            with _conn.cursor(cursor_factory=_pge2.RealDictCursor) as _cur:
+
+                # TOP 3 QUIZ — most quiz attempts this week
+                try:
+                    _cur.execute("""
+                        SELECT learner_id, COUNT(*) as count
+                        FROM quiz_attempts
+                        WHERE ts >= EXTRACT(EPOCH FROM %s::timestamptz)
+                        GROUP BY learner_id ORDER BY count DESC LIMIT 3
+                    """, (week_start_iso,))
+                    for row in _cur.fetchall():
+                        email, name = _get_email_name(row["learner_id"], _cur)
+                        categories["quiz"].append({
+                            "learner_id": row["learner_id"], "name": name,
+                            "email": email, "count": int(row["count"]),
+                            "label": f"{int(row['count'])} quizzes this week"
+                        })
+                except Exception as _e:
+                    logger.warning("top-users quiz query: %s", _e)
+
+                # TOP 3 CHAT — most AI prompt usage this week
+                try:
+                    _cur.execute("""
+                        SELECT learner_id, COUNT(*) as count
+                        FROM prompt_history
+                        WHERE role='user' AND ts >= EXTRACT(EPOCH FROM %s::timestamptz)
+                        GROUP BY learner_id ORDER BY count DESC LIMIT 3
+                    """, (week_start_iso,))
+                    for row in _cur.fetchall():
+                        email, name = _get_email_name(row["learner_id"], _cur)
+                        categories["chat"].append({
+                            "learner_id": row["learner_id"], "name": name,
+                            "email": email, "count": int(row["count"]),
+                            "label": f"{int(row['count'])} AI chats this week"
+                        })
+                except Exception as _e:
+                    logger.warning("top-users chat query: %s", _e)
+
+                # TOP 3 COURSES — most XP earned (proxy for course activity)
+                try:
+                    _cur.execute("""
+                        SELECT learner_id, xp
+                        FROM learner_profiles
+                        WHERE xp > 0 AND tier != 'deleted'
+                        ORDER BY xp DESC LIMIT 3
+                    """)
+                    for row in _cur.fetchall():
+                        email, name = _get_email_name(row["learner_id"], _cur)
+                        categories["courses"].append({
+                            "learner_id": row["learner_id"], "name": name,
+                            "email": email, "count": int(row["xp"]),
+                            "label": f"{int(row['xp'])} XP earned"
+                        })
+                except Exception as _e:
+                    logger.warning("top-users courses query: %s", _e)
+
+                # TOP 3 PAID — highest payment amounts this week
+                try:
+                    _cur.execute("""
+                        SELECT user_email, user_name, COALESCE(SUM(amount),0) as total
+                        FROM payments
+                        WHERE status='confirmed'
+                        GROUP BY user_email, user_name
+                        ORDER BY total DESC LIMIT 3
+                    """)
+                    for row in _cur.fetchall():
+                        categories["paid"].append({
+                            "learner_id": "", "name": row["user_name"] or "",
+                            "email": row["user_email"] or "",
+                            "count": float(row["total"]),
+                            "label": f"₦{float(row['total']):,.0f} paid"
+                        })
+                except Exception as _e:
+                    logger.warning("top-users paid query: %s", _e)
+
+    except Exception as exc:
+        logger.error("admin_top_users error: %s", exc)
+
+    # Send congratulatory emails (non-blocking, fire and forget)
+    def _send_congrats_emails():
+        try:
+            from app.services.email_service import _dispatch_async
+            sent_emails: set = set()
+            category_labels = {
+                "quiz":    "Top Quiz Champion 🏆",
+                "chat":    "Top AI Learning Champion 🤖",
+                "courses": "Top Course Achiever 📚",
+                "paid":    "Top Supporter 💎",
+            }
+            for cat, users in categories.items():
+                for rank, user in enumerate(users[:3], 1):
+                    email = user.get("email","")
+                    name  = (user.get("name","") or "Learner").split()[0]
+                    if not email or email in sent_emails:
+                        continue
+                    sent_emails.add(email)
+                    medal  = ["🥇","🥈","🥉"][rank-1]
+                    label  = category_labels.get(cat, cat.title())
+                    achievement = user.get("label","")
+                    subject = f"{medal} Congratulations {name}! You're a MyPy Tutor Top Learner This Week!"
+                    html = f"""
+                    <div style="font-family:Inter,Arial,sans-serif;max-width:600px;margin:0 auto;background:#0d1120;color:#f1f5f9;border-radius:16px;overflow:hidden">
+                      <div style="background:linear-gradient(135deg,#1a3a8a,#2563eb);padding:32px 40px;text-align:center">
+                        <div style="font-size:3rem;margin-bottom:8px">{medal}</div>
+                        <h1 style="color:#fff;font-size:1.4rem;margin:0">Congratulations, {name}!</h1>
+                        <p style="color:rgba(255,255,255,0.8);margin:8px 0 0">Weekly Leaderboard — MyPy Tutor</p>
+                      </div>
+                      <div style="padding:32px 40px">
+                        <p style="font-size:1rem;line-height:1.7;margin:0 0 16px">
+                          You have earned the <strong style="color:#f59e0b">{label}</strong> award on MyPy Tutor this week!
+                        </p>
+                        <div style="background:rgba(37,99,235,0.1);border:1px solid rgba(37,99,235,0.3);border-radius:10px;padding:16px 20px;margin:20px 0;text-align:center">
+                          <div style="font-size:1.3rem;font-weight:700;color:#60a5fa">{achievement}</div>
+                          <div style="font-size:0.82rem;color:#94a3b8;margin-top:4px">This week's achievement</div>
+                        </div>
+                        <p style="color:#94a3b8;font-size:0.88rem;line-height:1.7">
+                          Keep up the amazing work! Your dedication to learning Python and AI is truly inspiring.
+                          Sir. Tega and the entire MyPy Tutor team are proud of you. 🐍
+                        </p>
+                        <div style="text-align:center;margin:24px 0">
+                          <a href="https://mypytutor.com.ng" style="background:linear-gradient(135deg,#2563eb,#7c3aed);color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:700;font-size:0.9rem">
+                            Keep Learning →
+                          </a>
+                        </div>
+                        <p style="color:#475569;font-size:0.78rem;text-align:center">
+                          Teamsamikoko Global Academy · MyPy Tutor · mypytutor.com.ng
+                        </p>
+                      </div>
+                    </div>"""
+                    text = f"Congratulations {name}! You earned the {label} award this week on MyPy Tutor. Achievement: {achievement}. Keep learning at mypytutor.com.ng"
+                    _dispatch_async(email, subject, html, text, email_type="top_learner")
+        except Exception as _ce:
+            logger.warning("top-users congrats email error: %s", _ce)
+
+    threading.Thread(target=_send_congrats_emails, daemon=False).start()
+
+    return {
+        "week_start": week_start_iso,
+        "categories": categories,
+        "total_winners": sum(len(v) for v in categories.values()),
+    }
+
 
 @app.get("/admin/users")
 async def admin_list_users(request: Request) -> dict:

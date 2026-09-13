@@ -175,12 +175,13 @@ class QuizResponse(BaseModel):
 
 
 class QuizAnswerRequest(BaseModel):
-    learner_id: str      = Field(default="default", min_length=1, max_length=64,
-                                 pattern=r"^[a-zA-Z0-9_\-]+$")
-    topic:      str      = Field(..., min_length=1, max_length=100)
-    level:      Literal["beginner", "intermediate", "advanced"] = "beginner"
-    question:   str      = Field(..., min_length=1, max_length=1_000)
-    answer:     str      = Field(..., min_length=1, max_length=500)
+    learner_id:     str      = Field(default="default", min_length=1, max_length=64,
+                                     pattern=r"^[a-zA-Z0-9_\-]+$")
+    topic:          str      = Field(..., min_length=1, max_length=100)
+    level:          Literal["beginner", "intermediate", "advanced"] = "beginner"
+    question:       str      = Field(..., min_length=1, max_length=1_000)
+    answer:         str      = Field(..., min_length=1, max_length=500)
+    correct_answer: str      = Field(default="", max_length=10)   # e.g. "A", "B", "C", "D" — sent by frontend after quiz generation
 
 
 class QuizAnswerResponse(BaseModel):

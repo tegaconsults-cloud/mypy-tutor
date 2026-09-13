@@ -230,7 +230,7 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
       <button class="nb" data-p="announce">📢 Announce</button>
       <button class="nb" data-p="team">👨‍💼 Team</button>
       <button class="nb" data-p="tasks">📋 Tasks</button>
-      <button class="nb" data-p="files">📁 Files</button>
+      <button class="nb" data-p="topusers">&#127942; Top Users</button>
       <button class="nb" data-p="coupons">🎟️ Coupons</button>
       <button class="nb" data-p="invoices">🧾 Invoices</button>
       <button class="nb" data-p="withdrawals">💸 Withdrawals</button>
@@ -473,15 +473,41 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
       </div>
 
       <!-- FILES -->
-      <div id="p-files" class="page">
-        <h2>📁 Project Files</h2>
+      <div id="p-topusers" class="page">
+        <h2>&#127942; Top Users This Week</h2>
+        <p style="color:#718096;font-size:.83rem;margin-bottom:18px">
+          Top 3 learners this week by category. Congratulatory emails are sent automatically when this page loads.
+        </p>
+        <div class="g2" id="topusers-grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">
+          <div class="sec" id="tu-quiz">
+            <h3>&#127941; Quiz Champions</h3>
+            <div id="tu-quiz-body" style="color:#4a5568;font-size:.83rem">Loading…</div>
+          </div>
+          <div class="sec" id="tu-chat">
+            <h3>&#129302; AI Agent Champions</h3>
+            <div id="tu-chat-body" style="color:#4a5568;font-size:.83rem">Loading…</div>
+          </div>
+          <div class="sec" id="tu-courses">
+            <h3>&#128218; Course Achievers</h3>
+            <div id="tu-courses-body" style="color:#4a5568;font-size:.83rem">Loading…</div>
+          </div>
+          <div class="sec" id="tu-paid">
+            <h3>&#128142; Top Supporters</h3>
+            <div id="tu-paid-body" style="color:#4a5568;font-size:.83rem">Loading…</div>
+          </div>
+        </div>
+        <div style="margin-top:14px">
+          <button class="btn" onclick="loadTopUsers()" style="background:rgba(37,99,235,.15);color:#93c5fd;border:1px solid rgba(37,99,235,.3)">
+            &#128260; Refresh &amp; Resend Congratulatory Emails
+          </button>
+          <span id="tu-status" style="margin-left:12px;font-size:.8rem;color:#68d391;display:none"></span>
+        </div>
 
-        <!-- Email Diagnostics — test delivery before going live -->
-        <div class="sec" style="margin-bottom:14px">
-          <h3>📧 Email Delivery Test</h3>
+        <!-- Email test moved here from Files -->
+        <div class="sec" style="margin-top:20px">
+          <h3>&#128231; Email Delivery Test</h3>
           <p style="color:#718096;font-size:.82rem;margin-bottom:10px">
-            Tests Resend then SMTP fallback — each with a 12s timeout (total ~25s max).
-            Shows per-provider results so you can diagnose exactly which one failed and why.
+            Tests Resend then SMTP fallback — shows per-provider results.
           </p>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
             <div style="flex:1;min-width:200px">
@@ -492,15 +518,12 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
           </div>
           <div id="email-test-result" style="margin-top:10px;display:none"></div>
           <div id="email-config-box" style="margin-top:10px;display:none">
-            <p style="font-size:.74rem;color:#718096;margin-bottom:6px">Current SMTP config:</p>
+            <p style="font-size:.74rem;color:#718096;margin-bottom:6px">Current config:</p>
             <div id="email-config-detail" style="font-family:monospace;font-size:.72rem;color:#a0aec0;background:#0f1117;padding:10px;border-radius:6px"></div>
           </div>
         </div>
-
-        <div class="sec"><div id="files-list">Loading…</div></div>
       </div>
 
-      <!-- COUPONS -->
       <div id="p-coupons" class="page">
         <h2>🎟️ Coupons</h2>
         <div class="g2">
@@ -509,7 +532,36 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
             <div class="fr"><label>Code</label><input id="cp-code" placeholder="e.g. LAUNCH50" style="text-transform:uppercase"/></div>
             <div class="fr"><label>Discount %</label><input id="cp-pct" type="number" min="0" max="100" placeholder="20"/></div>
             <div class="fr"><label>Flat Discount (₦, optional)</label><input id="cp-flat" type="number" min="0" placeholder="0"/></div>
-            <div class="fr"><label>Plan (or "any")</label><input id="cp-plan" placeholder="any" value="any"/></div>
+            <div class="fr"><label>Course / Plan</label>
+              <select id="cp-plan" style="background:var(--bg-elevated,#1a2235);color:var(--text,#f1f5f9);border:1px solid rgba(255,255,255,0.07);border-radius:8px;padding:10px 12px;font-size:.9rem;width:100%">
+                <option value="any">Any Plan (all bundles)</option>
+                <optgroup label="── Tier Bundles ──">
+                  <option value="tier1">Beginner Bundle (₦30,000)</option>
+                  <option value="tier2">Intermediate Bundle (₦60,000)</option>
+                  <option value="tier3">Advanced Bundle (₦100,000)</option>
+                  <option value="tier4">Premium Bundle (₦150,000)</option>
+                </optgroup>
+                <optgroup label="── Individual Courses ──" id="cp-courses-group">
+                  <option value="python-fundamentals">Python Fundamentals (₦5,000)</option>
+                  <option value="python-strings">Python Strings (₦5,000)</option>
+                  <option value="python-collections">Python Collections (₦5,000)</option>
+                  <option value="python-control-flow">Python Control Flow (₦5,000)</option>
+                  <option value="python-functions-advanced">Advanced Functions (₦15,000)</option>
+                  <option value="python-oop">OOP (₦15,000)</option>
+                  <option value="python-modules-stdlib">Modules &amp; Stdlib (₦15,000)</option>
+                  <option value="python-dsa">Data Structures &amp; Algorithms (₦30,000)</option>
+                  <option value="numpy-mastery">NumPy Mastery (₦30,000)</option>
+                  <option value="pandas-mastery">Pandas Mastery (₦30,000)</option>
+                  <option value="data-science-python">Data Science (₦30,000)</option>
+                  <option value="python-databases">Databases (₦30,000)</option>
+                  <option value="web-apis">Web APIs (₦30,000)</option>
+                  <option value="prompt-engineering">Prompt Engineering (₦30,000)</option>
+                  <option value="ai-prompt-engineering">AI &amp; Prompt Engineering (₦50,000)</option>
+                  <option value="machine-learning">Machine Learning (₦50,000)</option>
+                  <option value="ai-automation">AI Automation (₦50,000)</option>
+                </optgroup>
+              </select>
+            </div>
             <div class="fr"><label>Max Uses</label><input id="cp-max" type="number" min="1" placeholder="100" value="100"/></div>
             <div class="fr"><label>Expires In (days, 0=never)</label><input id="cp-days" type="number" min="0" placeholder="0" value="0"/></div>
             <button class="btn" onclick="createCoupon()">🎟️ Create Coupon</button>
@@ -642,7 +694,7 @@ function nav(p){
     dashboard:loadDashboard, users:loadUsers, activity:loadActivity,
     payments:loadPayments, certificates:loadCerts,
     referrals:loadReferrals, feedback:loadFeedback, announce:loadAnnounce,
-    team:loadTeam, tasks:loadTasks, files:loadFiles,
+    team:loadTeam, tasks:loadTasks, topusers:loadTopUsers,
     coupons:loadCoupons, invoices:loadInvoices, withdrawals:loadWithdrawals, enquiries:loadEnquiries
   };
   // Always reload dashboard/users/activity for real-time; lazy-load the rest
@@ -1079,14 +1131,43 @@ async function sendTestEmail(){
   }
 }
 
-async function loadFiles(){
-  const r=await api('/admin/files'); const d=await r.json();
-  document.getElementById('files-list').innerHTML=
-    `<p style="color:#718096;font-size:.82rem;margin-bottom:10px">${d.total} files</p>
-    <div style="overflow-x:auto"><table><thead><tr><th>Path</th><th style="text-align:right">Size</th></tr></thead><tbody>`+
-    (d.files||[]).map(f=>`<tr><td style="font-family:monospace;font-size:.77rem">${f.path}</td>
-      <td style="text-align:right;font-size:.74rem;color:#718096">${f.size.toLocaleString()} B</td></tr>`
-    ).join('')+'</tbody></table></div>';
+async function loadTopUsers(){
+  const statusEl = document.getElementById('tu-status');
+  if(statusEl){statusEl.style.display='none';}
+  const r=await api('/admin/top-users'); const d=await r.json();
+  if(!r.ok){console.error('top-users failed',d);return;}
+
+  function renderCategory(users, containerId){
+    const el = document.getElementById(containerId);
+    if(!el) return;
+    if(!users||!users.length){el.innerHTML='<span style="color:#4a5568">No data yet this week.</span>';return;}
+    const medals=['&#127945;','&#129352;','&#129353;'];
+    el.innerHTML = users.map((u,i)=>`
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.05)">
+        <span style="font-size:1.3rem">${medals[i]||'&#8226;'}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:.85rem;color:#e2e8f0">${u.name||'Anonymous'}</div>
+          <div style="font-size:.73rem;color:#4a5568">${u.email||''}</div>
+          <div style="font-size:.75rem;color:#60a5fa;margin-top:2px">${u.label||''}</div>
+        </div>
+      </div>`).join('');
+  }
+
+  const cats = d.categories||{};
+  renderCategory(cats.quiz,    'tu-quiz-body');
+  renderCategory(cats.chat,    'tu-chat-body');
+  renderCategory(cats.courses, 'tu-courses-body');
+  renderCategory(cats.paid,    'tu-paid-body');
+
+  if(statusEl&&d.total_winners>0){
+    statusEl.textContent = `&#10003; ${d.total_winners} winner${d.total_winners>1?'s':''} found — congratulatory emails sent!`;
+    statusEl.style.display='inline';
+    setTimeout(()=>statusEl.style.display='none', 5000);
+  } else if(statusEl){
+    statusEl.textContent='No winners this week yet.';
+    statusEl.style.display='inline';
+    setTimeout(()=>statusEl.style.display='none', 3000);
+  }
 }
 
 // ── Coupons ────────────────────────────────────────────────────────────────

@@ -749,8 +749,9 @@ def load_email_account(email: str) -> dict | None:
 def confirm_email_db(email: str) -> None:
     with get_db() as conn:
         with conn.cursor() as cur:
+            # confirmed is BOOLEAN in Supabase — use TRUE not 1
             cur.execute(
-                "UPDATE email_accounts SET confirmed=1 WHERE email=%s", (email.lower(),)
+                "UPDATE email_accounts SET confirmed=TRUE WHERE email=%s", (email.lower(),)
             )
 
 
@@ -758,7 +759,8 @@ def get_all_confirmed_emails() -> list[dict]:
     import psycopg2.extras
     with get_db() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            cur.execute("SELECT * FROM email_accounts WHERE confirmed=1")
+            # confirmed is BOOLEAN — use IS TRUE not =1
+            cur.execute("SELECT * FROM email_accounts WHERE confirmed IS TRUE")
             rows = cur.fetchall()
     return [dict(r) for r in rows]
 
