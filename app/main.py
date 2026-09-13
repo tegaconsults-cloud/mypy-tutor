@@ -2741,7 +2741,15 @@ async def admin_dashboard(request: Request) -> dict:
                 email_count = _cur.fetchone()[0]
                 _cur.execute("SELECT COUNT(*) FROM learner_profiles WHERE tier != 'deleted'")
                 profile_count = _cur.fetchone()[0]
-                total_users = max(email_count, profile_count)
+                # Total unique users = union of both tables
+                # Many email users have no learner_profile row (signed up but never chatted)
+                _cur.execute("""
+                    SELECT COUNT(DISTINCT ea.learner_id)
+                    FROM email_accounts ea
+                    WHERE ea.confirmed IS TRUE
+                """)
+                confirmed_unique = _cur.fetchone()[0]
+                total_users = max(email_count, profile_count, confirmed_unique)
 
                 # Active today: distinct learners who used prompts today
                 _cur.execute(
@@ -2750,12 +2758,20 @@ async def admin_dashboard(request: Request) -> dict:
                 )
                 active_today = _cur.fetchone()[0]
 
-                # Tier breakdown
+                # Tier breakdown — join email_accounts with learner_profiles
+                # so users who signed up but never chatted (no profile row) are counted as "free"
                 tier_counts: dict = {}
                 for _tier in ["free", "tier1", "tier2", "tier3", "tier4"]:
-                    _cur.execute(
-                        "SELECT COUNT(*) FROM learner_profiles WHERE tier=%s", (_tier,)
-                    )
+                    _cur.execute("""
+                        SELECT COUNT(*) FROM (
+                            SELECT ea.learner_id
+                            FROM email_accounts ea
+                            LEFT JOIN learner_profiles lp ON lp.learner_id = ea.learner_id
+                            WHERE ea.confirmed IS TRUE
+                              AND COALESCE(lp.tier, 'free') = %s
+                              AND COALESCE(lp.tier, 'free') != 'deleted'
+                        ) t
+                    """, (_tier,))
                     tier_counts[_tier] = _cur.fetchone()[0]
 
                 # Revenue
@@ -5647,6 +5663,34 @@ threading.Thread(
     daemon=True,
     name="startup-recovery",
 ).start()
+
+
+def _backfill_email_automation() -> None:
+    "`Backfill email_automation rows for all confirmed users who don't have one yet.`"
+    try:
+        import psycopg2.extras as _bpge
+        from app.db import get_db as _bgdb, upsert_email_automation as _bups
+        with _bgdb() as _bc:
+            with _bc.cursor(cursor_factory=_bpge.RealDictCursor) as _bcur:
+                _bcur.execute("""
+                    SELECT ea.learner_id, ea.email,
+                           COALESCE(ea.name, ea.full_name, split_part(ea.email,'@',1)) AS name
+                    FROM email_accounts ea
+                    LEFT JOIN email_automation ema ON ema.learner_id = ea.learner_id
+                    WHERE ea.confirmed IS TRUE AND ema.learner_id IS NULL
+                """)
+                missing = _bcur.fetchall()
+        for row in missing:
+            try:
+                _bups(row["learner_id"], row["email"] or "", row["name"] or "")
+            except Exception:
+                pass
+        if missing:
+            logger.info("Email automation backfill: %d new rows added", len(missing))
+    except Exception as exc:
+        logger.debug("Email automation backfill failed (non-fatal): %s", exc)
+
+threading.Thread(target=_backfill_email_automation, daemon=True, name="email-automation-backfill").start()
 
 
 # ---------------------------------------------------------------------------
