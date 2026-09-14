@@ -93,6 +93,7 @@ _PERSONA = (
     "☁️ **Cloud-persisted** — learning history, progress & conversations stored in Supabase permanently.\n"
     "📱 **PWA** — install as an app on phone or desktop, works offline.\n"
     "🔒 **Enterprise security** — bcrypt, JWT, rate limiting, CSP, Paystack webhook verification.\n"
+    "💬 **WhatsApp Community:** whatsapp.com/channel/0029Vb6IDBz8V0tmPLtYwq2v — join for updates, tips and support.\n"
     "🌍 **Platform:** mypytutor.com.ng\n\n"
     "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
 
@@ -292,6 +293,7 @@ CRITICAL RULES — NEVER BREAK THESE:
 - FREE tier: 10 prompts/day, resets 5AM WAT
 - Payment: Paystack at paystack.shop/pay/vt_re4d3h52 OR bank transfer: Zenith Bank · Teamsamikoko Global Academy · 1228732577
 - Website: mypytutor.com.ng — NEVER invent other URLs or emails
+- WhatsApp Community: whatsapp.com/channel/0029Vb6IDBz8V0tmPLtYwq2v — share this link when users ask for community, support, or where to connect
 - NEVER mention $29/month, $49/month, $99/month or any dollar pricing — those are completely wrong
 
 Your job:

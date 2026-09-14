@@ -23,6 +23,82 @@ body{
   font-family:var(--font);background:var(--bg);color:var(--text);
   min-height:100vh;-webkit-font-smoothing:antialiased;
 }
+
+/* ── Animations ─────────────────────────────────────────────────────────── */
+@keyframes fadeUp   { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:none} }
+@keyframes fadeIn   { from{opacity:0} to{opacity:1} }
+@keyframes scaleIn  { from{opacity:0;transform:scale(.93)} to{opacity:1;transform:scale(1)} }
+@keyframes slideInLeft { from{opacity:0;transform:translateX(-22px)} to{opacity:1;transform:none} }
+@keyframes countPulse { 0%,100%{color:inherit} 50%{color:#60a5fa;text-shadow:0 0 12px rgba(96,165,250,0.6)} }
+@keyframes shimmer  {
+  0%   { background-position:-200% 0 }
+  100% { background-position:200%  0 }
+}
+
+/* Page entrance */
+.page.active { animation: fadeUp 0.32s cubic-bezier(0.4,0,0.2,1) both; }
+
+/* Dashboard cards */
+.card {
+  animation: scaleIn 0.28s cubic-bezier(0.4,0,0.2,1) both;
+  transition: transform 0.18s, box-shadow 0.18s, border-color 0.18s;
+  cursor: default;
+}
+.card:hover {
+  transform: translateY(-3px) scale(1.025);
+  box-shadow: 0 8px 28px rgba(59,130,246,0.18);
+  border-color: rgba(59,130,246,0.35);
+}
+.card .v {
+  transition: color 0.3s;
+}
+
+/* Stagger cards */
+.cards .card:nth-child(1)  { animation-delay:.03s }
+.cards .card:nth-child(2)  { animation-delay:.06s }
+.cards .card:nth-child(3)  { animation-delay:.09s }
+.cards .card:nth-child(4)  { animation-delay:.12s }
+.cards .card:nth-child(5)  { animation-delay:.15s }
+.cards .card:nth-child(6)  { animation-delay:.18s }
+.cards .card:nth-child(7)  { animation-delay:.21s }
+.cards .card:nth-child(8)  { animation-delay:.24s }
+.cards .card:nth-child(9)  { animation-delay:.27s }
+.cards .card:nth-child(10) { animation-delay:.30s }
+
+/* Pulse skeleton */
+.pulse-skeleton {
+  display: inline-block;
+  background: linear-gradient(90deg,rgba(255,255,255,0.04) 25%,rgba(255,255,255,0.1) 50%,rgba(255,255,255,0.04) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: 6px;
+  min-width: 40px;
+  color: transparent;
+}
+
+/* Table row slide-in */
+tbody tr {
+  animation: slideInLeft 0.22s ease both;
+}
+tbody tr:nth-child(1)  { animation-delay:.02s }
+tbody tr:nth-child(2)  { animation-delay:.04s }
+tbody tr:nth-child(3)  { animation-delay:.06s }
+tbody tr:nth-child(4)  { animation-delay:.08s }
+tbody tr:nth-child(5)  { animation-delay:.10s }
+tbody tr:nth-child(6)  { animation-delay:.12s }
+tbody tr:nth-child(7)  { animation-delay:.14s }
+tbody tr:nth-child(8)  { animation-delay:.16s }
+tbody tr:nth-child(9)  { animation-delay:.18s }
+tbody tr:nth-child(10) { animation-delay:.20s }
+
+/* Section fade */
+.sec { animation: fadeIn 0.35s ease both; }
+
+/* Button press */
+.btn, .bsm {
+  transition: transform 0.12s, box-shadow 0.12s, background 0.18s;
+}
+.btn:active, .bsm:active { transform: scale(0.96); }
 /* Premium background */
 body::before{
   content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
@@ -712,11 +788,35 @@ function openModal(html){document.getElementById('modal-content').innerHTML=html
 function closeModal(){document.getElementById('modal-overlay').classList.remove('open');}
 
 // ── Dashboard ──────────────────────────────────────────────────────────────
+// ── Animated counter ──────────────────────────────────────────────────────
+function animateCount(el, target, prefix='', suffix='', duration=1200) {
+  if (!el) return;
+  const isFloat = typeof target === 'number' && !Number.isInteger(target);
+  const start = 0;
+  const startTime = performance.now();
+  function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+  function step(now) {
+    const elapsed = now - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    const eased = easeOut(progress);
+    const current = start + (target - start) * eased;
+    const display = isFloat
+      ? prefix + current.toLocaleString(undefined, {maximumFractionDigits:0}) + suffix
+      : prefix + Math.round(current).toLocaleString() + suffix;
+    el.textContent = display;
+    el.style.opacity = '1';
+    if (progress < 1) requestAnimationFrame(step);
+  }
+  el.style.opacity = '0.3';
+  el.style.transition = 'opacity 0.2s';
+  requestAnimationFrame(step);
+}
+
 async function loadDashboard(){
-  // Show skeletons while loading
+  // Show pulse skeletons while loading
   ['d-users','d-active','d-new24h','d-rev','d-pmts','d-certs','d-tasks','d-sat','d-team','d-withdrawals'].forEach(id=>{
     const el=document.getElementById(id);
-    if(el&&el.textContent==='—')el.innerHTML='<span style="opacity:.3;font-size:.9rem">…</span>';
+    if(el) { el.innerHTML='<span class="pulse-skeleton">—</span>'; }
   });
   try {
     const r=await api('/admin/dashboard');
@@ -725,16 +825,16 @@ async function loadDashboard(){
     // Safe coercion helpers — prevent NaN/undefined showing in cards
     const n  = v => (isNaN(+v) ? 0 : (+v));
     const u  = v => n(v?.total   ?? v ?? 0);
-    document.getElementById('d-users').textContent       = n(d.users?.total        ?? 0);
-    document.getElementById('d-active').textContent      = n(d.users?.active_today  ?? 0);
-    document.getElementById('d-new24h').textContent      = n(d.users?.new_24h       ?? 0);
-    document.getElementById('d-rev').textContent         = '₦'+n(d.revenue?.total_revenue ?? 0).toLocaleString();
-    document.getElementById('d-pmts').textContent        = n(d.payments            ?? 0);
-    document.getElementById('d-certs').textContent       = n(d.certificates        ?? 0);
-    document.getElementById('d-tasks').textContent       = n(d.tasks?.open         ?? 0);
-    document.getElementById('d-sat').textContent         = n(d.feedback?.satisfaction_pct ?? 0)+'%';
-    document.getElementById('d-team').textContent        = n(d.team_size           ?? 0);
-    document.getElementById('d-withdrawals').textContent = n(d.withdrawals_pending  ?? 0);
+    animateCount(document.getElementById('d-users'),       n(d.users?.total        ?? 0));
+    animateCount(document.getElementById('d-active'),      n(d.users?.active_today  ?? 0));
+    animateCount(document.getElementById('d-new24h'),      n(d.users?.new_24h       ?? 0));
+    animateCount(document.getElementById('d-rev'),         n(d.revenue?.total_revenue ?? 0), '₦', '', 1400);
+    animateCount(document.getElementById('d-pmts'),        n(d.payments            ?? 0));
+    animateCount(document.getElementById('d-certs'),       n(d.certificates        ?? 0));
+    animateCount(document.getElementById('d-tasks'),       n(d.tasks?.open         ?? 0));
+    animateCount(document.getElementById('d-sat'),         n(d.feedback?.satisfaction_pct ?? 0), '', '%');
+    animateCount(document.getElementById('d-team'),        n(d.team_size           ?? 0));
+    animateCount(document.getElementById('d-withdrawals'), n(d.withdrawals_pending  ?? 0));
     const tiers=Object.entries(d.users_by_tier||{});
     document.getElementById('d-tiers').innerHTML=tiers.length?tiers.map(([t,c])=>
       `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #2d3748;font-size:.83rem">

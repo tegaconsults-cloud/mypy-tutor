@@ -94,21 +94,81 @@
     return _voices.find(v => v.lang.startsWith('en')) || _voices[0];
   }
 
-  /* ─── Text cleaning ──────────────────────────────────────────────────────── */
+  /* ─── Text cleaning — intelligent, pronunciation-aware ──────────────────── */
   function _cleanText(raw) {
-    return raw
+    // Course name map — hyphens to natural spoken form
+    const COURSE_NAMES = {
+      'python-fundamentals': 'Python Fundamentals',
+      'python-strings': 'Python Strings',
+      'python-collections': 'Python Collections',
+      'python-control-flow': 'Python Control Flow',
+      'python-functions-advanced': 'Advanced Python Functions',
+      'python-oop': 'Python Object Oriented Programming',
+      'python-modules-stdlib': 'Python Modules and Standard Library',
+      'python-dsa': 'Python Data Structures and Algorithms',
+      'numpy-mastery': 'NumPy Mastery',
+      'pandas-mastery': 'Pandas Mastery',
+      'data-science-python': 'Data Science with Python',
+      'python-databases': 'Python Databases',
+      'web-apis': 'Web APIs',
+      'prompt-engineering': 'Prompt Engineering',
+      'ai-prompt-engineering': 'AI and Prompt Engineering',
+      'machine-learning': 'Machine Learning',
+      'ai-automation': 'AI Automation',
+    };
+
+    let text = raw;
+
+    // Replace known course names before any other processing
+    for (const [slug, name] of Object.entries(COURSE_NAMES)) {
+      text = text.replace(new RegExp(slug, 'gi'), name);
+    }
+
+    return text
       .replace(/```[\s\S]*?```/g, ' code block. ')
-      .replace(/`([^`]+)`/g, '$1')
+      .replace(/`([^`\n]{1,120})`/g, '$1')
+      // Bold/italic — remove markers, keep text
       .replace(/\*\*\*(.+?)\*\*\*/g, '$1')
       .replace(/\*\*(.+?)\*\*/g, '$1')
       .replace(/\*(.+?)\*/g, '$1')
       .replace(/_{1,3}(.+?)_{1,3}/g, '$1')
-      .replace(/^#{1,6}\s+/gm, '')
+      // Headings → add pause after
+      .replace(/^#{1,6}\s+(.+)$/gm, '$1. ')
+      // Links — keep label
       .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+      // Bare URLs — skip entirely
       .replace(/https?:\/\/\S+/g, '')
+      // Horizontal rules
+      .replace(/^[-*_]{3,}\s*$/gm, '')
+      // Remaining hyphens between words → space (course slugs already replaced above)
+      .replace(/([a-z])-([a-z])/gi, '$1 $2')
+      // List bullets → pause
       .replace(/^[>\-•*+]\s+/gm, '. ')
       .replace(/^\d+\.\s+/gm, '. ')
+      // Table pipes
       .replace(/\|/g, ' ')
+      // Common abbreviations → spoken form
+      .replace(/\bAPI\b/g, 'A P I')
+      .replace(/\bXP\b/g, 'experience points')
+      .replace(/\bOOP\b/g, 'object oriented programming')
+      .replace(/\bML\b/g, 'machine learning')
+      .replace(/\bAI\b/g, 'A I')
+      .replace(/\bSQL\b/g, 'S Q L')
+      .replace(/\bDSA\b/g, 'data structures and algorithms')
+      .replace(/\bLLM\b/g, 'large language model')
+      .replace(/\bRAG\b/g, 'retrieval augmented generation')
+      .replace(/\bCSS\b/g, 'C S S')
+      .replace(/\bHTML\b/g, 'H T M L')
+      .replace(/\bJSON\b/g, 'J S O N')
+      // Symbols that sound wrong when read
+      .replace(/[→←↑↓⇒⇐≤≥≠±×÷]/g, ' ')
+      .replace(/[_~^]/g, ' ')
+      .replace(/["""'']/g, "'")
+      // Multiple punctuation
+      .replace(/\.{2,}/g, '.')
+      .replace(/!{2,}/g, '!')
+      .replace(/\?{2,}/g, '?')
+      // Whitespace cleanup
       .replace(/\n{3,}/g, '\n\n')
       .replace(/[ \t]{2,}/g, ' ')
       .trim();

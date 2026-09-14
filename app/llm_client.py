@@ -11,7 +11,7 @@ if not _api_key:
         "GROQ_API_KEY is not set. Please add it to your .env file or environment."
     )
 
-_client = Groq(api_key=_api_key, timeout=30.0)  # 30s hard timeout
+_client = Groq(api_key=_api_key, timeout=25.0)  # 25s hard timeout — Render kills at 30s
 
 # Model routing — updated August 2026 after Groq deprecated llama-3.x models:
 #   FAST  — openai/gpt-oss-20b   : quiz eval, exercise gen, course steps, general Q&A

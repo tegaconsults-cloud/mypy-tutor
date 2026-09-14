@@ -350,9 +350,15 @@ async def chat(request: ChatRequest, req: Request,
 
     content = None
     last_exc: Exception | None = None
-    for _attempt in range(2):
+    for _attempt in range(3):  # 3 attempts: full history, trimmed, smart model fallback
         try:
-            msgs_to_send = history_messages if _attempt == 0 else history_messages[-4:]
+            if _attempt == 0:
+                msgs_to_send = history_messages
+            elif _attempt == 1:
+                msgs_to_send = history_messages[-4:]
+            else:
+                # Final fallback: use fast model with minimal history
+                msgs_to_send = history_messages[-2:]
             content = get_completion(system_prompt, msgs_to_send, intent=intent)
             break
         except Exception as exc:
@@ -361,7 +367,6 @@ async def chat(request: ChatRequest, req: Request,
             exc_msg  = str(exc).lower()
 
             if _is_context_overflow(exc) and _attempt == 0:
-                # Context too long — trim to last 4 messages and retry
                 logger.info(
                     "Context overflow for %s — trimming history from %d to 4 msgs and retrying",
                     request.learner_id, len(history_messages)
@@ -369,10 +374,26 @@ async def chat(request: ChatRequest, req: Request,
                 continue
 
             if any(k in exc_type for k in ("ratelimit", "timeout", "serviceunavailable")):
-                logger.warning("LLM unavailable: %s", exc)
-                raise HTTPException(status_code=503, detail="Sir. Tega is momentarily busy. Please retry.")
+                if _attempt < 2:
+                    import asyncio as _aio
+                    await _aio.sleep(1.5)
+                    continue
+                logger.warning("LLM unavailable after retries: %s", exc)
+                raise HTTPException(
+                    status_code=503,
+                    detail="Sir. Tega is momentarily busy. Please wait a moment and try again."
+                )
 
-            # Any other error after both attempts
+            if "model" in exc_msg or "not found" in exc_msg or "404" in exc_msg:
+                logger.error("LLM model error: %s", exc)
+                raise HTTPException(
+                    status_code=502,
+                    detail="Sir. Tega is updating. Please try again in a moment."
+                )
+
+            # Any other error — retry once more
+            if _attempt < 2:
+                continue
             break
 
     if content is None:
@@ -399,7 +420,10 @@ async def chat(request: ChatRequest, req: Request,
                 }
             )
         logger.error("LLM error after retries: %s", last_exc)
-        raise HTTPException(status_code=502, detail="Sir. Tega encountered an issue. Please try again.")
+        raise HTTPException(
+            status_code=502,
+            detail="Sir. Tega is having trouble right now. Please try again in a few seconds."
+        )
 
     response_dict  = format_response(content, intent)
     detected_topic = response_dict.get("topic") or topic
@@ -6048,6 +6072,33 @@ async def tts_prepare(request: Request) -> dict:
         raise HTTPException(status_code=400, detail="No text provided.")
     if len(raw_text) > 20_000:
         raise HTTPException(status_code=400, detail="Text too long. Maximum 20,000 characters.")
+
+    # Expand course slugs to natural spoken names before any other processing
+    _COURSE_MAP = {
+        "python-fundamentals":       "Python Fundamentals",
+        "python-strings":            "Python Strings",
+        "python-collections":        "Python Collections",
+        "python-control-flow":       "Python Control Flow",
+        "python-functions-advanced": "Advanced Python Functions",
+        "python-oop":                "Python Object Oriented Programming",
+        "python-modules-stdlib":     "Python Modules and Standard Library",
+        "python-dsa":                "Python Data Structures and Algorithms",
+        "numpy-mastery":             "NumPy Mastery",
+        "pandas-mastery":            "Pandas Mastery",
+        "data-science-python":       "Data Science with Python",
+        "python-databases":          "Python Databases",
+        "web-apis":                  "Web APIs",
+        "prompt-engineering":        "Prompt Engineering",
+        "ai-prompt-engineering":     "AI and Prompt Engineering",
+        "machine-learning":          "Machine Learning",
+        "ai-automation":             "AI Automation",
+    }
+    text = raw_text
+    for slug, spoken in _COURSE_MAP.items():
+        text = _re_tts.sub(re.escape(slug), spoken, text, flags=_re_tts.IGNORECASE)
+
+    # Remaining hyphenated technical words — expand to spaced form
+    text = _re_tts.sub(r"\b([a-z]+)-([a-z]+)\b", r"\1 \2", text)
 
     # Strip fenced code blocks
     text = _re_tts.sub(r"```[a-z]*\n?[\s\S]*?```", " [code block] ", raw_text)
