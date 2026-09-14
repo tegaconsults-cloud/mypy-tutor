@@ -637,8 +637,8 @@ def save_profile_db(learner_id: str, profile_dict: dict) -> None:
             INSERT INTO learner_profiles
               (learner_id,tier,level,xp,badges,topics_seen,topic_progress,
                current_course,course_step,completed_projects,
-               daily_prompts_used,last_prompt_date,email,display_name,updated_at)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,EXTRACT(EPOCH FROM NOW()))
+               daily_prompts_used,last_prompt_date,email,display_name,prompt_plan,updated_at)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,EXTRACT(EPOCH FROM NOW()))
             ON CONFLICT(learner_id) DO UPDATE SET
               tier=EXCLUDED.tier,
               level=EXCLUDED.level,
@@ -655,6 +655,8 @@ def save_profile_db(learner_id: str, profile_dict: dict) -> None:
                          ELSE learner_profiles.email END,
               display_name=CASE WHEN EXCLUDED.display_name <> '' THEN EXCLUDED.display_name
                                 ELSE learner_profiles.display_name END,
+              prompt_plan=CASE WHEN EXCLUDED.prompt_plan <> '' THEN EXCLUDED.prompt_plan
+                               ELSE learner_profiles.prompt_plan END,
               updated_at=EXTRACT(EPOCH FROM NOW())
             """, (
                 learner_id,
@@ -671,6 +673,7 @@ def save_profile_db(learner_id: str, profile_dict: dict) -> None:
                 profile_dict.get("last_prompt_date", ""),
                 profile_dict.get("email", ""),
                 profile_dict.get("display_name", ""),
+                profile_dict.get("prompt_plan", ""),
             ))
 
 
@@ -759,8 +762,8 @@ def get_all_confirmed_emails() -> list[dict]:
     import psycopg2.extras
     with get_db() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            # confirmed is BOOLEAN — use IS TRUE not =1
-            cur.execute("SELECT * FROM email_accounts WHERE confirmed IS TRUE")
+            # confirmed may be BOOLEAN (Supabase) or INTEGER (legacy) — handle both
+            cur.execute("SELECT * FROM email_accounts WHERE confirmed = 1 OR confirmed IS TRUE")
             rows = cur.fetchall()
     return [dict(r) for r in rows]
 
@@ -1814,7 +1817,7 @@ def get_email_automation_candidates(email_type: str, cooldown_days: int) -> list
                        ON ea.learner_id = em.learner_id
                 LEFT JOIN learner_profiles lp
                        ON lp.learner_id = em.learner_id
-                WHERE em.confirmed IS TRUE
+                WHERE (em.confirmed = 1 OR em.confirmed IS TRUE)
                   AND em.email NOT LIKE '%@github.local'
                   AND (ea.opted_out IS NULL OR ea.opted_out = 0)
                   AND ({col} IS NULL OR {col} < %s)

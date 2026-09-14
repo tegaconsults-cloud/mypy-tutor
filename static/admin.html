@@ -938,11 +938,11 @@ async function setTier(lid){
   const tier=prompt('Set tier for '+lid+'\nOptions: free, tier1, tier2, tier3, tier4');
   if(!tier)return;
   if(!['free','tier1','tier2','tier3','tier4'].includes(tier.trim().toLowerCase())){
-    toast('Invalid tier. Use: free, tier1, tier2, tier3 or tier4','red');return;
+    toast('Invalid tier. Use: free, tier1, tier2, tier3 or tier4', false);return;
   }
   const r=await api('/admin/users/'+lid+'/set-tier',{method:'POST',body:JSON.stringify({tier:tier.trim().toLowerCase()})});
   const d=await r.json();
-  if(r.ok){toast('Tier updated to '+tier);loadUsers();}else toast(d.error||'Failed','red');
+  if(r.ok){toast('Tier updated to '+tier);loadUsers();}else toast(d.error||'Failed',false);
 }
 
 async function terminateUser(lid){

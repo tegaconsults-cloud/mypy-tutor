@@ -23,6 +23,10 @@ MPT_LOGO_URI = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wCEAAoKCgoKC
 # Certificate configs per level
 # ---------------------------------------------------------------------------
 
+# Logo URIs — served from /static/icons/ (available in both browser and PDF print)
+MPT_LOGO_URI      = "/static/icons/mypytutor_logo.jpg"
+ACADEMY_LOGO_URI  = "/static/icons/logo-teamtega.jpg"
+
 CERT_CONFIGS = {
     "basic": {
         "title":       "Certificate of Completion",

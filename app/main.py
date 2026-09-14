@@ -259,7 +259,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
     allow_origin_regex=r"https://(.*\.)?(onrender\.com|vercel\.app|mypytutor\.com\.ng)",
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept"],
     expose_headers=["Content-Type"],
     allow_credentials=False,
@@ -431,7 +431,7 @@ async def chat(request: ChatRequest, req: Request,
     profile        = get_profile(request.learner_id)
 
     log_activity(request.learner_id, f"chat:{intent}",
-                 f"topic={detected_topic or '�'} | msg={request.message[:80]}")
+                 f"topic={detected_topic or '(none)'} | msg={request.message[:80]}")
 
     # -- Persist: SQLite (sync, fast local) --------------------------------
     save_prompt_history(request.learner_id, "user",      request.message, intent, detected_topic or "")
@@ -1881,7 +1881,7 @@ async def courses_catalog() -> dict:
         if course:
             courses_detail.append({
                 "name":         name,
-                "display_name": course.description.split(" � ")[0] if " � " in course.description else name.replace("-", " ").title(),
+                "display_name": course.description.split(" \u2014 ")[0] if " \u2014 " in course.description else name.replace("-", " ").title(),
                 "description":  course.description,
                 "level":        course.level,
                 "total_steps":  len(course.steps),
@@ -1982,6 +1982,9 @@ async def start_course(learner_id: str, course_name: str,
         tier_needed = "tier1" if "tier1" in allowed_tiers else \
                       "tier2" if "tier2" in allowed_tiers else "tier3"
         tier_names = {"tier1": "Beginner Bundle (?30,000)", "tier2": "Intermediate Bundle (?60,000)", "tier3": "Advanced Bundle (?100,000)"}
+        _emdash = "\u2014"
+        _naira  = "\u20a6"
+        _course_label = course.description.split(" " + _emdash + " ")[0] if (" " + _emdash + " ") in course.description else course.description.split()[0]
         return JSONResponse(status_code=402, content={
             "error":              "upgrade_required",
             "course_name":        course_name,
@@ -1991,7 +1994,7 @@ async def start_course(learner_id: str, course_name: str,
             "bundle_option":      tier_names.get(tier_needed, "Premium"),
             "paystack_url":       "https://paystack.shop/pay/vt_re4d3h52",
             "message": (
-                f"{badge} **{course.description.split(' � ')[0]}** costs ?{price:,} "
+                f"{badge} **{_course_label}** costs {_naira}{price:,} "
                 f"(or unlock with the {tier_names.get(tier_needed, 'Premium')}). "
                 f"Use the Courses & Plans section to purchase."
             ),
@@ -2296,7 +2299,9 @@ async def evaluate_quiz_answer(request: QuizAnswerRequest,
     # Persist full quiz attempt record
     save_quiz_attempt(request.learner_id, request.topic,
                       request.question, request.answer, correct, score)
-    return QuizAnswerResponse(correct=correct, explanation=content, score=score, xp_gained=xp)
+    return QuizAnswerResponse(correct=correct, explanation=explanation, score=score, xp_gained=xp)
+
+
 
 
 @app.post("/exercise/generate")
@@ -2816,12 +2821,10 @@ async def admin_dashboard(request: Request) -> dict:
         with _gdb() as _conn:
             with _conn.cursor() as _cur:
                 wat_date = _wat_date_key()
-
-                # ── Users ────────────────────────────────────────────────
-                email_count      = _q(_cur, 0, "SELECT COUNT(*) FROM email_accounts WHERE confirmed IS TRUE")
+                email_count      = _q(_cur, 0, "SELECT COUNT(*) FROM email_accounts WHERE confirmed = 1 OR confirmed IS TRUE")
                 profile_count    = _q(_cur, 0, "SELECT COUNT(*) FROM learner_profiles WHERE tier != 'deleted'")
                 confirmed_unique = _q(_cur, 0,
-                    "SELECT COUNT(DISTINCT ea.learner_id) FROM email_accounts ea WHERE ea.confirmed IS TRUE")
+                    "SELECT COUNT(DISTINCT ea.learner_id) FROM email_accounts ea WHERE ea.confirmed = 1 OR ea.confirmed IS TRUE")
                 total_users      = max(email_count, profile_count, confirmed_unique)
 
                 # ── Active today ─────────────────────────────────────────
@@ -2831,7 +2834,7 @@ async def admin_dashboard(request: Request) -> dict:
 
                 # ── New users 24h ────────────────────────────────────────
                 new_users_24h    = _q(_cur, 0,
-                    "SELECT COUNT(*) FROM email_accounts WHERE confirmed IS TRUE "
+                    "SELECT COUNT(*) FROM email_accounts WHERE (confirmed = 1 OR confirmed IS TRUE) "
                     "AND created_at >= NOW() - INTERVAL '24 hours'")
 
                 # ── Tier breakdown ────────────────────────────────────────
@@ -2841,7 +2844,7 @@ async def admin_dashboard(request: Request) -> dict:
                             SELECT ea.learner_id
                             FROM email_accounts ea
                             LEFT JOIN learner_profiles lp ON lp.learner_id = ea.learner_id
-                            WHERE ea.confirmed IS TRUE
+                            WHERE (ea.confirmed = 1 OR ea.confirmed IS TRUE)
                               AND COALESCE(lp.tier, 'free') = %s
                               AND COALESCE(lp.tier, 'free') != 'deleted'
                         ) t""", (_tier,))
@@ -2861,7 +2864,7 @@ async def admin_dashboard(request: Request) -> dict:
                 total_pmts     = _q(_cur, 0, "SELECT COUNT(*) FROM payments")
                 today_rev      = float(_q(_cur, 0,
                     "SELECT COALESCE(SUM(amount),0) FROM payments "
-                    "WHERE status='confirmed' AND created_at::date = %s::date",
+                    "WHERE status='confirmed' AND DATE(to_timestamp(created_at)) = %s::date",
                     (today_str,)) or 0)
 
                 # Revenue by plan
@@ -3564,11 +3567,14 @@ async def admin_confirm_payment(payment_id: str, request: Request) -> dict:
                 elif amt >= 25000: tier = "tier1"
             if tier:
                 acct = load_email_account(row["user_email"])
-                lid  = acct["learner_id"] if acct else row["user_email"]
-                from app.db import upgrade_tier_db
-                from app.progress import apply_tier_upgrade
-                upgrade_tier_db(lid, tier)
-                apply_tier_upgrade(lid, tier)
+                if not acct:
+                    logger.warning("confirm_payment: no email_account for %s — tier upgrade skipped", row["user_email"])
+                else:
+                    lid = acct["learner_id"]
+                    from app.db import upgrade_tier_db
+                    from app.progress import apply_tier_upgrade
+                    upgrade_tier_db(lid, tier)
+                    apply_tier_upgrade(lid, tier)
                 log_activity("admin", "payment:manual-confirm",
                              f"id={payment_id} tier={tier} email={row['user_email']}")
             # Send receipt
@@ -5722,7 +5728,7 @@ def _backfill_email_automation() -> None:
                            COALESCE(ea.name, ea.full_name, split_part(ea.email,'@',1)) AS name
                     FROM email_accounts ea
                     LEFT JOIN email_automation ema ON ema.learner_id = ea.learner_id
-                    WHERE ea.confirmed IS TRUE AND ema.learner_id IS NULL
+                    WHERE (ea.confirmed = 1 OR ea.confirmed IS TRUE) AND ema.learner_id IS NULL
                 """)
                 missing = _bcur.fetchall()
         for row in missing:

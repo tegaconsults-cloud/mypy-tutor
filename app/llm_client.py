@@ -49,19 +49,23 @@ def _get_client():
 # Model routing
 # ---------------------------------------------------------------------------
 
-# Primary models — current Groq production models (August 2026)
-_FAST_MODEL  = "openai/gpt-oss-20b"     # ~1000 tok/s — quiz, exercise, course, general
-_SMART_MODEL = "openai/gpt-oss-120b"    # ~500 tok/s  — concept, debug, codegen
+# Primary models — Groq production models (September 2026)
+# llama-3.x deprecated June 17 2026 and moved to Enterprise-only.
+# openai/gpt-oss-20b  ~1000 tok/s  — quiz, exercise, course steps, general
+# openai/gpt-oss-120b ~500 tok/s   — concept explanations, debug, codegen
+_FAST_MODEL  = "openai/gpt-oss-20b"
+_SMART_MODEL = "openai/gpt-oss-120b"
 
-# Fallback models tried in order if primary fails
-# (ordered from most capable to most available)
+# Fallback chain — deduplicated at call time so no model is tried twice.
+# Both OSS models are tried first (cross-fallback), then llama4 variants
+# which are available on self-serve Groq accounts as of Sep 2026.
 _FALLBACK_MODELS = [
-    "openai/gpt-oss-20b",           # cross-fallback from smart → fast
-    "openai/gpt-oss-120b",          # cross-fallback from fast → smart
-    "llama-3.3-70b-versatile",      # legacy — may still work on some accounts
-    "llama-3.1-8b-instant",         # legacy — fastest fallback
-    "llama3-70b-8192",              # older model still on some Groq tiers
-    "llama3-8b-8192",               # last resort
+    "openai/gpt-oss-20b",           # cross-fallback: smart→fast
+    "openai/gpt-oss-120b",          # cross-fallback: fast→smart
+    "meta-llama/llama-4-scout-17b-16e-instruct",   # Llama 4 Scout — fast, self-serve
+    "meta-llama/llama-4-maverick-17b-128e-instruct", # Llama 4 Maverick — higher quality
+    "llama-3.3-70b-versatile",      # may still work on some accounts
+    "llama-3.1-8b-instant",         # fastest last-resort
 ]
 
 # Intents that need deep reasoning — use SMART model

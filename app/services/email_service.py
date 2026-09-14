@@ -53,6 +53,15 @@ def _send_via_resend(to: str, subject: str, html: str, text: str) -> bool:
             timeout=15,
         )
         if r.status_code in (200, 201):
+            # Resend can return HTTP 200 with an error body (e.g. domain not verified)
+            # Detect this by checking for a statusCode field >= 400 in the JSON body
+            try:
+                body = r.json()
+                if isinstance(body, dict) and int(body.get("statusCode", 0)) >= 400:
+                    logger.warning("[email] Resend logical error (HTTP 200): %s", body.get("message", body))
+                    return False
+            except Exception:
+                pass
             return True
         logger.warning("[email] Resend API %s: %s", r.status_code, r.text[:200])
         return False
