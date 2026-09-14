@@ -821,10 +821,23 @@ async function loadDashboard(){
   try {
     const r=await api('/admin/dashboard');
     if(r.status===403){doLogout();return;}
+    if(!r.ok){
+      const err=await r.json().catch(()=>({error:'Server error '+r.status}));
+      toast('Dashboard error: '+(err.error||r.status), false);
+      ['d-users','d-active','d-new24h','d-pmts','d-certs','d-tasks','d-team','d-withdrawals'].forEach(id=>{
+        const el=document.getElementById(id); if(el) el.textContent='!';
+      });
+      return;
+    }
     const d=await r.json();
-    // Safe coercion helpers — prevent NaN/undefined showing in cards
-    const n  = v => (isNaN(+v) ? 0 : (+v));
-    const u  = v => n(v?.total   ?? v ?? 0);
+
+    // Show DB error warning if any query failed server-side
+    if(d.db_error){
+      console.warn('Dashboard DB error:', d.db_error);
+      toast('⚠ Partial data — DB error: '+d.db_error.substring(0,80), false);
+    }
+
+    const n = v => (isNaN(+v) ? 0 : (+v));
     animateCount(document.getElementById('d-users'),       n(d.users?.total        ?? 0));
     animateCount(document.getElementById('d-active'),      n(d.users?.active_today  ?? 0));
     animateCount(document.getElementById('d-new24h'),      n(d.users?.new_24h       ?? 0));
@@ -835,17 +848,28 @@ async function loadDashboard(){
     animateCount(document.getElementById('d-sat'),         n(d.feedback?.satisfaction_pct ?? 0), '', '%');
     animateCount(document.getElementById('d-team'),        n(d.team_size           ?? 0));
     animateCount(document.getElementById('d-withdrawals'), n(d.withdrawals_pending  ?? 0));
+
     const tiers=Object.entries(d.users_by_tier||{});
-    document.getElementById('d-tiers').innerHTML=tiers.length?tiers.map(([t,c])=>
-      `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #2d3748;font-size:.83rem">
-      <span class="badge ${t==='free'?'grey':t==='tier1'?'bg':t==='tier2'?'gy':t==='tier3'?'gr':'gold'}">${t}</span>
-      <strong>${c} users</strong></div>`).join(''):'<span style="color:#4a5568">No users yet.</span>';
+    document.getElementById('d-tiers').innerHTML=tiers.length
+      ? tiers.map(([t,c])=>
+          `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #2d3748;font-size:.83rem">
+          <span class="badge ${t==='free'?'grey':t==='tier1'?'bg':t==='tier2'?'gy':t==='tier3'?'gr':'gold'}">${t}</span>
+          <strong>${c} users</strong></div>`).join('')
+      : '<span style="color:#4a5568">No users yet.</span>';
+
     const plans=Object.entries((d.revenue||{}).by_plan||{});
-    document.getElementById('d-plans').innerHTML=plans.length?plans.map(([p,v])=>
-      `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #2d3748;font-size:.83rem">
-      <span>${p}</span><strong style="color:#68d391">₦${v.toLocaleString()}</strong></div>`).join(''):'<span style="color:#4a5568">No payments yet.</span>';
+    document.getElementById('d-plans').innerHTML=plans.length
+      ? plans.map(([p,v])=>
+          `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #2d3748;font-size:.83rem">
+          <span>${p}</span><strong style="color:#68d391">₦${(+v).toLocaleString()}</strong></div>`).join('')
+      : '<span style="color:#4a5568">No payments yet.</span>';
+
   } catch(e) {
-    console.error('Dashboard load error:',e);
+    console.error('Dashboard load error:', e);
+    toast('Dashboard failed to load — check console', false);
+    ['d-users','d-active','d-new24h','d-pmts','d-certs','d-tasks','d-team','d-withdrawals'].forEach(id=>{
+      const el=document.getElementById(id); if(el) el.textContent='—';
+    });
   }
 }
 

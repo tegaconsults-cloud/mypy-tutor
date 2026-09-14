@@ -2752,6 +2752,40 @@ async def admin_dashboard(request: Request) -> dict:
     import datetime as _dt
     today_str = _dt.date.today().isoformat()
 
+    # Helper — run a query safely; returns default on any error
+    def _q(cur, default, sql, params=()):
+        try:
+            cur.execute(sql, params)
+            row = cur.fetchone()
+            return row[0] if row else default
+        except Exception as _qe:
+            logger.warning("dashboard query failed [%s]: %s", sql[:60], _qe)
+            try:
+                cur.execute("ROLLBACK")  # clear any aborted transaction state
+            except Exception:
+                pass
+            return default
+
+    # Initialise all values to safe defaults before any DB call
+    total_users    = 0
+    active_today   = 0
+    new_users_24h  = 0
+    tier_counts    = {"free": 0, "tier1": 0, "tier2": 0, "tier3": 0, "tier4": 0}
+    total_revenue  = 0.0
+    confirmed_pmts = 0
+    pending_pmts   = 0
+    total_pmts     = 0
+    by_plan        = {}
+    today_rev      = 0.0
+    cert_count     = 0
+    task_total     = 0
+    task_open      = 0
+    task_inprog    = 0
+    task_done      = 0
+    team_size      = 0
+    wd_pending     = 0
+    _db_error      = ""
+
     try:
         from app.db import get_db as _gdb
         from app.security import _wat_date_key
@@ -2760,33 +2794,26 @@ async def admin_dashboard(request: Request) -> dict:
             with _conn.cursor() as _cur:
                 wat_date = _wat_date_key()
 
-                # email_accounts.confirmed is BOOLEAN in Supabase
-                _cur.execute("SELECT COUNT(*) FROM email_accounts WHERE confirmed IS TRUE")
-                email_count = _cur.fetchone()[0]
-                _cur.execute("SELECT COUNT(*) FROM learner_profiles WHERE tier != 'deleted'")
-                profile_count = _cur.fetchone()[0]
-                # Total unique users = union of both tables
-                # Many email users have no learner_profile row (signed up but never chatted)
-                _cur.execute("""
-                    SELECT COUNT(DISTINCT ea.learner_id)
-                    FROM email_accounts ea
-                    WHERE ea.confirmed IS TRUE
-                """)
-                confirmed_unique = _cur.fetchone()[0]
-                total_users = max(email_count, profile_count, confirmed_unique)
+                # ── Users ────────────────────────────────────────────────
+                email_count      = _q(_cur, 0, "SELECT COUNT(*) FROM email_accounts WHERE confirmed IS TRUE")
+                profile_count    = _q(_cur, 0, "SELECT COUNT(*) FROM learner_profiles WHERE tier != 'deleted'")
+                confirmed_unique = _q(_cur, 0,
+                    "SELECT COUNT(DISTINCT ea.learner_id) FROM email_accounts ea WHERE ea.confirmed IS TRUE")
+                total_users      = max(email_count, profile_count, confirmed_unique)
 
-                # Active today: distinct learners who used prompts today
-                _cur.execute(
+                # ── Active today ─────────────────────────────────────────
+                active_today     = _q(_cur, 0,
                     "SELECT COUNT(DISTINCT key) FROM daily_prompt_counts WHERE date_str=%s AND count>0",
-                    (wat_date,)
-                )
-                active_today = _cur.fetchone()[0]
+                    (wat_date,))
 
-                # Tier breakdown — join email_accounts with learner_profiles
-                # so users who signed up but never chatted (no profile row) are counted as "free"
-                tier_counts: dict = {}
+                # ── New users 24h ────────────────────────────────────────
+                new_users_24h    = _q(_cur, 0,
+                    "SELECT COUNT(*) FROM email_accounts WHERE confirmed IS TRUE "
+                    "AND created_at >= NOW() - INTERVAL '24 hours'")
+
+                # ── Tier breakdown ────────────────────────────────────────
                 for _tier in ["free", "tier1", "tier2", "tier3", "tier4"]:
-                    _cur.execute("""
+                    tier_counts[_tier] = _q(_cur, 0, """
                         SELECT COUNT(*) FROM (
                             SELECT ea.learner_id
                             FROM email_accounts ea
@@ -2794,87 +2821,46 @@ async def admin_dashboard(request: Request) -> dict:
                             WHERE ea.confirmed IS TRUE
                               AND COALESCE(lp.tier, 'free') = %s
                               AND COALESCE(lp.tier, 'free') != 'deleted'
-                        ) t
-                    """, (_tier,))
-                    tier_counts[_tier] = _cur.fetchone()[0]
+                        ) t""", (_tier,))
 
-                # Revenue
-                _cur.execute("SELECT COALESCE(SUM(amount),0), COUNT(*) FROM payments WHERE status='confirmed'")
-                rev_rows = _cur.fetchone()
-                total_revenue  = float(rev_rows[0] or 0)
-                confirmed_pmts = int(rev_rows[1] or 0)
-
-                _cur.execute("SELECT COUNT(*) FROM payments WHERE status='pending'")
-                pending_pmts = _cur.fetchone()[0]
-                _cur.execute("SELECT COUNT(*) FROM payments")
-                total_pmts = _cur.fetchone()[0]
-
-                _cur.execute(
-                    "SELECT plan, COALESCE(SUM(amount),0) FROM payments WHERE status='confirmed' GROUP BY plan"
-                )
-                by_plan = {r[0]: float(r[1]) for r in _cur.fetchall()}
-
-                # Today revenue — handle both epoch float and timestamptz
+                # ── Revenue ───────────────────────────────────────────────
                 try:
-                    _cur.execute(
-                        "SELECT COALESCE(SUM(amount),0) FROM payments "
-                        "WHERE status='confirmed' AND DATE(to_timestamp(created_at))=%s",
-                        (today_str,)
-                    )
-                    today_rev = _cur.fetchone()[0]
-                except Exception:
-                    try:
-                        _cur.execute(
-                            "SELECT COALESCE(SUM(amount),0) FROM payments "
-                            "WHERE status='confirmed' AND created_at::date=%s::date",
-                            (today_str,)
-                        )
-                        today_rev = _cur.fetchone()[0]
-                    except Exception:
-                        today_rev = 0
+                    _cur.execute("SELECT COALESCE(SUM(amount),0), COUNT(*) FROM payments WHERE status='confirmed'")
+                    _rev = _cur.fetchone()
+                    total_revenue  = float(_rev[0] or 0)
+                    confirmed_pmts = int(_rev[1]   or 0)
+                except Exception as _re:
+                    logger.warning("revenue query failed: %s", _re)
+                    total_revenue = 0.0
+                    confirmed_pmts = 0
 
-                _cur.execute("SELECT COUNT(*) FROM certificates")
-                cert_count = _cur.fetchone()[0]
+                pending_pmts   = _q(_cur, 0, "SELECT COUNT(*) FROM payments WHERE status='pending'")
+                total_pmts     = _q(_cur, 0, "SELECT COUNT(*) FROM payments")
+                today_rev      = float(_q(_cur, 0,
+                    "SELECT COALESCE(SUM(amount),0) FROM payments "
+                    "WHERE status='confirmed' AND created_at::date = %s::date",
+                    (today_str,)) or 0)
 
-                _cur.execute("SELECT COUNT(*) FROM tasks")
-                task_total = _cur.fetchone()[0]
-                _cur.execute("SELECT COUNT(*) FROM tasks WHERE status='open'")
-                task_open = _cur.fetchone()[0]
-                _cur.execute("SELECT COUNT(*) FROM tasks WHERE status='in_progress'")
-                task_inprog = _cur.fetchone()[0]
-                _cur.execute("SELECT COUNT(*) FROM tasks WHERE status='done'")
-                task_done = _cur.fetchone()[0]
-
-                _cur.execute("SELECT COUNT(*) FROM team_members")
-                team_size = _cur.fetchone()[0]
-
-                _cur.execute("SELECT COUNT(*) FROM referral_withdrawals WHERE status='pending'")
-                wd_pending = _cur.fetchone()[0]
-
-                # New users in last 24h — handle both timestamptz and epoch
+                # Revenue by plan
                 try:
-                    _cur.execute(
-                        "SELECT COUNT(*) FROM email_accounts "
-                        "WHERE confirmed IS TRUE AND created_at >= NOW() - INTERVAL '24 hours'"
-                    )
-                    new_users_24h = _cur.fetchone()[0]
+                    _cur.execute("SELECT plan, COALESCE(SUM(amount),0) FROM payments WHERE status='confirmed' GROUP BY plan")
+                    by_plan = {r[0]: float(r[1]) for r in _cur.fetchall()}
                 except Exception:
-                    cutoff_24h = time.time() - 86400
-                    _cur.execute(
-                        "SELECT COUNT(*) FROM email_accounts WHERE confirmed IS TRUE AND created_at>=%s",
-                        (cutoff_24h,)
-                    )
-                    new_users_24h = _cur.fetchone()[0]
+                    by_plan = {}
+
+                # ── Other counts ──────────────────────────────────────────
+                cert_count  = _q(_cur, 0, "SELECT COUNT(*) FROM certificates")
+                task_total  = _q(_cur, 0, "SELECT COUNT(*) FROM tasks")
+                task_open   = _q(_cur, 0, "SELECT COUNT(*) FROM tasks WHERE status='open'")
+                task_inprog = _q(_cur, 0, "SELECT COUNT(*) FROM tasks WHERE status='in_progress'")
+                task_done   = _q(_cur, 0, "SELECT COUNT(*) FROM tasks WHERE status='done'")
+                team_size   = _q(_cur, 0, "SELECT COUNT(*) FROM team_members")
+                wd_pending  = _q(_cur, 0, "SELECT COUNT(*) FROM referral_withdrawals WHERE status='pending'")
 
     except Exception as e:
-        logger.error("admin_dashboard DB error: %s", e)
-        from app.progress import _store as _ls
-        total_users   = len(_ls)
-        active_today  = 0
-        tier_counts   = {t: sum(1 for p in _ls.values() if p.tier == t) for t in ["free","tier1","tier2","tier3","tier4"]}
-        total_revenue = 0; confirmed_pmts = 0; pending_pmts = 0; total_pmts = 0
-        by_plan = {}; today_rev = 0; cert_count = 0
-        task_total = task_open = task_inprog = task_done = team_size = wd_pending = new_users_24h = 0
+        _db_error = str(e)
+        logger.error("admin_dashboard outer DB error: %s", e)
+        # Do NOT override counts with zeros — keep whatever was fetched before the error
 
     # Feedback (always in-memory, refreshed per chat)
     feedback_data = get_summary().model_dump()
@@ -2903,6 +2889,8 @@ async def admin_dashboard(request: Request) -> dict:
         "feedback":        feedback_data,
         "team_size":       team_size,
         "withdrawals_pending": wd_pending,
+        "db_ok":           not bool(_db_error),
+        "db_error":        _db_error,
     }
 
 
