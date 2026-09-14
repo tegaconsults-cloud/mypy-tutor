@@ -597,9 +597,94 @@
     _loadPrefs();
     _loadVoices();
     _injectStyles();
+    _injectChatControls();   // creates #mic-btn + trigger inside #message-row if missing
     _wireMicBtn();
     _buildSettingsTrigger();
     document.documentElement.setAttribute('data-sir-tega-voice', '1');
+  }
+
+  /**
+   * Auto-inject the mic button and settings chevron into #message-row so the
+   * Vercel frontend only needs the <script> tag — no manual HTML changes.
+   *
+   * Target layout (matches screenshot):
+   *   [  message-input  ] [🎤 mic-btn] [⌄ trigger] [  send-btn  ]
+   */
+  function _injectChatControls() {
+    const row   = document.getElementById('message-row');
+    const input = document.getElementById(INPUT_ID);
+    if (!row || !input) return;   // chat UI not present on this page
+
+    // ── Mic button ────────────────────────────────────────────────────────
+    if (!document.getElementById(MIC_BTN_ID)) {
+      const mic = document.createElement('button');
+      mic.id        = MIC_BTN_ID;
+      mic.type      = 'button';
+      mic.title     = 'Speak your question';
+      mic.setAttribute('aria-label', 'Voice input');
+      mic.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+        <line x1="12" y1="19" x2="12" y2="22"/>
+        <line x1="8"  y1="22" x2="16" y2="22"/>
+      </svg>`;
+      // Insert AFTER the input, before any existing send button
+      const sendBtn = document.getElementById('send-btn');
+      if (sendBtn) {
+        row.insertBefore(mic, sendBtn);
+      } else {
+        row.appendChild(mic);
+      }
+    }
+
+    // ── Settings chevron trigger ──────────────────────────────────────────
+    if (!document.getElementById('stv-settings-trigger')) {
+      const mic2 = document.getElementById(MIC_BTN_ID);
+      const trigger = document.createElement('button');
+      trigger.id        = 'stv-settings-trigger';
+      trigger.type      = 'button';
+      trigger.title     = 'Voice settings';
+      trigger.setAttribute('aria-label', 'Voice settings');
+      // Sound-wave bars icon — matches the screenshot chevron/wave icon
+      trigger.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="5"  y1="12" x2="5"  y2="12"/>
+        <line x1="9"  y1="8"  x2="9"  y2="16"/>
+        <line x1="13" y1="5"  x2="13" y2="19"/>
+        <line x1="17" y1="8"  x2="17" y2="16"/>
+        <line x1="21" y1="12" x2="21" y2="12"/>
+      </svg>`;
+      trigger.style.cssText = [
+        'background:transparent',
+        'border:none',
+        'color:var(--text-muted,#475569)',
+        'font-size:0.9rem',
+        'cursor:pointer',
+        'padding:0 6px',
+        'display:flex',
+        'align-items:center',
+        'flex-shrink:0',
+        'transition:color 0.18s',
+      ].join(';');
+      trigger.addEventListener('mouseenter', () => { trigger.style.color = 'var(--accent,#3b82f6)'; });
+      trigger.addEventListener('mouseleave', () => { trigger.style.color = 'var(--text-muted,#475569)'; });
+
+      if (mic2 && mic2.parentNode) {
+        const sendBtn = document.getElementById('send-btn');
+        if (sendBtn) {
+          row.insertBefore(trigger, sendBtn);
+        } else {
+          mic2.parentNode.insertBefore(trigger, mic2.nextSibling);
+        }
+      }
+    }
+
+    // ── Voice status line (shown when mic is active) ───────────────────────
+    if (!document.getElementById(VOICE_STATUS_ID)) {
+      // Place it as the last child of the row's parent, below the row
+      const status = document.createElement('div');
+      status.id = VOICE_STATUS_ID;
+      row.parentNode && row.parentNode.insertBefore(status, row.nextSibling);
+    }
   }
 
   /* ─── Public API ──────────────────────────────────────────────────────── */
