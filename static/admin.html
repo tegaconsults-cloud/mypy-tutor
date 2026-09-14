@@ -1076,7 +1076,7 @@ async function loadCerts(){
     const url=`/certificate/${c.level}?name=${encodeURIComponent(c.learner_name)}&learner_id=${c.learner_id}&admin_view=true`;
     return `<tr><td>${c.cert_id}</td><td>${c.learner_name}</td><td style="font-size:.72rem">${c.learner_id}</td>
       <td><span class="badge ${lc}">${c.level}</span></td>
-      <td>${c.issued_at.split('T')[0]}</td>
+      <td>${(c.issued_at||'').split('T')[0]||'—'}</td>
       <td><a href="${url}" target="_blank" class="bsm">View PDF</a></td></tr>`;
   }).join('')||'<tr><td colspan="6" style="color:#4a5568">No certificates issued yet.</td></tr>';
 }

@@ -1557,9 +1557,9 @@ async def get_certificate(
     allowed_tiers      = CERT_TIER_REQUIRED.get(level, set())
     required_courses   = CERT_COURSES_REQUIRED.get(level, set())
     completed          = set(profile.completed_projects)
-    # One DB query for all purchased courses instead of one-per-course N+1
-    purchased_courses  = get_course_purchases_for_learner(learner_id) & required_courses
-    courses_ok         = required_courses.issubset(completed | purchased_courses)
+    # Certificate eligibility requires COMPLETION of courses, not just purchase.
+    # Purchasing a course does NOT grant a certificate — the learner must finish it.
+    courses_ok         = required_courses.issubset(completed)
     tier_ok            = profile.tier in allowed_tiers
 
     if not admin_view and not tier_ok and not courses_ok:
@@ -1596,27 +1596,50 @@ async def get_certificate(
     cert_id    = get_cert_id(learner_id, level)
 
     # Derive programme label from the most relevant completed course so the
-    # certificate, verification page, and email all say the right thing.
-    from app.certificates import _COURSE_CERT_OVERRIDES
-    _completed_list = list(profile.completed_projects) if profile.completed_projects else []
-    _explicit_course = profile.current_course or (_completed_list[-1] if _completed_list else None)
-    _PREF = ["ai-automation","machine-learning","ai-prompt-engineering",
-             "data-science-python","web-apis","python-databases",
-             "numpy-mastery","pandas-mastery","python-dsa","prompt-engineering"]
+    # certificate shows the actual course the learner studied, not "Python Programming".
+    # Priority order:
+    #   1. current_course if it has an override and was completed
+    #   2. Most advanced completed course from the preference list
+    #   3. Any completed course that has an override entry
+    #   4. Level default from CERT_CONFIGS
+    from app.certificates import _COURSE_CERT_OVERRIDES, CERT_CONFIGS as _CC
+    _completed_set  = set(profile.completed_projects) if profile.completed_projects else set()
+    _completed_list = list(_completed_set)
+    _explicit_course = profile.current_course
+
+    # Ordered preference: most advanced/specialised first, basics last
+    _PREF = [
+        "ai-automation", "machine-learning", "ai-prompt-engineering",
+        "data-science-python", "web-apis", "python-databases",
+        "numpy-mastery", "pandas-mastery", "python-dsa", "prompt-engineering",
+        "python-oop", "python-functions-advanced", "python-modules-stdlib",
+        "python-control-flow", "python-collections", "python-strings",
+        "python-fundamentals",
+    ]
     _best_course: str | None = None
-    if _explicit_course and _explicit_course in _COURSE_CERT_OVERRIDES:
+
+    # Priority 1: explicit current course if completed and has override
+    if _explicit_course and _explicit_course in _completed_set and _explicit_course in _COURSE_CERT_OVERRIDES:
         _best_course = _explicit_course
+
+    # Priority 2: scan preference list for a completed course with override
     if not _best_course:
         for _p in _PREF:
-            if _p in _completed_list:
+            if _p in _completed_set and _p in _COURSE_CERT_OVERRIDES:
                 _best_course = _p
+                break
+
+    # Priority 3: any completed course that has an override (stable sort preserves insertion order)
+    if not _best_course:
+        for _c in _completed_list:
+            if _c in _COURSE_CERT_OVERRIDES:
+                _best_course = _c
                 break
     _programme_label: str = ""
     if _best_course and _best_course in _COURSE_CERT_OVERRIDES:
         _programme_label = _COURSE_CERT_OVERRIDES[_best_course]["subtitle"]
     else:
         # Fall back to the level default subtitle from CERT_CONFIGS
-        from app.certificates import CERT_CONFIGS as _CC
         _programme_label = _CC.get(level, _CC["basic"])["subtitle"]
 
     log_certificate(cert_id, learner_id, clean_name, level, _programme_label)
@@ -3073,7 +3096,12 @@ async def admin_top_users(request: Request) -> dict:
         except Exception as _ce:
             logger.warning("top-users congrats email error: %s", _ce)
 
-    threading.Thread(target=_send_congrats_emails, daemon=False).start()
+    # Only send congratulatory emails on weekends (Saturday=5, Sunday=6 in Python)
+    # This prevents spamming users every time an admin loads this page.
+    if now_wat.weekday() >= 5:
+        threading.Thread(target=_send_congrats_emails, daemon=False).start()
+    else:
+        logger.info("top-users: skipping congrats emails (not the weekend, weekday=%s)", now_wat.weekday())
 
     return {
         "week_start": week_start_iso,
@@ -3909,10 +3937,15 @@ async def admin_reject_bank_transfer(
 
 @app.get("/admin/certificates")
 async def admin_certificates(request: Request) -> dict:
-    """Return certificates from SQLite with correct issue dates."""
+    """Return certificates from the database with correct issue dates."""
     _require_admin(request)
-    from app.admin import get_certificates as _get_certs
-    certs = _get_certs()   # always returns list[dict] with ISO issued_at
+    # Go directly to DB — never fall back to the empty in-memory _certs list
+    try:
+        from app.db import get_certificates_db as _get_certs_db
+        certs = _get_certs_db()
+    except Exception as _ce:
+        logger.error("admin_certificates DB error: %s", _ce)
+        certs = []
     return {"certificates": certs, "total": len(certs)}
 
 @app.get("/admin/team")

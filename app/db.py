@@ -828,7 +828,18 @@ def get_certificates_db() -> list[dict]:
     result = []
     for r in rows:
         d = dict(r)
-        d["issued_at"] = _dt.datetime.fromtimestamp(float(d["issued_at"])).isoformat()
+        raw = d.get("issued_at")
+        if isinstance(raw, _dt.datetime):
+            # Supabase/PostgreSQL returns a real datetime object
+            d["issued_at"] = raw.isoformat()
+        elif raw is not None:
+            try:
+                # Legacy: stored as epoch float/int
+                d["issued_at"] = _dt.datetime.fromtimestamp(float(raw)).isoformat()
+            except (TypeError, ValueError, OSError):
+                d["issued_at"] = str(raw)
+        else:
+            d["issued_at"] = ""
         result.append(d)
     return result
 
