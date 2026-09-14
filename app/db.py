@@ -762,8 +762,8 @@ def get_all_confirmed_emails() -> list[dict]:
     import psycopg2.extras
     with get_db() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            # confirmed may be BOOLEAN (Supabase) or INTEGER (legacy) — handle both
-            cur.execute("SELECT * FROM email_accounts WHERE confirmed = 1 OR confirmed IS TRUE")
+            # confirmed is BOOLEAN in Supabase — IS TRUE handles both TRUE and legacy cases
+            cur.execute("SELECT * FROM email_accounts WHERE confirmed IS TRUE")
             rows = cur.fetchall()
     return [dict(r) for r in rows]
 
@@ -1817,7 +1817,7 @@ def get_email_automation_candidates(email_type: str, cooldown_days: int) -> list
                        ON ea.learner_id = em.learner_id
                 LEFT JOIN learner_profiles lp
                        ON lp.learner_id = em.learner_id
-                WHERE (em.confirmed = 1 OR em.confirmed IS TRUE)
+                WHERE em.confirmed IS TRUE
                   AND em.email NOT LIKE '%@github.local'
                   AND (ea.opted_out IS NULL OR ea.opted_out = 0)
                   AND ({col} IS NULL OR {col} < %s)

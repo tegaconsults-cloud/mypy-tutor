@@ -2787,9 +2787,9 @@ async def admin_dashboard(request: Request) -> dict:
             row = cur.fetchone()
             return row[0] if row else default
         except Exception as _qe:
-            logger.warning("dashboard query failed [%s]: %s", sql[:60], _qe)
+            logger.warning("dashboard query failed [%s...]: %s", sql[:80], _qe)
             try:
-                cur.execute("ROLLBACK")  # clear any aborted transaction state
+                cur.connection.rollback()  # clear aborted transaction so next query can run
             except Exception:
                 pass
             return default
@@ -2821,10 +2821,10 @@ async def admin_dashboard(request: Request) -> dict:
         with _gdb() as _conn:
             with _conn.cursor() as _cur:
                 wat_date = _wat_date_key()
-                email_count      = _q(_cur, 0, "SELECT COUNT(*) FROM email_accounts WHERE confirmed = 1 OR confirmed IS TRUE")
+                email_count      = _q(_cur, 0, "SELECT COUNT(*) FROM email_accounts WHERE confirmed IS TRUE")
                 profile_count    = _q(_cur, 0, "SELECT COUNT(*) FROM learner_profiles WHERE tier != 'deleted'")
                 confirmed_unique = _q(_cur, 0,
-                    "SELECT COUNT(DISTINCT ea.learner_id) FROM email_accounts ea WHERE ea.confirmed = 1 OR ea.confirmed IS TRUE")
+                    "SELECT COUNT(DISTINCT learner_id) FROM email_accounts WHERE confirmed IS TRUE")
                 total_users      = max(email_count, profile_count, confirmed_unique)
 
                 # ── Active today ─────────────────────────────────────────
@@ -2834,8 +2834,8 @@ async def admin_dashboard(request: Request) -> dict:
 
                 # ── New users 24h ────────────────────────────────────────
                 new_users_24h    = _q(_cur, 0,
-                    "SELECT COUNT(*) FROM email_accounts WHERE (confirmed = 1 OR confirmed IS TRUE) "
-                    "AND created_at >= NOW() - INTERVAL '24 hours'")
+                    "SELECT COUNT(*) FROM email_accounts WHERE confirmed IS TRUE "
+                    "AND to_timestamp(created_at) >= NOW() - INTERVAL '24 hours'")
 
                 # ── Tier breakdown ────────────────────────────────────────
                 for _tier in ["free", "tier1", "tier2", "tier3", "tier4"]:
@@ -2844,7 +2844,7 @@ async def admin_dashboard(request: Request) -> dict:
                             SELECT ea.learner_id
                             FROM email_accounts ea
                             LEFT JOIN learner_profiles lp ON lp.learner_id = ea.learner_id
-                            WHERE (ea.confirmed = 1 OR ea.confirmed IS TRUE)
+                            WHERE confirmed IS TRUE
                               AND COALESCE(lp.tier, 'free') = %s
                               AND COALESCE(lp.tier, 'free') != 'deleted'
                         ) t""", (_tier,))
@@ -5728,7 +5728,7 @@ def _backfill_email_automation() -> None:
                            COALESCE(ea.name, ea.full_name, split_part(ea.email,'@',1)) AS name
                     FROM email_accounts ea
                     LEFT JOIN email_automation ema ON ema.learner_id = ea.learner_id
-                    WHERE (ea.confirmed = 1 OR ea.confirmed IS TRUE) AND ema.learner_id IS NULL
+                    WHERE ea.confirmed IS TRUE AND ema.learner_id IS NULL
                 """)
                 missing = _bcur.fetchall()
         for row in missing:
