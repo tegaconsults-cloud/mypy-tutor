@@ -381,14 +381,14 @@ async def chat(request: ChatRequest, req: Request,
                 logger.warning("LLM unavailable after retries: %s", exc)
                 raise HTTPException(
                     status_code=503,
-                    detail="Sir. Tega is momentarily busy. Please wait a moment and try again."
+                    detail="Sir. Tega is warming up — momentarily busy. Please try again in a moment."
                 )
 
             if "model" in exc_msg or "not found" in exc_msg or "404" in exc_msg:
                 logger.error("LLM model error: %s", exc)
                 raise HTTPException(
-                    status_code=502,
-                    detail="Sir. Tega is updating. Please try again in a moment."
+                    status_code=503,
+                    detail="Sir. Tega is warming up — model updating. Please try again in a moment."
                 )
 
             # Any other error — retry once more
@@ -421,8 +421,8 @@ async def chat(request: ChatRequest, req: Request,
             )
         logger.error("LLM error after retries: %s", last_exc)
         raise HTTPException(
-            status_code=502,
-            detail="Sir. Tega is having trouble right now. Please try again in a few seconds."
+            status_code=503,
+            detail="Sir. Tega is warming up — please try again in a moment."
         )
 
     response_dict  = format_response(content, intent)
@@ -526,7 +526,22 @@ async def ping() -> dict:
     return {"ok": True}
 
 
-@app.get("/favicon.ico", include_in_schema=False)
+@app.get("/wake", include_in_schema=False)
+async def wake() -> dict:
+    """
+    Pre-warm the Groq client on page load so the first real message has
+    no cold-start delay. Called by the frontend immediately after mount.
+    Does NOT call the LLM — just initialises the client object.
+    Returns in <50ms on a warm server.
+    """
+    try:
+        from app.llm_client import _get_client
+        _get_client()          # lazy-init: creates Groq() if not yet created
+        return {"ok": True, "warm": True}
+    except Exception as exc:
+        # GROQ_API_KEY not set or client error — return 200 anyway so frontend
+        # doesn't treat this as a failure.  Real failure shows up on /chat.
+        return {"ok": True, "warm": False, "detail": str(exc)[:80]}
 async def favicon() -> HTMLResponse:
     """Serve favicon.ico with no-cache headers to force browsers to pick up logo changes."""
     import os as _os2
