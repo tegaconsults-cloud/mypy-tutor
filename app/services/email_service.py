@@ -7,11 +7,11 @@ All sends are non-blocking (background thread).
 Env vars:
   RESEND_API_KEY    re_...
   EMAIL_FROM        MyPy Tutor <noreply@mypytutor.com.ng>
-  SUPPORT_EMAIL     tega.com.ng@gmail.com  (direct Gmail inbox — receives replies)
+  SUPPORT_EMAIL     support@mypytutor.com.ng  (reply_to on all outbound emails)
+  ADMIN_EMAIL       real inbox — set to tega.com.ng@gmail.com in Render env vars
   APP_URL           https://mypytutor.onrender.com
   FRONTEND_URL      https://mypytutor.com.ng
-  ADMIN_EMAIL       admin inbox for admin_notification() — defaults to SUPPORT_EMAIL
-  EMAIL_USER / EMAIL_PASS  — Gmail SMTP fallback
+  EMAIL_USER / EMAIL_PASS  — Gmail SMTP fallback credentials
 """
 from __future__ import annotations
 import os, time, logging, threading
@@ -23,10 +23,7 @@ def _app_url() -> str:                      return _e("APP_URL", "https://mypytu
 def _frontend_url() -> str:                 return _e("FRONTEND_URL", _app_url())
 def _from_address() -> str:                 return _e("EMAIL_FROM", "MyPy Tutor <noreply@mypytutor.com.ng>")
 def _support_email() -> str:
-    # Default is the real Gmail inbox so reply-to lands somewhere receivable.
-    # Resend cannot receive inbound mail on mypytutor.com.ng unless
-    # Resend Inbound is configured — so we point directly to Gmail.
-    return _e("SUPPORT_EMAIL", "tega.com.ng@gmail.com")
+    return _e("SUPPORT_EMAIL", "support@mypytutor.com.ng")
 def _resend_key() -> str:                   return _e("RESEND_API_KEY", "")
 
 PRIMARY   = "#0D47A1"
@@ -609,13 +606,13 @@ def send_enquiry_email(name: str, email: str, category: str,
                        subject: str, message: str,
                        learner_id: str = "") -> None:
     """
-    Forward a user support enquiry to the admin inbox (tega.com.ng@gmail.com
-    by default, or ADMIN_EMAIL env var).  reply_to is set to the user's email
-    so the admin can reply directly to the learner from Gmail.
+    Forward a user support enquiry to support@mypytutor.com.ng, which
+    forwards to tega.com.ng@gmail.com via Resend Inbound or DNS email forwarding.
+    reply_to is set to the user's email so the admin can reply directly.
     Also sends a confirmation receipt to the user.
     """
-    support    = _support_email()   # tega.com.ng@gmail.com (or SUPPORT_EMAIL env var)
-    admin_dest = _e("ADMIN_EMAIL", support)   # real inbox: defaults to support email
+    support    = _support_email()   # support@mypytutor.com.ng
+    admin_dest = _e("ADMIN_EMAIL", support)   # override with ADMIN_EMAIL env var if set
     app   = _frontend_url()
 
     # ── Email to support inbox (admin receives this) ──────────────────────
