@@ -3621,6 +3621,237 @@ async def admin_confirm_payment(payment_id: str, request: Request) -> dict:
 # Bank transfer proof-of-payment � upload, admin review, approve/reject
 # ---------------------------------------------------------------------------
 
+
+# ---------------------------------------------------------------------------
+# Paystack dynamic checkout — creates a transaction with correct amount,
+# course name, and learner metadata so the generic page problem is gone.
+# ---------------------------------------------------------------------------
+
+@app.post("/payments/paystack/initialize")
+async def paystack_initialize(request: Request,
+                               user=Depends(get_current_user)) -> dict:
+    """
+    Create a Paystack transaction via the server-side Initialize API.
+    Returns an authorization_url the frontend redirects to — the Paystack
+    page will have the exact amount, email, and course/plan pre-loaded.
+
+    Body (JSON):
+      learner_id  : str   — must match the authenticated user
+      amount_ngn  : float — exact naira amount (e.g. 50000)
+      plan        : str   — plan/tier label (e.g. "Premium Bundle")
+      course_name : str   — optional, for individual course purchases
+      coupon_code : str   — optional, applied by webhook on success
+    """
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to start checkout.")
+
+    body        = await request.json()
+    learner_id  = str(body.get("learner_id", "")).strip()
+    amount_ngn  = float(body.get("amount_ngn", 0) or 0)
+    plan        = str(body.get("plan", "")).strip()
+    course_name = str(body.get("course_name", "")).strip()
+    coupon_code = str(body.get("coupon_code", "")).strip().upper()
+
+    if user.learner_id != learner_id:
+        raise HTTPException(status_code=403, detail="learner_id does not match your session.")
+    if amount_ngn <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be greater than zero.")
+    if not plan and not course_name:
+        raise HTTPException(status_code=400, detail="plan or course_name is required.")
+
+    secret_key = _os.getenv("PAYSTACK_SECRET_KEY", "")
+    if not secret_key:
+        raise HTTPException(
+            status_code=503,
+            detail="Payment system not configured. Please use bank transfer or contact support."
+        )
+
+    email       = user.email or ""
+    amount_kobo = int(round(amount_ngn * 100))   # Paystack uses kobo (1 NGN = 100 kobo)
+    callback_url = _os.getenv(
+        "PAYSTACK_CALLBACK_URL",
+        _os.getenv("FRONTEND_URL", "https://mypytutor.com.ng") + "/payment/callback"
+    )
+
+    metadata = {
+        "learner_id":  learner_id,
+        "email":       email,
+        "plan":        plan,
+        "course_name": course_name,
+        "coupon_code": coupon_code,
+        "custom_fields": [
+            {"display_name": "Learner ID",   "variable_name": "learner_id",   "value": learner_id},
+            {"display_name": "Plan",         "variable_name": "plan",         "value": plan or course_name},
+        ],
+    }
+    if course_name:
+        metadata["custom_fields"].append(
+            {"display_name": "Course", "variable_name": "course_name", "value": course_name}
+        )
+    if coupon_code:
+        metadata["custom_fields"].append(
+            {"display_name": "Coupon", "variable_name": "coupon_code", "value": coupon_code}
+        )
+
+    try:
+        import httpx as _hx
+        resp = _hx.post(
+            "https://api.paystack.co/transaction/initialize",
+            headers={
+                "Authorization": f"Bearer {secret_key}",
+                "Content-Type":  "application/json",
+            },
+            json={
+                "email":        email,
+                "amount":       amount_kobo,
+                "currency":     "NGN",
+                "callback_url": callback_url,
+                "metadata":     metadata,
+                "label":        plan or course_name,
+            },
+            timeout=15,
+        )
+        data = resp.json()
+    except Exception as exc:
+        logger.error("Paystack initialize error: %s", exc)
+        raise HTTPException(status_code=502, detail="Could not reach Paystack. Try bank transfer.")
+
+    if not data.get("status"):
+        msg = data.get("message", "Paystack initialization failed.")
+        logger.error("Paystack initialize failed: %s", data)
+        raise HTTPException(status_code=400, detail=msg)
+
+    auth_url    = data["data"]["authorization_url"]
+    reference   = data["data"]["reference"]
+    access_code = data["data"].get("access_code", "")
+
+    log_activity(learner_id, "payment:checkout-started",
+                 f"plan={plan or course_name} amount={amount_ngn:.0f} ref={reference}")
+
+    return {
+        "authorization_url": auth_url,
+        "reference":         reference,
+        "access_code":       access_code,
+        "amount_ngn":        amount_ngn,
+        "plan":              plan or course_name,
+    }
+
+# ---------------------------------------------------------------------------
+# Paystack dynamic checkout — creates a transaction with the correct amount,
+# course name, and learner metadata so the Paystack page has everything pre-loaded.
+# ---------------------------------------------------------------------------
+
+@app.post("/payments/paystack/initialize")
+async def paystack_initialize(request: Request,
+                               user=Depends(get_current_user)) -> dict:
+    """
+    Create a Paystack transaction via the server-side Initialize API.
+    Returns authorization_url which the frontend redirects to — the checkout
+    page will have the exact amount, email, course/plan, and learner ID embedded.
+
+    Body (JSON):
+      learner_id  : str   — must match the authenticated user
+      amount_ngn  : float — exact naira amount (e.g. 50000)
+      plan        : str   — plan/tier label (e.g. "Premium Bundle")
+      course_name : str   — optional, for individual course purchases
+      coupon_code : str   — optional, applied by webhook on success
+    """
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to start checkout.")
+
+    body        = await request.json()
+    learner_id  = str(body.get("learner_id", "")).strip()
+    amount_ngn  = float(body.get("amount_ngn", 0) or 0)
+    plan        = str(body.get("plan", "")).strip()
+    course_name = str(body.get("course_name", "")).strip()
+    coupon_code = str(body.get("coupon_code", "")).strip().upper()
+
+    if user.learner_id != learner_id:
+        raise HTTPException(status_code=403, detail="learner_id does not match your session.")
+    if amount_ngn <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be greater than zero.")
+    if not plan and not course_name:
+        raise HTTPException(status_code=400, detail="plan or course_name is required.")
+
+    secret_key = _os.getenv("PAYSTACK_SECRET_KEY", "")
+    if not secret_key:
+        raise HTTPException(
+            status_code=503,
+            detail="Payment system not configured. Please use bank transfer or contact support."
+        )
+
+    email        = user.email or ""
+    amount_kobo  = int(round(amount_ngn * 100))   # Paystack expects kobo (1 NGN = 100 kobo)
+    callback_url = _os.getenv(
+        "PAYSTACK_CALLBACK_URL",
+        _os.getenv("FRONTEND_URL", "https://mypytutor.com.ng") + "/payment/callback"
+    )
+
+    metadata = {
+        "learner_id":  learner_id,
+        "email":       email,
+        "plan":        plan,
+        "course_name": course_name,
+        "coupon_code": coupon_code,
+        "custom_fields": [
+            {"display_name": "Learner ID", "variable_name": "learner_id",   "value": learner_id},
+            {"display_name": "Plan",       "variable_name": "plan",         "value": plan or course_name},
+        ],
+    }
+    if course_name:
+        metadata["custom_fields"].append(
+            {"display_name": "Course", "variable_name": "course_name", "value": course_name}
+        )
+    if coupon_code:
+        metadata["custom_fields"].append(
+            {"display_name": "Coupon", "variable_name": "coupon_code", "value": coupon_code}
+        )
+
+    try:
+        import httpx as _hx
+        resp = _hx.post(
+            "https://api.paystack.co/transaction/initialize",
+            headers={
+                "Authorization": f"Bearer {secret_key}",
+                "Content-Type":  "application/json",
+            },
+            json={
+                "email":        email,
+                "amount":       amount_kobo,
+                "currency":     "NGN",
+                "callback_url": callback_url,
+                "metadata":     metadata,
+                "label":        plan or course_name,
+            },
+            timeout=15,
+        )
+        data = resp.json()
+    except Exception as exc:
+        logger.error("Paystack initialize error: %s", exc)
+        raise HTTPException(status_code=502,
+            detail="Could not reach Paystack. Please use bank transfer or try again.")
+
+    if not data.get("status"):
+        msg = data.get("message", "Paystack initialization failed.")
+        logger.error("Paystack initialize failed: %s", data)
+        raise HTTPException(status_code=400, detail=msg)
+
+    auth_url    = data["data"]["authorization_url"]
+    reference   = data["data"]["reference"]
+    access_code = data["data"].get("access_code", "")
+
+    log_activity(learner_id, "payment:checkout-started",
+                 f"plan={plan or course_name} amount={amount_ngn:.0f} ref={reference}")
+
+    return {
+        "authorization_url": auth_url,
+        "reference":         reference,
+        "access_code":       access_code,
+        "amount_ngn":        amount_ngn,
+        "plan":              plan or course_name,
+    }
+
+
 @app.get("/payments/bank-details")
 async def get_bank_details() -> dict:
     """

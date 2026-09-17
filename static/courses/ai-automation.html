@@ -225,7 +225,7 @@ footer a:hover{color:var(--accent)}
       </a>
       <div class="nav-cta">
         <a class="btn btn-outline" href="https://mypytutor.com.ng">← All Courses</a>
-        <a class="btn btn-primary" href="https://paystack.shop/pay/vt_re4d3h52">Enrol Now — ₦50,000</a>
+        <a class="btn btn-primary" href="#" onclick="openCheckout(event)">Enrol Now — ₦50,000</a>
       </div>
     </div>
   </div>
@@ -241,7 +241,7 @@ footer a:hover{color:var(--accent)}
       and end-to-end automation systems — the skills every Python developer needs in 2025 and beyond.
     </p>
     <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
-      <a class="btn btn-primary" href="https://paystack.shop/pay/vt_re4d3h52"
+      <a class="btn btn-primary" href="#" onclick="openCheckout(event)"
          style="font-size:.95rem;padding:12px 28px">🚀 Enrol Now — ₦50,000 one-time</a>
       <a class="btn btn-outline" href="#modules"
          style="font-size:.95rem;padding:12px 28px">📚 See Curriculum</a>
@@ -621,7 +621,7 @@ footer a:hover{color:var(--accent)}
         <div class="feature"><span class="feature-check">✓</span><span>Free future course updates forever</span></div>
       </div>
       <div style="display:flex;gap:12px;flex-wrap:wrap">
-        <a class="btn btn-primary" href="https://paystack.shop/pay/vt_re4d3h52"
+        <a class="btn btn-primary" href="#" onclick="openCheckout(event)"
            style="font-size:.95rem;padding:13px 32px;flex:1;min-width:200px;text-align:center">
           🚀 Enrol Now — ₦50,000
         </a>
@@ -727,7 +727,7 @@ footer a:hover{color:var(--accent)}
     <h2>Ready to automate everything?</h2>
     <p>Join learners across Africa building real AI-powered automation systems with Python. Pay once. Learn forever. Build things that matter.</p>
     <div class="cta-buttons">
-      <a class="btn btn-primary" href="https://paystack.shop/pay/vt_re4d3h52"
+      <a class="btn btn-primary" href="#" onclick="openCheckout(event)"
          style="font-size:1rem;padding:14px 36px">🚀 Enrol Now — ₦50,000</a>
       <a class="btn btn-outline" href="https://mypytutor.com.ng"
          style="font-size:1rem;padding:14px 28px">Try Free First</a>
@@ -743,8 +743,7 @@ footer a:hover{color:var(--accent)}
       Built by <a href="https://mypytutor.com.ng">TeamTega Technologies Limited</a> ·
       Certificates issued by <strong>Teamsamikoko Global Academy</strong> (Reg No: 3508656)<br/>
       <a href="https://mypytutor.com.ng">mypytutor.com.ng</a> ·
-      Payment via <a href="https://paystack.shop/pay/vt_re4d3h52">Paystack</a> or
-      Zenith Bank · 1228732577
+      Payment via Paystack or bank transfer — Zenith Bank · 1228732577
     </p>
   </div>
 </footer>
@@ -759,6 +758,237 @@ function toggleFaq(qEl) {
   item.classList.toggle('open');
 }
 // Open first module by default — done in HTML via class="module open"
+</script>
+
+<!-- ── Checkout Modal ──────────────────────────────────────────────────── -->
+<div id="checkout-overlay" style="display:none;position:fixed;inset:0;z-index:2000;
+  background:rgba(0,0,0,.72);backdrop-filter:blur(6px);
+  display:none;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#0d1120;border:1px solid rgba(245,158,11,.25);border-radius:18px;
+    max-width:480px;width:100%;padding:32px 28px;position:relative;
+    box-shadow:0 24px 80px rgba(0,0,0,.7);animation:ciSlideUp .35s ease both;">
+    <button onclick="closeCheckout()" style="position:absolute;top:14px;right:16px;
+      background:none;border:none;color:#64748b;font-size:1.3rem;cursor:pointer;line-height:1;">✕</button>
+
+    <div style="text-align:center;margin-bottom:18px;">
+      <div style="font-size:2rem;margin-bottom:6px;">🤖</div>
+      <h3 style="color:#fcd34d;font-size:1.1rem;font-weight:800;margin:0 0 4px;">AI Automation Course</h3>
+      <p style="color:#64748b;font-size:.82rem;margin:0;">₦50,000 · Lifetime access · Premium Bundle (tier4)</p>
+    </div>
+
+    <!-- Tabs -->
+    <div style="display:flex;gap:8px;margin-bottom:18px;">
+      <button id="ci-tab-ps" onclick="ciTab('paystack')"
+        style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(59,130,246,.4);
+          background:rgba(59,130,246,.15);color:#93c5fd;font-size:.8rem;font-weight:600;cursor:pointer;">
+        💳 Paystack
+      </button>
+      <button id="ci-tab-bt" onclick="ciTab('bank')"
+        style="flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,.1);
+          background:rgba(255,255,255,.04);color:#94a3b8;font-size:.8rem;font-weight:600;cursor:pointer;">
+        🏦 Bank Transfer
+      </button>
+    </div>
+
+    <!-- Paystack panel -->
+    <div id="ci-panel-ps">
+      <p style="font-size:.82rem;color:#94a3b8;line-height:1.6;margin-bottom:14px;">
+        A secure Paystack checkout page will open with the course name,
+        amount (₦50,000), and your account pre-filled.
+      </p>
+      <button id="ci-ps-btn" onclick="ciPaystack()"
+        style="width:100%;padding:13px;background:linear-gradient(135deg,#d97706,#f59e0b);
+          color:#07090f;border:none;border-radius:10px;font-size:.95rem;font-weight:800;
+          cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
+        <span id="ci-ps-spin" style="display:none;width:15px;height:15px;border:2px solid rgba(0,0,0,.2);
+          border-top-color:#07090f;border-radius:50%;animation:ciSpin .7s linear infinite;"></span>
+        <span id="ci-ps-lbl">🚀 Pay ₦50,000 via Paystack</span>
+      </button>
+      <p id="ci-ps-err" style="display:none;color:#fca5a5;font-size:.78rem;margin-top:8px;text-align:center;"></p>
+      <p style="font-size:.72rem;color:#4a5568;margin-top:8px;text-align:center;">
+        Card · Bank transfer · USSD · Secured by Paystack
+      </p>
+    </div>
+
+    <!-- Bank Transfer panel -->
+    <div id="ci-panel-bt" style="display:none;">
+      <div style="background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.2);
+        border-radius:8px;padding:12px 14px;margin-bottom:12px;">
+        <div style="font-size:.7rem;color:#64748b;">Bank · Account Name · Account Number</div>
+        <div style="font-weight:700;color:#93c5fd;font-size:.95rem;margin-top:4px;" id="ci-bank-info">
+          Zenith Bank · Teamsamikoko Global Academy · 1228732577
+        </div>
+        <button onclick="ciCopyAcct()" style="margin-top:5px;background:rgba(59,130,246,.15);
+          border:1px solid rgba(59,130,246,.3);color:#93c5fd;border-radius:5px;
+          padding:2px 10px;font-size:.72rem;cursor:pointer;">📋 Copy number</button>
+      </div>
+      <p style="font-size:.8rem;color:#94a3b8;line-height:1.6;margin-bottom:10px;">
+        Transfer exactly <strong style="color:#fcd34d;">₦50,000</strong> and upload your receipt below.
+        Your account will be upgraded within 24 hours.
+      </p>
+
+      <input id="ci-ref" placeholder="Payment reference / your email (optional)"
+        style="width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);
+          border-radius:7px;padding:8px 11px;color:#e2e8f0;font-size:.83rem;margin-bottom:8px;
+          outline:none;font-family:inherit;"/>
+
+      <div id="ci-upload" onclick="document.getElementById('ci-file').click()"
+        style="border:2px dashed rgba(255,255,255,.1);border-radius:8px;padding:14px;
+          text-align:center;cursor:pointer;font-size:.8rem;color:#64748b;transition:.18s;"
+        ondragover="event.preventDefault();this.style.borderColor='rgba(59,130,246,.5)'"
+        ondragleave="this.style.borderColor='rgba(255,255,255,.1)'"
+        ondrop="ciHandleDrop(event)">
+        📎 Click or drag receipt image here (PNG/JPG · max 3.5 MB)
+        <input type="file" id="ci-file" accept="image/*" style="display:none"
+          onchange="ciHandleFile(this)"/>
+        <img id="ci-preview" style="display:none;max-width:100%;border-radius:6px;margin-top:8px;" alt="preview"/>
+      </div>
+
+      <button id="ci-bt-btn" onclick="ciBankSubmit()"
+        style="width:100%;margin-top:10px;padding:11px;
+          background:linear-gradient(135deg,#1d4ed8,#3b82f6);color:#fff;
+          border:none;border-radius:9px;font-size:.88rem;font-weight:700;cursor:pointer;">
+        📤 Submit Receipt
+      </button>
+      <div id="ci-bt-msg" style="display:none;font-size:.78rem;margin-top:8px;
+        border-radius:7px;padding:9px 12px;line-height:1.55;"></div>
+    </div>
+  </div>
+</div>
+
+<style>
+@keyframes ciSlideUp { from{opacity:0;transform:translateY(28px)} to{opacity:1;transform:translateY(0)} }
+@keyframes ciSpin    { to{transform:rotate(360deg)} }
+</style>
+
+<script>
+const CI_API   = 'https://mypytutor.onrender.com';
+const CI_TOKEN = () => localStorage.getItem('mpt_token') || '';
+const CI_LID   = () => localStorage.getItem('mpt_learner_id') || '';
+let   ciBankB64 = '';
+
+function openCheckout(e) {
+  if (e) e.preventDefault();
+  const ov = document.getElementById('checkout-overlay');
+  ov.style.display = 'flex';
+  // Load real bank details
+  fetch(CI_API + '/payments/bank-details').then(r=>r.json()).then(d=>{
+    document.getElementById('ci-bank-info').textContent =
+      (d.bank_name||'Zenith Bank') + ' · ' +
+      (d.account_name||'Teamsamikoko Global Academy') + ' · ' +
+      (d.account_number||'1228732577');
+  }).catch(()=>{});
+}
+function closeCheckout() {
+  document.getElementById('checkout-overlay').style.display = 'none';
+}
+// Close on overlay click
+document.getElementById('checkout-overlay').addEventListener('click', function(e){
+  if (e.target === this) closeCheckout();
+});
+
+function ciTab(name) {
+  const isPs = name === 'paystack';
+  document.getElementById('ci-panel-ps').style.display = isPs ? '' : 'none';
+  document.getElementById('ci-panel-bt').style.display = isPs ? 'none' : '';
+  document.getElementById('ci-tab-ps').style.background = isPs ? 'rgba(59,130,246,.15)' : 'rgba(255,255,255,.04)';
+  document.getElementById('ci-tab-ps').style.borderColor = isPs ? 'rgba(59,130,246,.4)' : 'rgba(255,255,255,.1)';
+  document.getElementById('ci-tab-ps').style.color = isPs ? '#93c5fd' : '#94a3b8';
+  document.getElementById('ci-tab-bt').style.background = !isPs ? 'rgba(59,130,246,.15)' : 'rgba(255,255,255,.04)';
+  document.getElementById('ci-tab-bt').style.borderColor = !isPs ? 'rgba(59,130,246,.4)' : 'rgba(255,255,255,.1)';
+  document.getElementById('ci-tab-bt').style.color = !isPs ? '#93c5fd' : '#94a3b8';
+}
+
+async function ciPaystack() {
+  const btn = document.getElementById('ci-ps-btn');
+  const spin = document.getElementById('ci-ps-spin');
+  const lbl  = document.getElementById('ci-ps-lbl');
+  const err  = document.getElementById('ci-ps-err');
+  if (!CI_TOKEN()) {
+    err.textContent = 'Please sign in to MyPy Tutor first, then return here to pay.';
+    err.style.display = 'block'; return;
+  }
+  btn.disabled = true; spin.style.display = 'inline-block'; lbl.textContent = 'Opening checkout…'; err.style.display = 'none';
+  try {
+    const r = await fetch(CI_API + '/payments/paystack/initialize', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','Authorization':'Bearer '+CI_TOKEN()},
+      body: JSON.stringify({
+        learner_id:  CI_LID(),
+        amount_ngn:  50000,
+        plan:        'Premium Bundle',
+        course_name: 'ai-automation',
+        coupon_code: '',
+      }),
+    });
+    const d = await r.json();
+    if (!r.ok || !d.authorization_url) throw new Error(d.error || d.detail || 'Checkout failed.');
+    window.location.href = d.authorization_url;
+  } catch(e) {
+    err.textContent = e.message || 'Could not open checkout. Try bank transfer instead.';
+    err.style.display = 'block';
+    btn.disabled = false; spin.style.display = 'none'; lbl.textContent = '🚀 Pay ₦50,000 via Paystack';
+  }
+}
+
+function ciCopyAcct() {
+  const txt = document.getElementById('ci-bank-info').textContent;
+  const num = txt.split('·').pop().trim();
+  navigator.clipboard.writeText(num).then(()=>{
+    document.querySelector('#ci-panel-bt button').textContent = '✅ Copied!';
+    setTimeout(()=>{ document.querySelector('#ci-panel-bt button').innerHTML='📋 Copy number'; }, 2000);
+  });
+}
+
+function ciHandleDrop(e) {
+  e.preventDefault();
+  document.getElementById('ci-upload').style.borderColor='rgba(255,255,255,.1)';
+  if (e.dataTransfer.files[0]) ciProcessFile(e.dataTransfer.files[0]);
+}
+function ciHandleFile(inp) { if (inp.files[0]) ciProcessFile(inp.files[0]); }
+function ciProcessFile(file) {
+  if (file.size > 3.8*1024*1024) { alert('File too large. Max 3.5 MB.'); return; }
+  const r = new FileReader();
+  r.onload = e => {
+    ciBankB64 = e.target.result;
+    const p = document.getElementById('ci-preview');
+    p.src = ciBankB64; p.style.display = 'block';
+    document.getElementById('ci-upload').childNodes[0].textContent = '✅ ' + file.name;
+  };
+  r.readAsDataURL(file);
+}
+
+async function ciBankSubmit() {
+  const ref = document.getElementById('ci-ref').value.trim();
+  const btn = document.getElementById('ci-bt-btn');
+  const msg = document.getElementById('ci-bt-msg');
+  if (!ciBankB64)  { showCiMsg('Please upload your receipt image.', false); return; }
+  if (!CI_TOKEN()) { showCiMsg('Please sign in to MyPy Tutor first, then come back to submit.', false); return; }
+  btn.disabled = true; btn.textContent = '⏳ Submitting…'; msg.style.display = 'none';
+  try {
+    const r = await fetch(CI_API + '/payments/bank-transfer/submit', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','Authorization':'Bearer '+CI_TOKEN()},
+      body: JSON.stringify({ plan:'Premium Bundle', amount:50000, reference:ref, proof_image_base64:ciBankB64 }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || d.detail || 'Submission failed.');
+    showCiMsg('✅ Receipt submitted! (ID: '+d.proof_id+'). Your account will be upgraded within 24 hours.', true);
+    btn.textContent = '✅ Submitted';
+  } catch(e) {
+    showCiMsg('❌ ' + (e.message || 'Could not submit. Please try again.'), false);
+    btn.disabled = false; btn.textContent = '📤 Submit Receipt';
+  }
+}
+
+function showCiMsg(txt, ok) {
+  const el = document.getElementById('ci-bt-msg');
+  el.textContent = txt;
+  el.style.display = 'block';
+  el.style.background = ok ? 'rgba(16,185,129,.1)' : 'rgba(239,68,68,.1)';
+  el.style.border = '1px solid ' + (ok ? 'rgba(16,185,129,.3)' : 'rgba(239,68,68,.3)');
+  el.style.color = ok ? '#6ee7b7' : '#fca5a5';
+}
 </script>
 </body>
 </html>
