@@ -1048,6 +1048,13 @@ async def auth_signup(request: EmailSignUpWithCode) -> dict:
     - Referral codes (user-generated, track discount, credited after payment)
     If the code is invalid, signup still proceeds � we just skip the reward.
     """
+    # Terms of Service must be accepted before account creation
+    if not request.terms_accepted:
+        raise HTTPException(
+            status_code=400,
+            detail="You must accept the Terms of Service to create an account. Read them at mypytutor.com.ng/terms"
+        )
+
     pw_hash = hash_password(request.password)
 
     # Validate code � check access_codes table first, then referrals
@@ -6717,6 +6724,30 @@ async def redirect_admin():
     """Redirect /admin → /admin.html"""
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/admin.html", status_code=302)
+
+
+@app.get("/terms", response_class=HTMLResponse, include_in_schema=False)
+async def serve_terms() -> HTMLResponse:
+    """Terms of Service — includes referral programme and withdrawal terms."""
+    import os as _os_terms
+    path = _os_terms.path.join("static", "terms.html")
+    if not _os_terms.path.exists(path):
+        raise HTTPException(status_code=404, detail="Terms of Service page not found.")
+    with open(path, "r", encoding="utf-8") as f:
+        content = f.read()
+    return HTMLResponse(content=content)
+
+
+@app.get("/privacy", response_class=HTMLResponse, include_in_schema=False)
+async def serve_privacy() -> HTMLResponse:
+    """Privacy Policy page."""
+    import os as _os_priv
+    path = _os_priv.path.join("static", "privacy.html")
+    if not _os_priv.path.exists(path):
+        raise HTTPException(status_code=404, detail="Privacy Policy page not found.")
+    with open(path, "r", encoding="utf-8") as f:
+        content = f.read()
+    return HTMLResponse(content=content)
 
 
 @app.get("/voice", response_class=HTMLResponse, include_in_schema=False)

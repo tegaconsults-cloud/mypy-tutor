@@ -282,11 +282,13 @@ class AccessCodeGenerate(BaseModel):
 
 class EmailSignUpWithCode(BaseModel):
     """Extended signup that accepts an optional access code."""
-    name:        str = Field(..., min_length=1, max_length=80)
-    email:       str = Field(..., min_length=5, max_length=254,
-                              pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
-    password:    str = Field(..., min_length=8, max_length=128)
-    access_code: str = Field(default="", max_length=32)
+    name:           str  = Field(..., min_length=1, max_length=80)
+    email:          str  = Field(..., min_length=5, max_length=254,
+                                  pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    password:       str  = Field(..., min_length=8, max_length=128)
+    access_code:    str  = Field(default="", max_length=32)
+    terms_accepted: bool = Field(default=False,
+        description="Must be true — user has read and accepted the Terms of Service.")
 
 # ---------------------------------------------------------------------------
 # Editable user profile model
