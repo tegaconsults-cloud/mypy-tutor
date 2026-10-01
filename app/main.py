@@ -1006,7 +1006,7 @@ async def validate_code_endpoint(request: Request) -> dict:
                 "tier":         None,
                 "tier_label":   None,
                 "discount_pct": 5,
-                "message":      "Referral code valid! You'll receive a 5% discount on your first purchase.",
+                "message":      "Referral code valid! You'll receive a \u20a65,000 welcome bonus + 5% off your first payment.",
             }
     except Exception:
         pass
@@ -2651,10 +2651,13 @@ async def paystack_webhook(request: Request) -> dict:
                         with _gdb() as _conn:
                             with _conn.cursor() as _cur:
                                 _cur.execute(
-                                    "UPDATE referrals SET bonus_balance=bonus_balance+%s WHERE code=%s",
+                                    "UPDATE referrals SET "
+                                    "bonus_balance=bonus_balance+%s, "
+                                    "successful_referrals=successful_referrals+1 "
+                                    "WHERE code=%s",
                                     (bonus, _ref_code)
                                 )
-                        logger.info("Credited ?%s referral bonus (15%%) for code %s", bonus, _ref_code)
+                        logger.info("Credited \u20a6%s referral bonus (15%%) + successful_referrals++ for code %s", bonus, _ref_code)
                 except Exception as rb_exc:
                     logger.debug("Referral bonus credit failed: %s", rb_exc)
 
@@ -4361,7 +4364,7 @@ async def admin_referrals(request: Request) -> dict:
         "referrals":               result,
         "total":                   len(result),
         "total_bonus_outstanding": round(total_bonus_outstanding, 2),
-        "split_info":              "5% discount to referee � 15% bonus to referrer",
+        "split_info":              "\u20a65,000 welcome bonus to new user \u00b7 5% off first payment \u00b7 15% bonus to referrer on payment",
     }
 
 
@@ -4887,42 +4890,71 @@ async def get_my_referral(learner_id: str,
     existing = get_learner_referral_code(learner_id)
     if existing:
         uses = get_referral_uses(existing["code"])
-        # Use the authoritative `uses` counter from the referrals table.
-        # It is incremented atomically by use_referral_code() on every signup.
-        # len(uses) from referral_uses rows can be lower if rows weren't written.
         authoritative_total = existing.get("uses", 0)
         paid_uses   = [u for u in uses if (u.get("referrer_bonus") or 0) > 0]
         unpaid_uses = [u for u in uses if (u.get("referrer_bonus") or 0) == 0]
-        # Reconcile: if SQLite rows > authoritative counter, the counter needs updating
         if len(uses) > authoritative_total:
             authoritative_total = len(uses)
         paid_count   = len(paid_uses)
         unpaid_count = authoritative_total - paid_count
         if unpaid_count < 0:
             unpaid_count = 0
+        successful_referrals = int(existing.get("successful_referrals") or 0)
+        WITHDRAWAL_LOCK      = 10
+        can_withdraw         = successful_referrals >= WITHDRAWAL_LOCK
+        frontend_url         = _os.getenv("FRONTEND_URL", "https://mypytutor.com.ng")
+        code                 = existing["code"]
+        share_message = (
+            "Join MyPy Tutor — Africa's Best AI, Python and Machine Learning Tutor!\n\n"
+            "Use my referral link to get instant ₦5,000 welcome bonus, 5% off your first payment, "
+            "15% bonus per new user you refer.\n\n"
+            f"👉 {frontend_url}/?ref={code}"
+        )
         return {
-            "code":             existing["code"],
-            "uses":             authoritative_total,
-            "max_uses":         existing["max_uses"],
-            "bonus_balance":    round(existing.get("bonus_balance", 0), 2),
-            "paid_referrals":   paid_count,
-            "unpaid_referrals": unpaid_count,
-            "total_referrals":  authoritative_total,
-            "recent_uses":      uses[:20],
+            "code":                  code,
+            "uses":                  authoritative_total,
+            "max_uses":              existing["max_uses"],
+            "bonus_balance":         round(existing.get("bonus_balance", 0), 2),
+            "paid_referrals":        paid_count,
+            "unpaid_referrals":      unpaid_count,
+            "total_referrals":       authoritative_total,
+            "successful_referrals":  successful_referrals,
+            "can_withdraw":          can_withdraw,
+            "referrals_needed":      max(0, WITHDRAWAL_LOCK - successful_referrals),
+            "share_message":         share_message,
+            "recent_uses":           uses[:20],
         }
     import secrets as _sec
     code    = _sec.token_hex(4).upper()
     profile = get_profile(learner_id)
     email   = profile.email or learner_id
     create_referral_code(code, learner_id, email)
+    # Credit ₦5,000 welcome bonus to the new user's referral balance immediately
+    try:
+        from app.db import get_db as _gdb_ref
+        with _gdb_ref() as _rconn:
+            with _rconn.cursor() as _rcur:
+                _rcur.execute(
+                    "UPDATE referrals SET bonus_balance = bonus_balance + 5000 WHERE code = %s",
+                    (code,)
+                )
+    except Exception as _wb_exc:
+        logger.debug("Welcome bonus credit failed (non-fatal): %s", _wb_exc)
     threading.Thread(
         target=_mirror_referral_code_to_supabase,
         args=(code, learner_id, email),
         daemon=False,
     ).start()
     return {
-        "code": code, "uses": 0, "max_uses": 50, "bonus_balance": 0.0,
+        "code": code, "uses": 0, "max_uses": 50, "bonus_balance": 5000.0,
         "paid_referrals": 0, "unpaid_referrals": 0, "total_referrals": 0,
+        "successful_referrals": 0, "can_withdraw": False, "referrals_needed": 10,
+        "share_message": (
+            "Join MyPy Tutor — Africa's Best AI, Python and Machine Learning Tutor!\n\n"
+            "Use my referral link to get instant \u20a65,000 welcome bonus, 5% off your first payment, "
+            "15% bonus per new user you refer.\n\n"
+            f"\U0001f449 {_os.getenv('FRONTEND_URL', 'https://mypytutor.com.ng')}/?ref={code}"
+        ),
         "recent_uses": [],
     }
 
@@ -4950,28 +4982,39 @@ async def use_referral(body: ReferralUse,
         raise HTTPException(status_code=400, detail="Could not apply referral code.")
     log_activity(body.learner_id, "referral:used", f"code={body.code}")
     return {
-        "ok": True,
+        "ok":           True,
         "discount_pct": 5,
-        "message": "Referral applied! You get 5% off your first payment.",
+        "welcome_bonus": 5000,
+        "message": (
+            "\u20a65,000 welcome bonus added to your referral balance! "
+            "You also get 5% off your first payment. "
+            "Share your own referral link to earn more — "
+            "15% bonus for every friend who pays."
+        ),
     }
 
 
 @app.post("/referral/withdraw")
 async def request_referral_withdrawal(body: _ReferralWithdraw,
                                        user=Depends(get_current_user)) -> dict:
-    """Create a referral payout request. Requires authentication as the owner."""
+    """
+    Create a referral payout request.
+    Withdrawal is LOCKED until the user has 10 successful (paid) referrals.
+    After 10 referrals, the full balance can be withdrawn OR used to purchase a course.
+    """
     if user is None:
         raise HTTPException(status_code=401, detail="Sign in to request a withdrawal.")
     if user.learner_id != body.learner_id:
         raise HTTPException(status_code=403, detail="You can only withdraw your own referral balance.")
 
     validate_learner_id(body.learner_id)
-    balance = get_referral_bonus_balance(body.learner_id).get("balance", 0.0)
+    bal_info = get_referral_bonus_balance(body.learner_id)
+    balance  = bal_info.get("balance", 0.0)
 
     if body.amount <= 0:
         raise HTTPException(status_code=400, detail="Withdrawal amount must be greater than zero.")
     if body.amount > balance:
-        raise HTTPException(status_code=400, detail="Withdrawal amount exceeds available referral balance.")
+        raise HTTPException(status_code=400, detail=f"Withdrawal amount exceeds available balance of \u20a6{balance:,.0f}.")
 
     if not body.bank_name.strip() or not body.account_name.strip() or not body.account_num.strip():
         raise HTTPException(status_code=400, detail="Bank name, account name, and account number are required.")
@@ -4986,15 +5029,15 @@ async def request_referral_withdrawal(body: _ReferralWithdraw,
             account_num=body.account_num.strip(),
         )
     except ValueError as _ve:
-        # DB-level race guard: concurrent requests depleted the balance
+        # Surfaces both the balance check and the 10-referral lock message from db.py
         raise HTTPException(status_code=400, detail=str(_ve))
     if not withdrawal_id:
         raise HTTPException(status_code=500, detail="Could not create withdrawal request.")
     log_activity(body.learner_id, "referral:withdraw-request", f"amount={body.amount}")
     return {
-        "ok": True,
+        "ok":           True,
         "withdrawal_id": withdrawal_id,
-        "message": "Withdrawal request submitted successfully.",
+        "message":      f"Withdrawal request of \u20a6{body.amount:,.0f} submitted successfully. Admin will process it within 24 hours.",
     }
 
 
@@ -5008,6 +5051,99 @@ async def get_referral_withdrawals(learner_id: str,
         raise HTTPException(status_code=403, detail="You can only view your own withdrawal history.")
     rows = get_withdrawals_for_learner(learner_id)
     return {"learner_id": learner_id, "withdrawals": rows, "total": len(rows)}
+
+
+@app.post("/referral/use-balance")
+async def use_referral_balance_for_course(request: Request,
+                                           user=Depends(get_current_user)) -> dict:
+    """
+    Apply the user's referral bonus balance toward a course purchase.
+    After 10 successful referrals the full balance is unlocked — the user
+    can withdraw it OR use it here to pay for a course without cash.
+
+    Body (JSON):
+      learner_id  : str   — must match the authenticated user
+      course_name : str   — slug of the course to purchase (e.g. 'python-fundamentals')
+      amount      : float — amount of balance to apply (max = course price)
+    """
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to use your referral balance.")
+
+    body        = await request.json()
+    learner_id  = str(body.get("learner_id", "")).strip()
+    course_name = str(body.get("course_name", "")).strip()
+    amount      = float(body.get("amount", 0) or 0)
+
+    if user.learner_id != learner_id:
+        raise HTTPException(status_code=403, detail="learner_id does not match your session.")
+    if not course_name:
+        raise HTTPException(status_code=400, detail="course_name is required.")
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be greater than zero.")
+
+    validate_learner_id(learner_id)
+
+    # Verify the course exists and get its price
+    from app.courses import COURSE_CATALOG
+    validate_course_name(course_name)
+    course_meta = COURSE_CATALOG.get(course_name)
+    if not course_meta:
+        raise HTTPException(status_code=404, detail="Course not found.")
+    course_price = float(course_meta["price_ngn"])
+
+    if amount > course_price:
+        raise HTTPException(status_code=400,
+            detail=f"Amount (\u20a6{amount:,.0f}) exceeds course price (\u20a6{course_price:,.0f}).")
+
+    # Check balance and 10-referral lock
+    bal_info             = get_referral_bonus_balance(learner_id)
+    balance              = bal_info.get("balance", 0.0)
+    successful_referrals = bal_info.get("successful_referrals", 0)
+    WITHDRAWAL_LOCK      = 10
+
+    if successful_referrals < WITHDRAWAL_LOCK:
+        needed = WITHDRAWAL_LOCK - successful_referrals
+        raise HTTPException(status_code=403, detail=(
+            f"Balance locked: refer {needed} more paying friend"
+            f"{'s' if needed != 1 else ''} to unlock your balance. "
+            f"You have {successful_referrals}/{WITHDRAWAL_LOCK} paid referrals."
+        ))
+
+    if amount > balance:
+        raise HTTPException(status_code=400,
+            detail=f"Amount exceeds available balance of \u20a6{balance:,.0f}.")
+
+    # Deduct from referral balance atomically
+    try:
+        from app.db import get_db as _gdb_bal
+        with _gdb_bal() as _bconn:
+            with _bconn.cursor() as _bcur:
+                _bcur.execute(
+                    "UPDATE referrals SET bonus_balance = bonus_balance - %s WHERE owner_id = %s",
+                    (amount, learner_id)
+                )
+    except Exception as _be:
+        logger.error("Balance deduction for course purchase failed: %s", _be)
+        raise HTTPException(status_code=500, detail="Could not deduct balance. Please try again.")
+
+    # Record the course purchase (same as a normal paid purchase)
+    profile = get_profile(learner_id)
+    email   = profile.email or learner_id
+    record_course_purchase(learner_id, course_name, amount, f"referral-balance-{learner_id[:8]}")
+
+    log_activity(learner_id, "referral:balance-used-for-course",
+                 f"course={course_name} amount={amount:.0f}")
+
+    return {
+        "ok":           True,
+        "course_name":  course_name,
+        "amount_used":  amount,
+        "balance_left": round(balance - amount, 2),
+        "message":      (
+            f"Success! \u20a6{amount:,.0f} from your referral balance was applied to "
+            f"{course_name.replace('-', ' ').title()}. You now have access to the course."
+        ),
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -347,6 +347,7 @@ def init_db() -> None:
                 max_uses        INTEGER DEFAULT 50,
                 reward_tier     TEXT DEFAULT 'tier1',
                 bonus_balance   DOUBLE PRECISION DEFAULT 0,
+                successful_referrals INTEGER DEFAULT 0,
                 created_at      DOUBLE PRECISION DEFAULT EXTRACT(EPOCH FROM NOW())
             )""")
 
@@ -593,6 +594,8 @@ def init_db() -> None:
                 "ALTER TABLE payments       ADD COLUMN IF NOT EXISTS notes      TEXT DEFAULT ''",
                 "ALTER TABLE email_accounts ADD COLUMN IF NOT EXISTS name TEXT DEFAULT ''",
                 "ALTER TABLE learner_profiles ADD COLUMN IF NOT EXISTS prompt_plan TEXT DEFAULT ''",
+                # Referral overhaul — track paid successful referrals for withdrawal lock
+                "ALTER TABLE referrals ADD COLUMN IF NOT EXISTS successful_referrals INTEGER DEFAULT 0",
                 # Migrate data from old Supabase column names to new ones
                 "UPDATE payments       SET user_email=email     WHERE user_email='' AND email    IS NOT NULL AND email    <> ''",
                 "UPDATE payments       SET user_name=name       WHERE user_name=''  AND name     IS NOT NULL AND name     <> ''",
@@ -1174,17 +1177,44 @@ def get_referral_code(code: str) -> dict | None:
 
 def use_referral_code(code: str, used_by_email: str, used_by_id: str,
                        discount_pct: int = 5, payment_amount: float = 0) -> bool:
+    """
+    Record that a new user signed up with a referral code, or that a referee made a payment.
+
+    On first use (payment_amount == 0): the new user (referee) immediately gets
+    ₦5,000 welcome bonus credited to THEIR OWN referral balance so they can use
+    it to purchase a course once they unlock 10 referrals themselves.
+
+    On payment (payment_amount > 0): the referrer earns 15% of the payment amount
+    AND successful_referrals is incremented by 1 (needed for the withdrawal lock).
+    """
     ref = get_referral_code(code)
     if not ref or ref["uses"] >= ref["max_uses"]:
         return False
-    referrer_bonus   = round(payment_amount * 0.15, 2)
-    referee_discount = round(payment_amount * 0.05, 2)
+
+    referrer_bonus   = round(payment_amount * 0.15, 2) if payment_amount > 0 else 0.0
+    referee_discount = round(payment_amount * 0.05, 2) if payment_amount > 0 else 0.0
+    is_paid          = payment_amount > 0
+
+    # ₦5,000 welcome bonus always credited to the NEW user (referee) on signup
+    WELCOME_BONUS = 5000.0
+
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE referrals SET uses=uses+1, bonus_balance=bonus_balance+%s WHERE code=%s",
-                (referrer_bonus, code.upper())
-            )
+            if is_paid:
+                # Paid referral: increment uses + bonus_balance + successful_referrals
+                cur.execute(
+                    "UPDATE referrals SET uses=uses+1, "
+                    "bonus_balance=bonus_balance+%s, "
+                    "successful_referrals=successful_referrals+1 "
+                    "WHERE code=%s",
+                    (referrer_bonus, code.upper())
+                )
+            else:
+                # Signup-only: only increment uses counter
+                cur.execute(
+                    "UPDATE referrals SET uses=uses+1 WHERE code=%s",
+                    (code.upper(),)
+                )
             cur.execute(
                 "INSERT INTO referral_uses "
                 "(code,used_by_email,used_by_id,discount_pct,referrer_bonus,referee_discount) "
@@ -1192,6 +1222,14 @@ def use_referral_code(code: str, used_by_email: str, used_by_id: str,
                 (code.upper(), used_by_email.lower(), used_by_id,
                  discount_pct, referrer_bonus, referee_discount)
             )
+
+            # Credit ₦5,000 welcome bonus to the referee's own referral record
+            # (creates one if they don't have a code yet — handled by get_my_referral)
+            cur.execute(
+                "UPDATE referrals SET bonus_balance=bonus_balance+%s WHERE owner_id=%s",
+                (WELCOME_BONUS, used_by_id)
+            )
+
     try:
         updated = get_referral_code(code)
         if updated:
@@ -1237,17 +1275,28 @@ def get_learner_referral_code(owner_id: str) -> dict | None:
 def get_referral_bonus_balance(owner_id: str) -> dict:
     code_rec = get_learner_referral_code(owner_id)
     if not code_rec:
-        return {"balance": 0.0, "uses": 0, "code": None, "history": []}
+        return {
+            "balance": 0.0, "uses": 0, "code": None, "history": [],
+            "successful_referrals": 0, "can_withdraw": False,
+            "referrals_needed": 10,
+        }
     code  = code_rec["code"]
     uses  = get_referral_uses(code)
-    stored_balance  = float(code_rec.get("bonus_balance") or 0)
-    computed_total  = sum(float(u.get("referrer_bonus", 0)) for u in uses)
-    balance = max(stored_balance, computed_total)
+    stored_balance          = float(code_rec.get("bonus_balance") or 0)
+    computed_total          = sum(float(u.get("referrer_bonus", 0)) for u in uses)
+    balance                 = max(stored_balance, computed_total)
+    successful_referrals    = int(code_rec.get("successful_referrals") or 0)
+    # Withdrawal unlocks after 10 successful (paid) referrals
+    WITHDRAWAL_LOCK = 10
+    can_withdraw    = successful_referrals >= WITHDRAWAL_LOCK
     return {
-        "code":    code,
-        "balance": round(balance, 2),
-        "uses":    code_rec.get("uses", 0),
-        "history": uses[:20],
+        "code":                  code,
+        "balance":               round(balance, 2),
+        "uses":                  code_rec.get("uses", 0),
+        "history":               uses[:20],
+        "successful_referrals":  successful_referrals,
+        "can_withdraw":          can_withdraw,
+        "referrals_needed":      max(0, WITHDRAWAL_LOCK - successful_referrals),
     }
 
 
@@ -1642,11 +1691,23 @@ def create_withdrawal_request(learner_id: str, email: str, amount: float,
         with conn.cursor() as cur:
             # Lock the referral row for this learner for the duration of the tx
             cur.execute(
-                "SELECT bonus_balance FROM referrals WHERE owner_id=%s FOR UPDATE",
+                "SELECT bonus_balance, successful_referrals FROM referrals WHERE owner_id=%s FOR UPDATE",
                 (learner_id,)
             )
             row = cur.fetchone()
-            current_balance = float(row[0]) if row else 0.0
+            current_balance      = float(row[0]) if row else 0.0
+            successful_referrals = int(row[1]) if row and row[1] is not None else 0
+
+            # Withdrawal is locked until the learner has 10 successful (paid) referrals
+            WITHDRAWAL_LOCK = 10
+            if successful_referrals < WITHDRAWAL_LOCK:
+                needed = WITHDRAWAL_LOCK - successful_referrals
+                raise ValueError(
+                    f"Withdrawal locked: you need {needed} more successful referral"
+                    f"{'s' if needed != 1 else ''} to unlock withdrawals. "
+                    f"You have {successful_referrals}/{WITHDRAWAL_LOCK} paid referrals. "
+                    f"Your balance (₦{current_balance:,.0f}) is safe and grows with every referral."
+                )
 
             if current_balance < amount:
                 raise ValueError(
