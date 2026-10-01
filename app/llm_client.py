@@ -1,14 +1,18 @@
 """
-Groq LLM client for MyPy Tutor — Sir. Tega AI engine.
+Multi-provider LLM client for MyPy Tutor — Sir. Tega AI engine.
 
-Models (current as of August 2026 — llama-3.x deprecated June 17, 2026):
-  FAST  — openai/gpt-oss-20b   : ~1000 tok/s on Groq LPU, quiz/exercise/course steps
-  SMART — openai/gpt-oss-120b  : ~500 tok/s, concept explanations/debug/codegen
+Provider cascade (zero-downtime fallback):
+  Provider 1 — Groq          (primary, fastest — LPU inference)
+  Provider 2 — Google Gemini (secondary — free tier, very capable)
+  Provider 3 — OpenRouter    (tertiary  — routes to many models)
 
-Fallback chain (ensures zero silent failures):
-  1. Primary model (SMART or FAST based on intent)
-  2. Swap: if SMART fails → try FAST; if FAST fails → try SMART
-  3. Last resort: llama-3.1-8b-instant (if still available) or any available model
+Within each provider, multiple models are tried before moving to the next.
+The user NEVER sees an error unless all three providers are down simultaneously.
+
+Env vars required (set in Render → Environment):
+  GROQ_API_KEY          — from console.groq.com
+  GEMINI_API_KEY        — from aistudio.google.com (free)
+  OPENROUTER_API_KEY    — from openrouter.ai (free tier available)
 """
 
 import os
@@ -21,58 +25,232 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Client — lazy init so missing GROQ_API_KEY doesn't crash the whole app
-# ---------------------------------------------------------------------------
-_client     = None
-_client_key = None   # track which key the client was built with
+# ─────────────────────────────────────────────────────────────────────────────
+# Provider 1 — Groq
+# ─────────────────────────────────────────────────────────────────────────────
 
+_groq_client     = None
+_groq_client_key = None
 
-def _get_client():
-    """Return a Groq client, (re-)initialised if the API key changed."""
-    global _client, _client_key
+def _get_groq_client():
+    global _groq_client, _groq_client_key
     key = os.getenv("GROQ_API_KEY", "")
     if not key:
-        raise RuntimeError(
-            "GROQ_API_KEY is not set. Go to Render → mypy-tutor → Environment "
-            "and add your Groq API key."
-        )
-    if _client is None or key != _client_key:
+        raise RuntimeError("GROQ_API_KEY not set")
+    if _groq_client is None or key != _groq_client_key:
         from groq import Groq
-        # 45s timeout — Render free tier can be slow; 25s was too tight
-        _client     = Groq(api_key=key, timeout=45.0)
-        _client_key = key
+        _groq_client     = Groq(api_key=key, timeout=45.0)
+        _groq_client_key = key
         logger.info("Groq client initialised")
-    return _client
+    return _groq_client
 
 
-# ---------------------------------------------------------------------------
-# Model routing
-# ---------------------------------------------------------------------------
+_GROQ_FAST_MODEL  = "openai/gpt-oss-20b"
+_GROQ_SMART_MODEL = "openai/gpt-oss-120b"
 
-# Primary models — Groq production models (September 2026)
-# llama-3.x deprecated June 17 2026 and moved to Enterprise-only.
-# openai/gpt-oss-20b  ~1000 tok/s  — quiz, exercise, course steps, general
-# openai/gpt-oss-120b ~500 tok/s   — concept explanations, debug, codegen
-_FAST_MODEL  = "openai/gpt-oss-20b"
-_SMART_MODEL = "openai/gpt-oss-120b"
-
-# Fallback chain — deduplicated at call time so no model is tried twice.
-# Only models confirmed working on Groq self-serve accounts (Sep 2026).
-# llama-3.3-70b-versatile and llama-3.1-8b-instant moved to Enterprise-only.
-_FALLBACK_MODELS = [
-    "openai/gpt-oss-20b",                           # cross-fallback: smart→fast
-    "openai/gpt-oss-120b",                          # cross-fallback: fast→smart
-    "meta-llama/llama-4-scout-17b-16e-instruct",    # Llama 4 Scout — self-serve, fast
-    "meta-llama/llama-4-maverick-17b-128e-instruct",# Llama 4 Maverick — self-serve, capable
-    "llama-3.3-70b-versatile",                      # may still work on some accounts
-    "llama-3.1-8b-instant",                         # last resort
+_GROQ_MODEL_SEQUENCE = [
+    "openai/gpt-oss-120b",                          # most capable Groq model
+    "openai/gpt-oss-20b",                           # fastest Groq model
+    "meta-llama/llama-4-scout-17b-16e-instruct",    # Llama 4 Scout
+    "meta-llama/llama-4-maverick-17b-128e-instruct",# Llama 4 Maverick
+    "llama-3.3-70b-versatile",                      # legacy — may still work
+    "llama-3.1-8b-instant",                         # legacy last resort
 ]
 
-# Intents that need deep reasoning — use SMART model
+
+def _call_groq(system_prompt: str, messages: list[dict],
+               intent: str, temperature: float) -> str:
+    client = _get_groq_client()
+    primary = _GROQ_SMART_MODEL if intent in _SMART_INTENTS else _GROQ_FAST_MODEL
+    sequence = [primary] + [m for m in _GROQ_MODEL_SEQUENCE if m != primary]
+
+    for model in sequence:
+        max_tokens = _INTENT_MAX_TOKENS.get(intent, 1500)
+        try:
+            resp = client.chat.completions.create(
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                stream=False,
+                messages=[{"role": "system", "content": system_prompt}, *messages],
+            )
+            content = resp.choices[0].message.content
+            if content and content.strip():
+                if model != primary:
+                    logger.info("Groq fallback success: model=%s intent=%s", model, intent)
+                return content
+            raise ValueError("Empty response")
+        except Exception as exc:
+            err = str(exc).lower()
+            logger.warning("Groq model=%s failed: %s", model, str(exc)[:100])
+            # If it's a rate limit, wait briefly before next model
+            if any(k in err for k in ("429", "ratelimit", "rate_limit", "overloaded")):
+                time.sleep(2)
+            # If model doesn't exist, skip immediately
+            if any(k in err for k in ("model_not_found", "model not found",
+                                       "does not exist", "deprecated", "404")):
+                continue
+            # Other errors: try next model
+            continue
+
+    raise RuntimeError("All Groq models exhausted")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Provider 2 — Google Gemini
+# ─────────────────────────────────────────────────────────────────────────────
+
+_gemini_client     = None
+_gemini_client_key = None
+
+def _get_gemini_client():
+    global _gemini_client, _gemini_client_key
+    key = os.getenv("GEMINI_API_KEY", "")
+    if not key:
+        raise RuntimeError("GEMINI_API_KEY not set")
+    if _gemini_client is None or key != _gemini_client_key:
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=key)
+            _gemini_client     = genai
+            _gemini_client_key = key
+            logger.info("Gemini client initialised")
+        except ImportError:
+            raise RuntimeError(
+                "google-generativeai not installed. Add it to requirements.txt"
+            )
+    return _gemini_client
+
+
+# Gemini model preference order — free tier models first
+_GEMINI_MODELS = [
+    "gemini-1.5-flash",          # free tier, fast, 1M context
+    "gemini-1.5-flash-8b",       # free tier, smallest/fastest
+    "gemini-1.5-pro",            # free tier with limits, most capable
+    "gemini-2.0-flash-exp",      # experimental but available free
+]
+
+
+def _call_gemini(system_prompt: str, messages: list[dict],
+                 intent: str, temperature: float) -> str:
+    import google.generativeai as genai
+    _get_gemini_client()
+
+    # Build the combined prompt — Gemini uses a different message format
+    # Prepend the system prompt as the first user turn for compatibility
+    combined_messages = []
+    for m in messages:
+        combined_messages.append({
+            "role":  "user" if m["role"] == "user" else "model",
+            "parts": [m["content"]],
+        })
+
+    # Gemini GenerationConfig
+    max_tokens = _INTENT_MAX_TOKENS.get(intent, 1500)
+
+    for model_name in _GEMINI_MODELS:
+        try:
+            model = genai.GenerativeModel(
+                model_name=model_name,
+                system_instruction=system_prompt,
+                generation_config=genai.GenerationConfig(
+                    max_output_tokens=max_tokens,
+                    temperature=temperature,
+                ),
+            )
+            response = model.generate_content(combined_messages)
+            content  = response.text
+            if content and content.strip():
+                if model_name != _GEMINI_MODELS[0]:
+                    logger.info("Gemini fallback success: model=%s intent=%s", model_name, intent)
+                return content
+            raise ValueError("Empty response from Gemini")
+        except Exception as exc:
+            err = str(exc).lower()
+            logger.warning("Gemini model=%s failed: %s", model_name, str(exc)[:100])
+            if any(k in err for k in ("429", "quota", "resource_exhausted", "rate")):
+                time.sleep(3)
+            continue
+
+    raise RuntimeError("All Gemini models exhausted")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Provider 3 — OpenRouter
+# ─────────────────────────────────────────────────────────────────────────────
+
+# OpenRouter uses the OpenAI-compatible API at https://openrouter.ai/api/v1
+# Many free models available — we try capable free ones first.
+_OPENROUTER_MODELS = [
+    "meta-llama/llama-3.3-70b-instruct:free",     # powerful, free
+    "meta-llama/llama-3.1-8b-instruct:free",      # fast, free
+    "google/gemma-2-9b-it:free",                  # Google, free
+    "mistralai/mistral-7b-instruct:free",         # Mistral, free
+    "qwen/qwen-2.5-72b-instruct:free",            # Qwen 72B, free
+    "deepseek/deepseek-r1:free",                  # DeepSeek, free
+]
+
+
+def _call_openrouter(system_prompt: str, messages: list[dict],
+                     intent: str, temperature: float) -> str:
+    import httpx
+
+    key = os.getenv("OPENROUTER_API_KEY", "")
+    if not key:
+        raise RuntimeError("OPENROUTER_API_KEY not set")
+
+    max_tokens = _INTENT_MAX_TOKENS.get(intent, 1500)
+    headers = {
+        "Authorization":  f"Bearer {key}",
+        "Content-Type":   "application/json",
+        "HTTP-Referer":   "https://mypytutor.com.ng",
+        "X-Title":        "MyPy Tutor — Sir. Tega",
+    }
+
+    for model in _OPENROUTER_MODELS:
+        payload = {
+            "model":       model,
+            "temperature": temperature,
+            "max_tokens":  max_tokens,
+            "messages":    [
+                {"role": "system", "content": system_prompt},
+                *messages,
+            ],
+        }
+        try:
+            r = httpx.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=headers,
+                json=payload,
+                timeout=40,
+            )
+            if r.status_code == 429:
+                logger.warning("OpenRouter rate limit on %s, sleeping 3s", model)
+                time.sleep(3)
+                continue
+            if r.status_code >= 400:
+                logger.warning("OpenRouter HTTP %s for %s: %s", r.status_code, model, r.text[:100])
+                continue
+            data    = r.json()
+            content = data["choices"][0]["message"]["content"]
+            if content and content.strip():
+                if model != _OPENROUTER_MODELS[0]:
+                    logger.info("OpenRouter fallback success: model=%s intent=%s", model, intent)
+                return content
+            raise ValueError("Empty response from OpenRouter")
+        except Exception as exc:
+            logger.warning("OpenRouter model=%s failed: %s", model, str(exc)[:100])
+            continue
+
+    raise RuntimeError("All OpenRouter models exhausted")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Shared constants
+# ─────────────────────────────────────────────────────────────────────────────
+
 _SMART_INTENTS = {"concept", "debug", "codegen", "general"}
 
-# Token caps per intent
 _INTENT_MAX_TOKENS: dict[str, int] = {
     "quiz":       512,
     "quiz_eval":  512,
@@ -85,55 +263,10 @@ _INTENT_MAX_TOKENS: dict[str, int] = {
     "ambiguous":  800,
 }
 
-_MODEL_MAX_TOKENS: dict[str, int] = {
-    _SMART_MODEL:                                    2048,
-    _FAST_MODEL:                                     1500,
-    "meta-llama/llama-4-scout-17b-16e-instruct":    2048,
-    "meta-llama/llama-4-maverick-17b-128e-instruct":2048,
-    "llama-3.3-70b-versatile":                      2048,
-    "llama-3.1-8b-instant":                         1500,
-    "llama3-70b-8192":                               2048,
-    "llama3-8b-8192":                                1500,
-}
 
-
-def _get_max_tokens(model: str, intent: str) -> int:
-    if intent in _INTENT_MAX_TOKENS:
-        return _INTENT_MAX_TOKENS[intent]
-    return _MODEL_MAX_TOKENS.get(model, 1500)
-
-
-def _is_transient(exc: Exception) -> bool:
-    """True if the error is likely temporary and worth retrying."""
-    msg  = str(exc).lower()
-    name = type(exc).__name__.lower()
-    # Check both the exception class name and the message text
-    return any(k in msg or k in name for k in (
-        "ratelimit", "rate_limit", "rate limit", "ratelimiterror",
-        "timeout", "timed out", "timeouterror",
-        "503", "502", "429",
-        "serviceunavailable", "service_unavailable",
-        "connection", "network", "networkerror",
-        "overloaded", "capacity",
-        "apierror",   # Groq SDK base error class
-    ))
-
-
-def _is_model_error(exc: Exception) -> bool:
-    """True if the model itself is unavailable/invalid — try a different model."""
-    msg = str(exc).lower()
-    return any(k in msg for k in (
-        "model_not_found", "model not found",
-        "does not exist",
-        "no longer available",
-        "invalid model", "unknown model",
-        "deprecated",
-    )) or ("404" in msg and "model" in msg)
-
-
-# ---------------------------------------------------------------------------
-# Core completion function with full fallback chain
-# ---------------------------------------------------------------------------
+# ─────────────────────────────────────────────────────────────────────────────
+# Main entry point — cascades through all 3 providers
+# ─────────────────────────────────────────────────────────────────────────────
 
 def get_completion(
     system_prompt: str,
@@ -143,78 +276,59 @@ def get_completion(
     intent: str = "",
 ) -> str:
     """
-    Call Groq Chat Completions with automatic model fallback.
+    Call the best available LLM with full 3-provider cascade.
 
-    Fallback chain:
-      1. Primary model (SMART or FAST based on intent)
-      2. If transient error: retry primary up to 2× with backoff
-      3. If model error: try cross-fallback (smart→fast, fast→smart)
-      4. If still failing: walk through _FALLBACK_MODELS list
-      5. If all models fail: raise with clear error message
+    Provider order:
+      1. Groq        — fastest (LPU hardware), primary
+      2. Gemini      — Google free tier, highly capable
+      3. OpenRouter  — many free models, last line of defence
 
-    Voice (TTS) does NOT call this function — it uses the browser's
-    Web Speech API directly. This function is only for chat/quiz/courses.
+    Within each provider, multiple models are tried before moving on.
+    The function only raises if ALL providers fail — which should be
+    essentially impossible with three independent API keys.
+
+    Voice (TTS) does NOT call this — it uses the browser Web Speech API.
     """
-    # Determine primary model
-    primary = model if model else (_SMART_MODEL if intent in _SMART_INTENTS else _FAST_MODEL)
+    providers = []
 
-    # Build the fallback sequence: primary first, then others (deduplicated)
-    fallback_sequence = [primary]
-    for m in _FALLBACK_MODELS:
-        if m not in fallback_sequence:
-            fallback_sequence.append(m)
+    # Only include providers whose API keys are configured
+    if os.getenv("GROQ_API_KEY"):
+        providers.append(("Groq",        _call_groq))
+    if os.getenv("GEMINI_API_KEY"):
+        providers.append(("Gemini",       _call_gemini))
+    if os.getenv("OPENROUTER_API_KEY"):
+        providers.append(("OpenRouter",   _call_openrouter))
+
+    if not providers:
+        raise RuntimeError(
+            "No LLM API keys configured. Set at least one of: "
+            "GROQ_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY in Render → Environment."
+        )
 
     last_exc: Exception | None = None
 
-    for attempt_idx, current_model in enumerate(fallback_sequence):
-        max_retries = 3 if attempt_idx == 0 else 1  # retry primary 3x, others once
-        for retry in range(max_retries):
-            try:
-                client     = _get_client()
-                max_tokens = _get_max_tokens(current_model, intent)
-
-                response = client.chat.completions.create(
-                    model=current_model,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    stream=False,
-                    messages=[{"role": "system", "content": system_prompt}, *messages],
-                )
-                content = response.choices[0].message.content
-                if not content or not content.strip():
-                    raise ValueError("Empty response from model")
-
-                if attempt_idx > 0 or retry > 0:
-                    logger.info(
-                        "LLM success on fallback: model=%s attempt=%d retry=%d intent=%s",
-                        current_model, attempt_idx, retry, intent
-                    )
+    for provider_name, provider_fn in providers:
+        try:
+            content = provider_fn(system_prompt, messages, intent, temperature)
+            if content and content.strip():
                 return content
+        except Exception as exc:
+            last_exc = exc
+            logger.warning(
+                "Provider %s failed completely: %s — trying next provider",
+                provider_name, str(exc)[:120]
+            )
+            continue
 
-            except Exception as exc:
-                last_exc = exc
-                logger.warning(
-                    "LLM attempt failed: model=%s retry=%d/%d intent=%s error=%s",
-                    current_model, retry + 1, max_retries, intent, str(exc)[:120]
-                )
-
-                if _is_model_error(exc):
-                    logger.warning("Model unavailable (%s) — skipping to next fallback", current_model)
-                    break  # skip remaining retries for this model, try next
-
-                if _is_transient(exc) and retry < max_retries - 1:
-                    # Progressive backoff: 1.5s, 3s, 5s
-                    wait = [1.5, 3.0, 5.0][min(retry, 2)]
-                    logger.info("Transient error — waiting %.1fs before retry (attempt %d)", wait, retry + 1)
-                    time.sleep(wait)
-                    continue
-
-                if attempt_idx == 0:
-                    break  # first model failed non-transiently — try fallbacks
-
-    # All models failed
+    # All providers failed
     error_summary = str(last_exc)[:200] if last_exc else "unknown error"
-    logger.error("All LLM models failed. Last error: %s", error_summary)
+    logger.error("All LLM providers failed. Last error: %s", error_summary)
     raise RuntimeError(
-        f"Sir. Tega is temporarily unavailable. All models tried. Last error: {error_summary}"
+        "Sir. Tega is temporarily unavailable — all AI providers are busy. "
+        "Please try again in a moment."
     )
+
+
+# Backwards-compatible alias for any code that imports _get_client directly
+def _get_client():
+    return _get_groq_client()

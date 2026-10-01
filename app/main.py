@@ -268,6 +268,20 @@ app.add_middleware(
 
 # ---------------------------------------------------------------------------
 # /chat
+@app.get("/chat/new", include_in_schema=False)
+async def new_chat_session(learner_id: str = "guest") -> dict:
+    """
+    Return a fresh conversation_id for the frontend to use on every page load.
+    This ensures every visit starts a new chat — just like ChatGPT and other
+    LLMs. No DB call needed — just generate a unique ID the client stores.
+    """
+    import secrets as _s
+    return {
+        "conversation_id": f"local_{learner_id}_{_s.token_hex(6)}",
+        "new_session":      True,
+    }
+
+
 # ---------------------------------------------------------------------------
 
 @app.post("/chat")
@@ -294,10 +308,12 @@ async def chat(request: ChatRequest, req: Request,
             return JSONResponse(
                 status_code=402,
                 content={
-                    "error": "free_limit_reached",
-                    "message": f"You've used your {FREE_DAILY_LIMIT} free daily prompts. Upgrade to Premium to continue learning!",
-                    "used": used,
-                    "limit": FREE_DAILY_LIMIT,
+                    "error":             "free_limit_reached",
+                    "message":           f"You've used your {FREE_DAILY_LIMIT} free daily prompts. Upgrade to a prompt plan to keep learning!",
+                    "used":              used,
+                    "limit":             FREE_DAILY_LIMIT,
+                    "show_upgrade_modal": True,
+                    "upgrade_url":       _os.getenv("FRONTEND_URL", "https://mypytutor.com.ng") + "/?panel=pricing",
                 },
             )
         increment_free_prompt_count(request.learner_id, ip)
@@ -2222,9 +2238,12 @@ async def generate_quiz(request: QuizRequest, req: Request,
             return JSONResponse(
                 status_code=402,
                 content={
-                    "error": "free_limit_reached",
-                    "message": f"You've used your {FREE_DAILY_LIMIT} free daily prompts. Upgrade to Premium!",
-                    "used": used, "limit": FREE_DAILY_LIMIT,
+                    "error":             "free_limit_reached",
+                    "message":           f"You've used your {FREE_DAILY_LIMIT} free daily prompts. Upgrade to a prompt plan to keep learning!",
+                    "used":              used,
+                    "limit":             FREE_DAILY_LIMIT,
+                    "show_upgrade_modal": True,
+                    "upgrade_url":       _os.getenv("FRONTEND_URL", "https://mypytutor.com.ng") + "/?panel=pricing",
                 },
             )
         increment_free_prompt_count(request.learner_id, ip)
