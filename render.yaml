@@ -7,7 +7,7 @@ services:
     buildCommand: pip install --no-cache-dir -r requirements.txt
     # Single worker — free tier only has 0.1 CPU, multiple workers thrash
     # --timeout-keep-alive 30 — hold connections open 30s to avoid frontend reconnect overhead
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --timeout-keep-alive 30
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --timeout-keep-alive 75
     healthCheckPath: /health
     envVars:
       - key: GROQ_API_KEY
@@ -38,6 +38,8 @@ services:
         value: https://mypytutor.com.ng
       - key: PAYSTACK_SECRET_KEY
         sync: false
+      - key: PAYSTACK_CALLBACK_URL
+        value: https://mypytutor.com.ng/payment/callback
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_ANON_KEY

@@ -39,7 +39,8 @@ def _get_client():
         )
     if _client is None or key != _client_key:
         from groq import Groq
-        _client     = Groq(api_key=key, timeout=25.0)
+        # 45s timeout — Render free tier can be slow; 25s was too tight
+        _client     = Groq(api_key=key, timeout=45.0)
         _client_key = key
         logger.info("Groq client initialised")
     return _client
@@ -57,15 +58,15 @@ _FAST_MODEL  = "openai/gpt-oss-20b"
 _SMART_MODEL = "openai/gpt-oss-120b"
 
 # Fallback chain — deduplicated at call time so no model is tried twice.
-# Both OSS models are tried first (cross-fallback), then llama4 variants
-# which are available on self-serve Groq accounts as of Sep 2026.
+# Only models confirmed working on Groq self-serve accounts (Sep 2026).
+# llama-3.3-70b-versatile and llama-3.1-8b-instant moved to Enterprise-only.
 _FALLBACK_MODELS = [
-    "openai/gpt-oss-20b",           # cross-fallback: smart→fast
-    "openai/gpt-oss-120b",          # cross-fallback: fast→smart
-    "meta-llama/llama-4-scout-17b-16e-instruct",   # Llama 4 Scout — fast, self-serve
-    "meta-llama/llama-4-maverick-17b-128e-instruct", # Llama 4 Maverick — higher quality
-    "llama-3.3-70b-versatile",      # may still work on some accounts
-    "llama-3.1-8b-instant",         # fastest last-resort
+    "openai/gpt-oss-20b",                           # cross-fallback: smart→fast
+    "openai/gpt-oss-120b",                          # cross-fallback: fast→smart
+    "meta-llama/llama-4-scout-17b-16e-instruct",    # Llama 4 Scout — self-serve, fast
+    "meta-llama/llama-4-maverick-17b-128e-instruct",# Llama 4 Maverick — self-serve, capable
+    "llama-3.3-70b-versatile",                      # may still work on some accounts
+    "llama-3.1-8b-instant",                         # last resort
 ]
 
 # Intents that need deep reasoning — use SMART model
@@ -85,12 +86,14 @@ _INTENT_MAX_TOKENS: dict[str, int] = {
 }
 
 _MODEL_MAX_TOKENS: dict[str, int] = {
-    _SMART_MODEL:              2048,
-    _FAST_MODEL:               1500,
-    "llama-3.3-70b-versatile": 2048,
-    "llama-3.1-8b-instant":    1500,
-    "llama3-70b-8192":         2048,
-    "llama3-8b-8192":          1500,
+    _SMART_MODEL:                                    2048,
+    _FAST_MODEL:                                     1500,
+    "meta-llama/llama-4-scout-17b-16e-instruct":    2048,
+    "meta-llama/llama-4-maverick-17b-128e-instruct":2048,
+    "llama-3.3-70b-versatile":                      2048,
+    "llama-3.1-8b-instant":                         1500,
+    "llama3-70b-8192":                               2048,
+    "llama3-8b-8192":                                1500,
 }
 
 
@@ -104,13 +107,15 @@ def _is_transient(exc: Exception) -> bool:
     """True if the error is likely temporary and worth retrying."""
     msg  = str(exc).lower()
     name = type(exc).__name__.lower()
+    # Check both the exception class name and the message text
     return any(k in msg or k in name for k in (
-        "ratelimit", "rate_limit", "rate limit",
-        "timeout", "timed out",
+        "ratelimit", "rate_limit", "rate limit", "ratelimiterror",
+        "timeout", "timed out", "timeouterror",
         "503", "502", "429",
         "serviceunavailable", "service_unavailable",
-        "connection", "network",
-        "overloaded",
+        "connection", "network", "networkerror",
+        "overloaded", "capacity",
+        "apierror",   # Groq SDK base error class
     ))
 
 
@@ -119,10 +124,11 @@ def _is_model_error(exc: Exception) -> bool:
     msg = str(exc).lower()
     return any(k in msg for k in (
         "model_not_found", "model not found",
-        "does not exist", "not found", "404",
-        "deprecated", "no longer available",
-        "invalid model",
-    ))
+        "does not exist",
+        "no longer available",
+        "invalid model", "unknown model",
+        "deprecated",
+    )) or ("404" in msg and "model" in msg)
 
 
 # ---------------------------------------------------------------------------
@@ -161,7 +167,7 @@ def get_completion(
     last_exc: Exception | None = None
 
     for attempt_idx, current_model in enumerate(fallback_sequence):
-        max_retries = 2 if attempt_idx == 0 else 1  # retry primary more, others once
+        max_retries = 3 if attempt_idx == 0 else 1  # retry primary 3x, others once
         for retry in range(max_retries):
             try:
                 client     = _get_client()
@@ -197,8 +203,9 @@ def get_completion(
                     break  # skip remaining retries for this model, try next
 
                 if _is_transient(exc) and retry < max_retries - 1:
-                    wait = (retry + 1) * 1.5
-                    logger.info("Transient error — waiting %.1fs before retry", wait)
+                    # Progressive backoff: 1.5s, 3s, 5s
+                    wait = [1.5, 3.0, 5.0][min(retry, 2)]
+                    logger.info("Transient error — waiting %.1fs before retry (attempt %d)", wait, retry + 1)
                     time.sleep(wait)
                     continue
 
