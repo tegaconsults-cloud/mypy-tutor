@@ -5640,10 +5640,12 @@ def _run_reengagement_job() -> dict:
                 skipped += 1; continue
 
             last_activity = row.get("last_activity_at")
-            if last_activity and float(last_activity) >= cutoff:
+            if last_activity is None:
+                days_inactive = 999   # never logged in — treat as very inactive
+            elif float(last_activity) >= cutoff:
                 skipped += 1; continue
-
-            days_inactive = int((_t.time() - float(last_activity)) / 86400) if last_activity else 8
+            else:
+                days_inactive = max(1, int((_t.time() - float(last_activity)) / 86400))
             last_topic = ""
             try:
                 topics = _json.loads(row.get("topics_seen") or "[]")
@@ -5693,8 +5695,12 @@ def _run_course_reminder_job() -> dict:
                 skipped += 1; continue
 
             last_activity = row.get("last_activity_at")
-            if last_activity and float(last_activity) >= cutoff:
+            if last_activity is None:
+                days_since = IDLE_DAYS   # no profile update = idle
+            elif float(last_activity) >= cutoff:
                 skipped += 1; continue
+            else:
+                days_since = max(1, int((_t.time() - float(last_activity)) / 86400))
 
             current_course = row.get("current_course") or ""
             if not current_course:

@@ -1878,7 +1878,7 @@ def get_email_automation_candidates(email_type: str, cooldown_days: int) -> list
                        ON ea.learner_id = em.learner_id
                 LEFT JOIN learner_profiles lp
                        ON lp.learner_id = em.learner_id
-                WHERE em.confirmed IS TRUE
+                WHERE (em.confirmed = 1 OR em.confirmed IS TRUE)
                   AND em.email NOT LIKE '%@github.local'
                   AND (ea.opted_out IS NULL OR ea.opted_out = 0)
                   AND ({col} IS NULL OR {col} < %s)
