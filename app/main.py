@@ -6127,7 +6127,104 @@ threading.Thread(target=_backfill_email_automation, daemon=True, name="email-aut
 
 
 # ---------------------------------------------------------------------------
-# FIX: Editable User Profile routes
+# STARTUP MIGRATION — credit ₦5,000 welcome bonus to ALL existing users
+# Runs once on deploy, idempotent: tracked in migration_log table so it
+# never double-credits. New users get their bonus via use_referral_code().
+# ---------------------------------------------------------------------------
+
+def _blow_welcome_balances() -> None:
+    """
+    One-time migration: give every existing user ₦5,000 in their referral balance.
+    - Users with a code: bonus_balance += 5000
+    - Users without a code: create one with bonus_balance = 5000
+    Guarded by a migration_log entry so it runs exactly once per deployment.
+    """
+    MIGRATION_ID = "welcome_bonus_5000_v1"
+    BONUS        = 5000.0
+
+    try:
+        import secrets as _sec2
+        import psycopg2.extras as _wpge
+        from app.db import get_db as _wgdb
+
+        with _wgdb() as _wconn:
+            with _wconn.cursor() as _wcur:
+                # Ensure migration_log table exists
+                _wcur.execute("""
+                    CREATE TABLE IF NOT EXISTS migration_log (
+                        id          TEXT PRIMARY KEY,
+                        ran_at      DOUBLE PRECISION DEFAULT EXTRACT(EPOCH FROM NOW()),
+                        notes       TEXT DEFAULT ''
+                    )
+                """)
+                # Check if already ran
+                _wcur.execute(
+                    "SELECT 1 FROM migration_log WHERE id = %s", (MIGRATION_ID,)
+                )
+                if _wcur.fetchone():
+                    logger.info("Startup migration %s already ran — skipping", MIGRATION_ID)
+                    return
+
+                # ── Step 1: Credit existing referral code holders ──────────
+                _wcur.execute(
+                    "UPDATE referrals SET bonus_balance = bonus_balance + %s", (BONUS,)
+                )
+                updated = _wcur.rowcount
+                logger.info("welcome_bonus: updated %d existing referral balances +₦%s", updated, BONUS)
+
+                # ── Step 2: Create codes for confirmed users without one ───
+                _wcur.execute("""
+                    SELECT lp.learner_id, lp.email
+                    FROM learner_profiles lp
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM referrals r WHERE r.owner_id = lp.learner_id
+                    )
+                    AND COALESCE(lp.tier, 'free') != 'deleted'
+                    AND lp.email IS NOT NULL
+                    AND lp.email != ''
+                    AND lp.learner_id NOT LIKE 'diag%%'
+                    AND lp.learner_id NOT LIKE 'test%%'
+                    AND lp.learner_id != 'default'
+                    LIMIT 500
+                """)
+                rows_without = _wcur.fetchall()
+                created = 0
+                for _row in rows_without:
+                    _lid   = _row[0]
+                    _email = (_row[1] or "").lower().strip()
+                    if not _email:
+                        continue
+                    _code = _sec2.token_hex(4).upper()
+                    try:
+                        _wcur.execute("""
+                            INSERT INTO referrals
+                              (code, owner_id, owner_email, uses, max_uses,
+                               reward_tier, bonus_balance, successful_referrals, created_at)
+                            VALUES (%s,%s,%s,0,50,'tier1',%s,0,EXTRACT(EPOCH FROM NOW()))
+                            ON CONFLICT DO NOTHING
+                        """, (_code, _lid, _email, BONUS))
+                        if _wcur.rowcount:
+                            created += 1
+                    except Exception:
+                        pass  # code collision or other non-fatal issue — skip this user
+
+                logger.info("welcome_bonus: created %d new codes with ₦%s bonus", created, BONUS)
+
+                # ── Mark migration as done ────────────────────────────────
+                _wcur.execute(
+                    "INSERT INTO migration_log (id, notes) VALUES (%s, %s)",
+                    (MIGRATION_ID, f"updated={updated} created={created} bonus={BONUS}")
+                )
+                logger.info(
+                    "✅ welcome_bonus migration done: %d updated + %d new codes (₦%s each)",
+                    updated, created, BONUS
+                )
+
+    except Exception as _we:
+        logger.warning("welcome_bonus migration failed (non-fatal): %s", _we)
+
+
+threading.Thread(target=_blow_welcome_balances, daemon=True, name="welcome-bonus-migration").start()
 # ---------------------------------------------------------------------------
 
 @app.get("/auth/profile/{learner_id}")
