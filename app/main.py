@@ -380,7 +380,6 @@ async def chat(request: ChatRequest, req: Request,
             break
         except Exception as exc:
             last_exc = exc
-            exc_type = str(type(exc).__name__).lower()
             exc_msg  = str(exc).lower()
 
             if _is_context_overflow(exc) and _attempt == 0:
@@ -390,28 +389,13 @@ async def chat(request: ChatRequest, req: Request,
                 )
                 continue
 
-            if any(k in exc_type for k in ("ratelimit", "timeout", "serviceunavailable")):
-                if _attempt < 2:
-                    import asyncio as _aio
-                    await _aio.sleep(1.5)
-                    continue
-                logger.warning("LLM unavailable after retries: %s", exc)
-                raise HTTPException(
-                    status_code=503,
-                    detail="Sir. Tega is warming up — momentarily busy. Please try again in a moment."
-                )
-
-            if "model" in exc_msg or "not found" in exc_msg or "404" in exc_msg:
-                logger.error("LLM model error: %s", exc)
-                raise HTTPException(
-                    status_code=503,
-                    detail="Sir. Tega is warming up — model updating. Please try again in a moment."
-                )
-
-            # Any other error — retry once more
+            # All retries and all 3 providers already exhausted inside get_completion.
+            # The exception here means the entire cascade failed — surface 503.
+            logger.warning("LLM cascade failed on attempt %d: %s", _attempt, exc)
             if _attempt < 2:
+                import asyncio as _aio
+                await _aio.sleep(1.5)
                 continue
-            break
 
     if content is None:
         # If it was a context overflow even after trimming, tell frontend to open a new chat
