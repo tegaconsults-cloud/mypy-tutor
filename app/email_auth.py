@@ -531,7 +531,8 @@ def confirm_email_token(token: str) -> tuple[bool, str]:
 def _build_welcome_email(name: str, email: str) -> tuple[str, str]:
     """Returns (html_body, text_body) for the welcome email."""
     first_name = name.split()[0] if name else "Learner"
-    app_url    = _cfg("APP_URL", "https://mypytutor.onrender.com")
+    # Welcome CTA must go to the learner-facing site, not the raw API backend
+    app_url    = _cfg("FRONTEND_URL", _cfg("APP_URL", "https://mypytutor.com.ng"))
 
     html_body = f"""<!DOCTYPE html>
 <html lang="en">
@@ -719,7 +720,11 @@ def request_password_reset(email: str) -> tuple[bool, str]:
         except Exception as exc:
             logger.debug("Supabase reset token save failed (non-fatal): %s", exc)
 
-        reset_url  = f"{_cfg('FRONTEND_URL', _cfg('APP_URL', 'https://mypytutor.com.ng'))}/?auth=reset&token={token}"
+        import urllib.parse as _up
+        reset_url  = (
+            f"{_cfg('FRONTEND_URL', _cfg('APP_URL', 'https://mypytutor.com.ng'))}"
+            f"/?auth=reset&token={token}&email={_up.quote(email)}"
+        )
         first_name = user.get("name", "Learner").split()[0]
 
         html_body = f"""<!DOCTYPE html>

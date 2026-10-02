@@ -218,13 +218,13 @@ def send_welcome_email(name: str, email: str) -> None:
         "<strong>Sir. Tega</strong> &mdash; your AI tutor &mdash; is ready to teach you Python "
         "from the basics all the way to AI, data science, and machine learning.</p>"
         + _box(features)
-        + _cta("&#128640; Start Learning Now", app)
+        + _cta("&#128640; Start Learning Now", app + "/?panel=chat")
         + "<p style='color:#64748b;font-size:0.85rem;line-height:1.6;margin:0;'>"
           "Warm regards,<br/><strong style='color:" + PRIMARY + ";'>The MyPy Tutor Team</strong></p>"
     )
     html = _shell(body, "Welcome to MyPy Tutor, " + first + "! Start learning Python today.")
     text = ("Dear " + first + ",\n\nWelcome to MyPy Tutor!\n\n"
-            "Sir. Tega is your AI, Python and Machine Learning tutor. Start learning at:\n" + app + "\n\n"
+            "Sir. Tega is your AI, Python and Machine Learning tutor. Start learning at:\n" + app + "/?panel=chat\n\n"
             "Warm regards,\nThe MyPy Tutor Team\n"
             "TeamTega Technologies Limited\n"
             "Teamsamikoko Global Academy - Reg No: 3508656\n")
@@ -297,7 +297,7 @@ def send_course_completion_email(name: str, email: str, course_name: str,
         "Congratulations! You have successfully completed "
         "<strong style='color:" + PRIMARY + ";'>" + course_name + "</strong>. " + xp_str + "</p>"
         + _box("<strong>What is next?</strong><br/>" + next_steps)
-        + _cta("&#128218; Continue Learning", app)
+        + _cta("&#128218; Continue Learning", app + "/?panel=courses")
         + "<p style='color:#64748b;font-size:0.85rem;'>Keep up the great work!<br/>"
           "<strong style='color:" + PRIMARY + ";'>The MyPy Tutor Team</strong></p>"
     )
@@ -316,7 +316,9 @@ def send_certificate_email(name: str, email: str, cert_level: str, cert_id: str,
     api          = _app_url()
     verify_url   = api + "/verify/" + cert_id
     cert_url     = (frontend + "/certificate/" + cert_level
-                    + "?name=" + name.replace(" ", "%20") + "&admin_view=false")
+                    + "?name=" + name.replace(" ", "%20")
+                    + "&learner_id=" + cert_id.split("-")[0]  # cert_id encodes learner prefix
+                    + "&admin_view=false")
     # Use specific programme name if provided, otherwise fall back to level title
     label        = programme if programme else cert_level.title() + " Python Programme"
     details = (
@@ -399,7 +401,7 @@ def send_payment_receipt_email(name: str, email: str, amount: float,
         "Thank you for your payment. Your subscription to <strong>" + plan_label
         + "</strong> has been confirmed and is now active.</p>"
         + _box(receipt, bg="#f0fdf4", border="#16A34A")
-        + _cta("&#128640; Access Your Dashboard", app)
+        + _cta("&#128640; Go to Your Courses", app + "/?panel=courses")
         + "<p style='color:#64748b;font-size:0.82rem;'>"
           "Questions? <a href='mailto:" + _support_email() + "'>" + _support_email() + "</a><br/>"
           "<strong style='color:" + PRIMARY + ";'>The MyPy Tutor Team</strong></p>"
@@ -408,7 +410,7 @@ def send_payment_receipt_email(name: str, email: str, amount: float,
     text = ("Dear " + first + ",\n\nPayment confirmed.\nPayment ID: " + payment_id
             + "\nDate: " + date_str + "\nPlan: " + plan_label
             + "\nAmount: " + currency + " " + "{:,.0f}".format(amount)
-            + "\n\nDashboard: " + app + "\n\n-- MyPy Tutor Team")
+            + "\n\nAccess your courses: " + app + "/?panel=courses\n\n-- MyPy Tutor Team")
     _dispatch_async(email, "Payment Confirmed - MyPy Tutor", html, text, "payment_receipt")
 
 
@@ -738,7 +740,7 @@ def send_reengagement_email(name: str, email: str, days_inactive: int,
         + topic_hint
         + xp_note
         + _box("<strong>Jump back in:</strong><br/>" + tips)
-        + _cta("&#128640; Resume Learning Now", site)
+        + _cta("&#128640; Resume Learning Now", site + "/?panel=chat")
         + "<p style='color:#64748b;font-size:0.82rem;'>"
           "Even 10 minutes a day builds mastery.<br/>"
           "<strong style='color:" + PRIMARY + ";'>The MyPy Tutor Team</strong></p>"
@@ -751,7 +753,7 @@ def send_reengagement_email(name: str, email: str, days_inactive: int,
         "You haven't visited MyPy Tutor in " + days_str + " days.\n"
         + ("Last topic: " + last_topic + "\n" if last_topic else "")
         + ("Your XP: " + "{:,}".format(xp) + "\n" if xp else "")
-        + "\nResume learning: " + site
+        + "\nResume learning: " + site + "/?panel=chat"
         + "\n\n-- The MyPy Tutor Team"
     )
     _dispatch_async(email,
@@ -960,7 +962,7 @@ def send_weekend_motivation_email(name: str, email: str,
         + course_hint
         + _box("<strong>Weekend learning ideas:</strong><br/>" + weekend_ideas,
                bg="#f0fdf4", border="#16A34A")
-        + _cta("&#128640; Learn This Weekend", site)
+        + _cta("&#128640; Learn This Weekend", site + "/?panel=chat")
         + "<p style='color:#64748b;font-size:0.82rem;'>"
           "Even one lesson this weekend keeps your momentum going.<br/>"
           "<strong style='color:" + PRIMARY + ";'>Sir. Tega &amp; The MyPy Tutor Team</strong></p>"
@@ -971,7 +973,7 @@ def send_weekend_motivation_email(name: str, email: str,
     text = (
         f"Happy Weekend, {first}!\n\n{xp_str}\n\n"
         + (f"Continue: {current_course}\n\n" if current_course else "")
-        + f"Start learning: {site}\n\n-- Sir. Tega & MyPy Tutor Team"
+        + f"Start learning: {site}/?panel=chat\n\n-- Sir. Tega & MyPy Tutor Team"
     )
     _dispatch_async(email,
                     f"🌴 Happy Weekend, {first}! Sir. Tega has a lesson ready for you.",
@@ -1013,7 +1015,7 @@ def send_new_month_email(name: str, email: str, month_name: str,
         + stats_html
         + _box("<strong>Your " + month_name + " goals:</strong><br/>" + goals,
                bg="#f0f7ff", border=PRIMARY)
-        + _cta("&#128640; Start " + month_name + " Strong", site)
+        + _cta("&#128640; Start " + month_name + " Strong", site + "/?panel=courses")
         + "<p style='color:#64748b;font-size:0.82rem;'>"
           "New month, same great tutor — Sir. Tega is ready for you! 🐍<br/>"
           "<strong style='color:" + PRIMARY + ";'>The MyPy Tutor Team</strong></p>"
@@ -1026,7 +1028,7 @@ def send_new_month_email(name: str, email: str, month_name: str,
         "A new month means a fresh chance to level up your Python skills.\n"
         + (f"Your XP so far: {xp:,}\n" if xp else "")
         + (f"Courses completed: {courses_done}\n" if courses_done else "")
-        + f"\nStart learning: {site}\n\n-- Sir. Tega & MyPy Tutor Team"
+        + f"\nStart learning: {site}/?panel=courses\n\n-- Sir. Tega & MyPy Tutor Team"
     )
     _dispatch_async(email,
                     f"🎊 Happy {month_name}! New month, new Python goals — Sir. Tega is ready.",

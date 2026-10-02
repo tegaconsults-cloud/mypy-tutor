@@ -4142,6 +4142,8 @@ async def admin_invite_team(body: _TeamInvite, request: Request) -> dict:
         from app.services.email_service import _dispatch_async, _shell, _cta, _box, PRIMARY, GOLD
         frontend_url = _os.getenv("FRONTEND_URL", "https://mypytutor.com.ng")
         role_label   = body.role.replace("_", " ").title()
+        # Team members should land on the admin dashboard, not the learner homepage
+        admin_url    = frontend_url.rstrip("/") + "/admin.html"
         body_html = (
             f"<p style='color:#1e293b;margin:0 0 12px;'>Hi <strong>{body.name}</strong>,</p>"
             f"<h2 style='color:{PRIMARY};font-size:1.2rem;margin:0 0 12px;'>&#127881; You've been invited to the MyPy Tutor Team!</h2>"
@@ -4154,7 +4156,7 @@ async def admin_invite_team(body: _TeamInvite, request: Request) -> dict:
                 f"<strong>Access:</strong> Sign in with this email address to manage assigned features.",
                 bg="#f0fdf4", border="#16A34A"
             )
-            + _cta("&#128640; Access the Admin Dashboard", frontend_url)
+            + _cta("&#128640; Access the Admin Dashboard", admin_url)
             + f"<p style='color:#64748b;font-size:0.82rem;margin:0;'>"
               f"Questions? Reply to this email.<br/>"
               f"<strong style='color:{PRIMARY};'>The MyPy Tutor Team</strong></p>"
@@ -4163,9 +4165,9 @@ async def admin_invite_team(body: _TeamInvite, request: Request) -> dict:
         text = (
             f"Hi {body.name},\n\n"
             f"You've been invited to the MyPy Tutor team as {role_label}.\n\n"
-            f"Access the platform at: {frontend_url}\n\n"
+            f"Access the Admin Dashboard at: {admin_url}\n\n"
             f"Sign in with this email address to manage your assigned features.\n\n"
-            f"� The MyPy Tutor Team\nPowered by TeamTega Technologies Limited"
+            f"The MyPy Tutor Team\nPowered by TeamTega Technologies Limited"
         )
         _dispatch_async(
             body.email,
