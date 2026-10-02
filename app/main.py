@@ -1602,7 +1602,19 @@ async def get_certificate(
     tier_ok            = profile.tier in allowed_tiers
 
     if not admin_view and not tier_ok and not courses_ok:
+        # Use clean plan names and amounts so the certificate-locked.html
+        # JS can pass them directly to /payments/paystack/initialize
         tier_names = {
+            "basic":     "Beginner Bundle",
+            "advanced":  "Intermediate Bundle",
+            "executive": "Advanced Bundle",
+        }
+        tier_amounts = {
+            "basic":     30000,
+            "advanced":  60000,
+            "executive": 100000,
+        }
+        tier_descriptions = {
             "basic":     "Beginner Bundle (₦30,000) or complete all 4 beginner courses",
             "advanced":  "Intermediate Bundle (₦60,000) or complete all 7 courses",
             "executive": "Advanced Bundle (₦100,000) or complete all advanced courses",
@@ -1625,7 +1637,9 @@ async def get_certificate(
         _lock_html = (
             _lock_html
             .replace("{{LEVEL_TITLE}}", level.title())
-            .replace("{{PLAN_NAME}}", tier_names.get(level, "an appropriate plan"))
+            .replace("{{PLAN_NAME}}", tier_names.get(level, "Beginner Bundle"))
+            .replace("{{PLAN_AMOUNT}}", str(tier_amounts.get(level, 30000)))
+            .replace("{{PLAN_DESCRIPTION}}", tier_descriptions.get(level, "an appropriate plan"))
             .replace("{{FRONTEND_URL}}", _frontend_url_lock)
         )
         return HTMLResponse(content=_lock_html, status_code=402)

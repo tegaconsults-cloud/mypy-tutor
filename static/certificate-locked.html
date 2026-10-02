@@ -175,7 +175,7 @@ h2{color:#fcd34d;font-size:1.35rem;font-weight:800;margin-bottom:12px;text-align
   <h2>Certificate Locked</h2>
   <p class="sub">
     Unlock your <span class="level">{{LEVEL_TITLE}} Certificate</span> by purchasing
-    <span class="plan-badge">{{PLAN_NAME}}</span> or completing all required courses.
+    <span class="plan-badge" id="plan-display">{{PLAN_DESCRIPTION}}</span>.
   </p>
 
   <div class="steps">
@@ -200,7 +200,14 @@ h2{color:#fcd34d;font-size:1.35rem;font-weight:800;margin-bottom:12px;text-align
       <span id="ps-spinner" class="spin"></span>
       <span id="ps-label">🚀 Pay Now — Unlock Certificate</span>
     </button>
-    <p id="ps-error" class="alert err"></p>
+    <p id="ps-error" style="display:none;color:#fca5a5;font-size:.82rem;margin-top:8px;text-align:center;border-radius:8px;padding:8px 12px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);"></p>
+    <script>
+      // Show correct amount on button as soon as page loads
+      (function(){
+        var a = SERVER_AMOUNT || PLAN_AMOUNTS[SERVER_PLAN] || 0;
+        if(a) document.getElementById('ps-label').textContent = '\uD83D\uDE80 Pay \u20A6'+a.toLocaleString()+' \u2014 Unlock Certificate';
+      })();
+    </script>
     <p style="font-size:.74rem;color:#4a5568;margin-top:10px;text-align:center;">
       Secured by Paystack · Card, bank transfer &amp; USSD accepted
     </p>
@@ -269,10 +276,12 @@ const API   = 'https://mypytutor.onrender.com';
 const TOKEN = localStorage.getItem('mpt_token') || '';
 
 // Pre-select plan based on what the server injected ({{PLAN_NAME}})
-const SERVER_PLAN  = '{{PLAN_NAME}}';
-const SERVER_LEVEL = '{{LEVEL_TITLE}}';
+const SERVER_PLAN   = '{{PLAN_NAME}}';
+const SERVER_LEVEL  = '{{LEVEL_TITLE}}';
+const SERVER_AMOUNT = {{PLAN_AMOUNT}};      // naira amount injected by server
+const SERVER_DESC   = '{{PLAN_DESCRIPTION}}'; // human-readable description
 
-// Map plan label → amount
+// Map plan label → amount (fallback if server amount not injected)
 const PLAN_AMOUNTS = {
   'Beginner Bundle':     30000,
   'Intermediate Bundle': 60000,
@@ -342,22 +351,22 @@ async function startPaystackCheckout() {
 
   if (!TOKEN) {
     errEl.textContent = 'Please sign in to MyPy Tutor first to start checkout.';
-    errEl.classList.add('visible');
+    errEl.style.display = 'block';
     return;
   }
 
-  // Determine amount from plan
-  const amount = PLAN_AMOUNTS[SERVER_PLAN];
+  // Determine amount — use server-injected amount first, then lookup
+  const amount = SERVER_AMOUNT || PLAN_AMOUNTS[SERVER_PLAN];
   if (!amount) {
-    errEl.textContent = 'Could not determine plan price. Please try bank transfer instead.';
-    errEl.classList.add('visible');
+    errEl.textContent = 'Could not determine plan price. Please use bank transfer instead.';
+    errEl.style.display = 'block';
     return;
   }
 
   btn.disabled  = true;
   spinner.style.display = 'inline-block';
   label.textContent = 'Opening checkout…';
-  errEl.classList.remove('visible');
+  errEl.style.display = 'none';
 
   try {
     // Get learner_id from local storage
@@ -383,11 +392,12 @@ async function startPaystackCheckout() {
     // Redirect to the Paystack checkout page — amount + plan + email are pre-loaded
     window.location.href = data.authorization_url;
   } catch(err) {
-    errEl.textContent = err.message || 'Could not open checkout. Please try bank transfer.';
-    errEl.classList.add('visible');
+    errEl.textContent = err.message || 'Could not open checkout. Please use bank transfer.';
+    errEl.style.display = 'block';
     btn.disabled = false;
     spinner.style.display = 'none';
-    label.textContent = '🚀 Pay Now — Unlock Certificate';
+    var a = SERVER_AMOUNT || PLAN_AMOUNTS[SERVER_PLAN] || 0;
+    label.textContent = '\uD83D\uDE80 Pay \u20A6'+(a?a.toLocaleString():'')+(a?'':' ')+'— Unlock Certificate';
   }
 }
 
