@@ -83,6 +83,7 @@ from app.admin import (
     verify_admin_login, create_admin_token, verify_admin_token,
     add_payment, confirm_payment, get_payments, get_revenue_summary,
     invite_team_member, create_task, update_task_status,
+    suspend_team_member, update_team_permissions,
     log_certificate, get_certificates, log_activity, get_announcements,
 )
 from app.db import (
@@ -2784,9 +2785,10 @@ class _TaskCreate(_BM):
 
 
 class _TeamInvite(_BM):
-    email: str
-    name:  str
-    role:  str = "team"
+    email:       str
+    name:        str
+    role:        str = "team"
+    permissions: list = []   # list of dashboard section keys the member can access
 
 
 class _ReferralWithdraw(_BM):
@@ -4135,7 +4137,7 @@ async def admin_team(request: Request) -> dict:
 @app.post("/admin/team/invite")
 async def admin_invite_team(body: _TeamInvite, request: Request) -> dict:
     _require_admin(request)
-    m = invite_team_member(body.email, body.name, body.role)
+    m = invite_team_member(body.email, body.name, body.role, body.permissions)
     try:
         from app.services.email_service import _dispatch_async, _shell, _cta, _box, PRIMARY, GOLD
         frontend_url = _os.getenv("FRONTEND_URL", "https://mypytutor.com.ng")
@@ -4175,6 +4177,39 @@ async def admin_invite_team(body: _TeamInvite, request: Request) -> dict:
     except Exception as e:
         logger.warning("Team invite email failed: %s", e)
     return {"ok": True, "member": {"email": m.email, "name": m.name, "role": m.role}}
+
+
+@app.post("/admin/team/{email}/suspend")
+async def admin_suspend_team_member(email: str, request: Request) -> dict:
+    """Suspend or reinstate a team member. Body: {suspend: bool}"""
+    _require_admin(request)
+    from app.admin import suspend_team_member as _stm
+    body    = await request.json()
+    suspend = bool(body.get("suspend", True))
+    ok      = _stm(email, suspend)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Team member not found.")
+    action = "suspended" if suspend else "reinstated"
+    log_activity("admin", f"team:{action}", email)
+    return {"ok": True, "email": email, "suspended": suspend,
+            "message": f"Team member {email} has been {action}."}
+
+
+@app.post("/admin/team/{email}/permissions")
+async def admin_update_team_permissions(email: str, request: Request) -> dict:
+    """Update the list of dashboard sections a team member can access."""
+    _require_admin(request)
+    from app.admin import update_team_permissions as _utp
+    body        = await request.json()
+    permissions = body.get("permissions", [])
+    if not isinstance(permissions, list):
+        raise HTTPException(status_code=400, detail="permissions must be a list of section keys.")
+    ok = _utp(email, permissions)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Team member not found.")
+    log_activity("admin", "team:permissions-updated",
+                 f"{email} perms={','.join(permissions)}")
+    return {"ok": True, "email": email, "permissions": permissions}
 
 
 @app.post("/admin/tasks/create")

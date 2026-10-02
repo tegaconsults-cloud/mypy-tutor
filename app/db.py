@@ -594,6 +594,9 @@ def init_db() -> None:
                 "ALTER TABLE payments       ADD COLUMN IF NOT EXISTS notes      TEXT DEFAULT ''",
                 "ALTER TABLE email_accounts ADD COLUMN IF NOT EXISTS name TEXT DEFAULT ''",
                 "ALTER TABLE learner_profiles ADD COLUMN IF NOT EXISTS prompt_plan TEXT DEFAULT ''",
+                # Team member permissions and suspension support
+                "ALTER TABLE team_members ADD COLUMN IF NOT EXISTS permissions TEXT DEFAULT '[]'",
+                "ALTER TABLE team_members ADD COLUMN IF NOT EXISTS suspended INTEGER DEFAULT 0",
                 # Referral overhaul — track paid successful referrals for withdrawal lock
                 "ALTER TABLE referrals ADD COLUMN IF NOT EXISTS successful_referrals INTEGER DEFAULT 0",
                 # Migrate data from old Supabase column names to new ones

@@ -522,6 +522,27 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
               <option value="team">Team Member</option><option value="tutor">Tutor</option>
               <option value="support">Support</option><option value="dev">Developer</option>
             </select></div>
+            <div class="fr">
+              <label>Dashboard Access <span style="color:#64748b;font-size:.74rem">(hold Ctrl/Cmd to select multiple)</span></label>
+              <select id="tm-perms" multiple style="height:150px;background:#111827;border:1px solid rgba(255,255,255,.12);
+                border-radius:8px;color:#e2e8f0;padding:4px;font-size:.82rem;width:100%;cursor:pointer;">
+                <option value="dashboard">📊 Dashboard</option>
+                <option value="users">👥 Users</option>
+                <option value="activity">🕒 Activity</option>
+                <option value="payments">💳 Payments</option>
+                <option value="certificates">🎓 Certificates</option>
+                <option value="tasks">📋 Tasks</option>
+                <option value="referrals">🔗 Referrals</option>
+                <option value="feedback">💬 Feedback</option>
+                <option value="announce">📢 Announcements</option>
+                <option value="team">👨‍💼 Team</option>
+                <option value="topusers">🏆 Top Users</option>
+                <option value="coupons">🎟 Coupons</option>
+                <option value="invoices">🧾 Invoices</option>
+                <option value="withdrawals">💰 Withdrawals</option>
+                <option value="enquiries">📩 Enquiries</option>
+              </select>
+            </div>
             <button class="btn" onclick="inviteTeam()">Invite</button>
           </div>
           <div class="sec"><h3>Members</h3><div id="team-list">Loading…</div></div>
@@ -1136,19 +1157,113 @@ async function sendAnnouncement(){
 // ── Team ───────────────────────────────────────────────────────────────────
 async function loadTeam(){
   const r=await api('/admin/team'); const d=await r.json();
-  document.getElementById('team-list').innerHTML=(d.members||[]).map(m=>
-    `<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid #2d3748;font-size:.83rem">
-    <strong>${m.name}</strong><span style="color:#718096">${m.email}</span>
-    <span class="badge bg">${m.role}</span>
-    <span class="badge ${m.status==='active'?'gg':'gy'}">${m.status}</span></div>`
-  ).join('')||'<span style="color:#4a5568">No team members yet.</span>';
+  const SECTION_LABELS = {
+    dashboard:'Dashboard',users:'Users',activity:'Activity',payments:'Payments',
+    certificates:'Certificates',tasks:'Tasks',referrals:'Referrals',feedback:'Feedback',
+    announce:'Announcements',team:'Team',topusers:'Top Users',coupons:'Coupons',
+    invoices:'Invoices',withdrawals:'Withdrawals',enquiries:'Enquiries'
+  };
+  document.getElementById('team-list').innerHTML=(d.members||[]).map(m=>{
+    const suspended = m.suspended || m.status==='suspended';
+    const perms = Array.isArray(m.permissions) ? m.permissions : [];
+    const permsHtml = perms.length
+      ? perms.map(p=>`<span class="badge grey" style="font-size:.66rem">${SECTION_LABELS[p]||p}</span>`).join(' ')
+      : `<span style="color:#4a5568;font-size:.74rem">No access set</span>`;
+    return `<div style="border:1px solid #2d3748;border-radius:10px;padding:12px 14px;margin-bottom:10px;
+      background:${suspended?'rgba(239,68,68,.05)':'rgba(255,255,255,.02)'}">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+        <div>
+          <strong style="color:#e2e8f0">${m.name}</strong>
+          <span style="color:#718096;font-size:.8rem;margin-left:8px">${m.email}</span>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <span class="badge bg">${m.role}</span>
+          <span class="badge ${suspended?'gr':'gy'}">${suspended?'suspended':m.status||'invited'}</span>
+          <button class="bsm ${suspended?'bg2':'br'}" onclick="toggleSuspend('${m.email}',${!suspended})">
+            ${suspended?'✅ Reinstate':'🚫 Suspend'}</button>
+          <button class="bsm" onclick="editPermissions('${m.email}',${JSON.stringify(perms).replace(/"/g,'&quot;')})">🔑 Permissions</button>
+        </div>
+      </div>
+      <div style="font-size:.74rem;color:#94a3b8;margin-top:4px">Access: ${permsHtml}</div>
+    </div>`;
+  }).join('')||'<span style="color:#4a5568">No team members yet.</span>';
 }
 
 async function inviteTeam(){
-  const body={email:document.getElementById('tm-email').value,name:document.getElementById('tm-name').value,role:document.getElementById('tm-role').value};
+  const sel=document.getElementById('tm-perms');
+  const perms=Array.from(sel.selectedOptions).map(o=>o.value);
+  const body={
+    email:document.getElementById('tm-email').value,
+    name:document.getElementById('tm-name').value,
+    role:document.getElementById('tm-role').value,
+    permissions:perms
+  };
   if(!body.email||!body.name){toast('Email and name required',false);return;}
   const r=await api('/admin/team/invite',{method:'POST',body:JSON.stringify(body)});
   if(r.ok){toast('Invitation sent to '+body.email);loadTeam();}
+  else { const d=await r.json(); toast(d.detail||d.error||'Invite failed',false); }
+}
+
+async function toggleSuspend(email, suspend){
+  const action = suspend ? 'suspend' : 'reinstate';
+  if(!confirm(`${action.charAt(0).toUpperCase()+action.slice(1)} ${email}?`)) return;
+  const r=await api(`/admin/team/${encodeURIComponent(email)}/suspend`,
+    {method:'POST',body:JSON.stringify({suspend})});
+  const d=await r.json();
+  if(d.ok){toast(d.message||`Member ${action}d`);loadTeam();}
+  else toast(d.detail||d.error||`Failed to ${action}`,false);
+}
+
+async function editPermissions(email, currentPerms){
+  const SECTIONS = [
+    'dashboard','users','activity','payments','certificates','tasks',
+    'referrals','feedback','announce','team','topusers','coupons',
+    'invoices','withdrawals','enquiries'
+  ];
+  const LABELS = {
+    dashboard:'📊 Dashboard',users:'👥 Users',activity:'🕒 Activity',
+    payments:'💳 Payments',certificates:'🎓 Certificates',tasks:'📋 Tasks',
+    referrals:'🔗 Referrals',feedback:'💬 Feedback',announce:'📢 Announcements',
+    team:'👨‍💼 Team',topusers:'🏆 Top Users',coupons:'🎟 Coupons',
+    invoices:'🧾 Invoices',withdrawals:'💰 Withdrawals',enquiries:'📩 Enquiries'
+  };
+  // Build overlay
+  let overlay = document.getElementById('perm-overlay');
+  if(!overlay){
+    overlay = document.createElement('div');
+    overlay.id='perm-overlay';
+    overlay.style.cssText='position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;padding:16px;';
+    document.body.appendChild(overlay);
+  }
+  overlay.innerHTML=`
+    <div style="background:#0d1120;border:1px solid rgba(59,130,246,.3);border-radius:14px;
+      padding:24px;max-width:400px;width:100%;box-shadow:0 24px 60px rgba(0,0,0,.6);">
+      <h3 style="color:#93c5fd;margin:0 0 14px;">🔑 Dashboard Access — ${email}</h3>
+      <p style="color:#64748b;font-size:.8rem;margin-bottom:14px;">Select sections this member can view and act on:</p>
+      <div id="perm-checks" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px;">
+        ${SECTIONS.map(s=>`
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:.83rem;color:#cbd5e1;">
+            <input type="checkbox" value="${s}" ${currentPerms.includes(s)?'checked':''} style="accent-color:#3b82f6;width:15px;height:15px;"/>
+            ${LABELS[s]||s}
+          </label>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="bsm" onclick="document.getElementById('perm-overlay').style.display='none'">Cancel</button>
+        <button class="bsm bg2" onclick="savePermissions('${email}')">✅ Save</button>
+      </div>
+    </div>`;
+  overlay.style.display='flex';
+}
+
+async function savePermissions(email){
+  const checks = document.querySelectorAll('#perm-checks input[type=checkbox]');
+  const perms = Array.from(checks).filter(c=>c.checked).map(c=>c.value);
+  const r=await api(`/admin/team/${encodeURIComponent(email)}/permissions`,
+    {method:'POST',body:JSON.stringify({permissions:perms})});
+  const d=await r.json();
+  document.getElementById('perm-overlay').style.display='none';
+  if(d.ok){toast(`Permissions updated for ${email}`);loadTeam();}
+  else toast(d.detail||d.error||'Failed to update permissions',false);
 }
 
 // ── Tasks ──────────────────────────────────────────────────────────────────

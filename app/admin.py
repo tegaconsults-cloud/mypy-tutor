@@ -264,15 +264,20 @@ class TeamMember:
 _team: list[TeamMember] = []
 
 
-def invite_team_member(email: str, name: str, role: str = "team") -> TeamMember:
+def invite_team_member(email: str, name: str, role: str = "team",
+                        permissions: list | None = None) -> "TeamMember":
+    import json as _json
+    perms_json = _json.dumps(permissions or [])
     try:
         from app.db import get_db as _gdb
         with _gdb() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "INSERT INTO team_members (email,name,role) VALUES (%s,%s,%s) "
-                    "ON CONFLICT(email) DO NOTHING",
-                    (email.lower(), name, role)
+                    "INSERT INTO team_members (email, name, role, permissions) "
+                    "VALUES (%s,%s,%s,%s) "
+                    "ON CONFLICT(email) DO UPDATE SET name=EXCLUDED.name, "
+                    "role=EXCLUDED.role, permissions=EXCLUDED.permissions",
+                    (email.lower(), name, role, perms_json)
                 )
     except Exception as e:
         logger.warning("invite_team_member DB failed: %s", e)
@@ -285,8 +290,44 @@ def invite_team_member(email: str, name: str, role: str = "team") -> TeamMember:
     return m
 
 
+def suspend_team_member(email: str, suspend: bool = True) -> bool:
+    """Suspend or reinstate a team member."""
+    flag = 1 if suspend else 0
+    try:
+        from app.db import get_db as _gdb
+        with _gdb() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE team_members SET suspended=%s, status=%s WHERE email=%s",
+                    (flag, "suspended" if suspend else "active", email.lower())
+                )
+                return cur.rowcount > 0
+    except Exception as e:
+        logger.warning("suspend_team_member DB failed: %s", e)
+        return False
+
+
+def update_team_permissions(email: str, permissions: list) -> bool:
+    """Update the dashboard sections a team member can access."""
+    import json as _json
+    perms_json = _json.dumps(permissions)
+    try:
+        from app.db import get_db as _gdb
+        with _gdb() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE team_members SET permissions=%s WHERE email=%s",
+                    (perms_json, email.lower())
+                )
+                return cur.rowcount > 0
+    except Exception as e:
+        logger.warning("update_team_permissions DB failed: %s", e)
+        return False
+
+
 def get_team() -> list[dict]:
     """Return team members from PostgreSQL."""
+    import json as _json
     try:
         import psycopg2.extras
         from app.db import get_db as _gdb
@@ -294,10 +335,22 @@ def get_team() -> list[dict]:
             with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 cur.execute("SELECT * FROM team_members ORDER BY invited_at DESC")
                 rows = cur.fetchall()
-        return [dict(r) for r in rows]
+        result = []
+        for r in rows:
+            d = dict(r)
+            # Parse permissions JSON safely
+            raw_perms = d.get("permissions") or "[]"
+            try:
+                d["permissions"] = _json.loads(raw_perms) if isinstance(raw_perms, str) else raw_perms
+            except Exception:
+                d["permissions"] = []
+            d["suspended"] = bool(d.get("suspended", 0))
+            result.append(d)
+        return result
     except Exception as e:
         logger.warning("get_team DB failed: %s", e)
-        return [{"email": m.email, "name": m.name, "role": m.role, "status": m.status} for m in _team]
+        return [{"email": m.email, "name": m.name, "role": m.role,
+                 "status": m.status, "permissions": [], "suspended": False} for m in _team]
 
 
 # ---------------------------------------------------------------------------
@@ -548,7 +601,7 @@ async def send_announcement(target: str, subject: str, body_text: str) -> int:
         with _gdb() as conn:
             with conn.cursor(cursor_factory=_pge.RealDictCursor) as cur:
                 cur.execute(
-                    "SELECT learner_id, email, name FROM email_accounts WHERE confirmed=1"
+                    "SELECT learner_id, email, name FROM email_accounts WHERE confirmed IS TRUE"
                 )
                 rows = cur.fetchall()
         for r in rows:
