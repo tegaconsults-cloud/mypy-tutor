@@ -1413,27 +1413,45 @@ async function loadCoupons(){
   const r=await api('/admin/coupons'); const d=await r.json();
   document.getElementById('coupons-list').innerHTML=(d.coupons||[]).length
     ? `<div style="overflow-x:auto"><table>
-        <thead><tr><th>Code</th><th>Disc%</th><th>Flat(₦)</th><th>Plan</th><th>Uses</th><th>Expires</th><th>Status</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Code</th><th>Discount</th><th>Plan</th><th>Uses</th><th>Expires</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody>`+
         (d.coupons).map(c=>{
+          const PLAN_LABELS={
+            'any':'Any Plan','tier1':'Beginner Bundle','tier2':'Intermediate Bundle',
+            'tier3':'Advanced Bundle','tier4':'Premium Bundle',
+            'python-fundamentals':'Python Fundamentals','python-strings':'Python Strings',
+            'python-collections':'Python Collections','python-control-flow':'Python Control Flow',
+            'python-functions-advanced':'Advanced Functions','python-oop':'OOP',
+            'python-modules-stdlib':'Modules & Stdlib','python-dsa':'DSA',
+            'numpy-mastery':'NumPy Mastery','pandas-mastery':'Pandas Mastery',
+            'data-science-python':'Data Science','python-databases':'Databases',
+            'web-apis':'Web APIs','prompt-engineering':'Prompt Engineering',
+            'ai-prompt-engineering':'AI & Prompt Eng','machine-learning':'Machine Learning',
+            'ai-automation':'AI Automation'
+          };
+          const planLabel = PLAN_LABELS[c.plan] || c.plan;
           const exp=c.expires_at&&c.expires_at>0?new Date(c.expires_at*1000).toLocaleDateString():'never';
           const useCls=c.uses>=c.max_uses?'gr':'gg';
           const active=c.active!==0;
-          const statusBadge=active
-            ?`<span class="badge gg">active</span>`
-            :`<span class="badge gr">inactive</span>`;
+          const statusBadge=c.expired
+            ?`<span class="badge gr">expired</span>`
+            :active?`<span class="badge gg">active</span>`:`<span class="badge gr">inactive</span>`;
+          const discDisplay = c.discount_pct>0 && c.discount_flat>0
+            ? `${c.discount_pct}% + ₦${c.discount_flat.toLocaleString()}`
+            : c.discount_pct>0 ? `${c.discount_pct}% off`
+            : c.discount_flat>0 ? `₦${c.discount_flat.toLocaleString()} off`
+            : '—';
           return `<tr>
             <td><code style="font-size:.82rem;color:#a78bfa;letter-spacing:.06em">${c.code}</code></td>
-            <td style="color:#fcd34d">${c.discount_pct}%</td>
-            <td>${c.discount_flat>0?'₦'+c.discount_flat:'—'}</td>
-            <td><span class="badge grey">${c.plan}</span></td>
+            <td style="color:#fcd34d;font-weight:700">${discDisplay}</td>
+            <td><span class="badge grey" title="${c.plan}">${planLabel}</span></td>
             <td><span class="badge ${useCls}">${c.uses||0}/${c.max_uses}</span></td>
             <td style="font-size:.74rem;color:#718096">${exp}</td>
             <td>${statusBadge}</td>
             <td style="display:flex;gap:4px;flex-wrap:wrap">
-              ${active
+              ${active&&!c.expired
                 ?`<button class="bsm gy" onclick="toggleCoupon('${c.code}','deactivate')">⏸ Disable</button>`
-                :`<button class="bsm bg2" onclick="toggleCoupon('${c.code}','activate')">▶ Enable</button>`}
+                :c.expired?'':`<button class="bsm bg2" onclick="toggleCoupon('${c.code}','activate')">▶ Enable</button>`}
               <button class="bsm br" onclick="deleteCoupon('${c.code}')">🗑 Delete</button>
             </td>
           </tr>`;
@@ -1476,7 +1494,8 @@ async function createCoupon(){
     body:JSON.stringify({code,discount_pct:pct,discount_flat:flat,plan,max_uses:maxUses,expires_days:days})});
   const d=await r.json();
   if(r.ok){
-    resEl.innerHTML=`<div class="alert-g">✅ Coupon <strong style="color:#a78bfa;letter-spacing:.08em">${code}</strong> created · ${pct}% off · max ${maxUses} uses</div>`;
+    const discMsg = pct>0&&flat>0 ? `${pct}% + ₦${flat.toLocaleString()} off` : pct>0 ? `${pct}% off` : `₦${flat.toLocaleString()} off`;
+    resEl.innerHTML=`<div class="alert-g">✅ Coupon <strong style="color:#a78bfa;letter-spacing:.08em">${code}</strong> created · ${discMsg} · max ${maxUses} uses</div>`;
     document.getElementById('cp-code').value='';
     _loaded.delete('coupons');
     loadCoupons();

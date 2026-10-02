@@ -262,12 +262,21 @@ class ReferralUse(BaseModel):
 # ---------------------------------------------------------------------------
 
 class CouponCreate(BaseModel):
-    code:          str   = Field(..., min_length=2, max_length=32)
-    discount_pct:  int   = Field(..., ge=0, le=100)
-    discount_flat: float = Field(default=0.0, ge=0)
-    plan:          str   = Field(default="any", max_length=20)
+    """Admin creates a coupon code. Exactly one of discount_pct or discount_flat must be set."""
+    code:          str   = Field(..., min_length=2, max_length=32,
+                                 pattern=r"^[A-Z0-9_\-]+$",
+                                 description="Uppercase alphanumeric code")
+    discount_pct:  int   = Field(default=0, ge=0, le=100,
+                                 description="Percentage discount (0–100). 0 means not used.")
+    discount_flat: float = Field(default=0.0, ge=0,
+                                 description="Flat naira discount. 0 means not used.")
+    plan:          str   = Field(default="any", max_length=50)
     max_uses:      int   = Field(default=100, ge=1)
     expires_days:  int   = Field(default=0, ge=0)   # 0 = never expires
+
+    def model_post_init(self, __context) -> None:
+        if self.discount_pct == 0 and self.discount_flat == 0.0:
+            raise ValueError("At least one of discount_pct or discount_flat must be greater than 0.")
 
 
 # ---------------------------------------------------------------------------

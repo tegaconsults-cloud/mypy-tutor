@@ -1336,11 +1336,17 @@ def validate_coupon_db(code: str, plan: str = "any") -> dict | None:
     if not row:
         return None
     c = dict(row)
+    # Expiry check
     if c["expires_at"] and c["expires_at"] > 0 and _t.time() > c["expires_at"]:
         return None
+    # Uses exhausted check
     if c["uses"] >= c["max_uses"]:
         return None
-    if c["plan"] not in ("any", plan):
+    # Plan compatibility: coupon's stored plan must be "any" (valid for all plans)
+    # OR must exactly match the requested plan.
+    # Exception: if caller passes "any" we always allow (used for pre-validation at signup).
+    coupon_plan = (c.get("plan") or "any").lower().strip()
+    if coupon_plan != "any" and plan not in ("any", coupon_plan):
         return None
     return c
 

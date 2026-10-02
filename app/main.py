@@ -4793,10 +4793,10 @@ async def apply_coupon(body: CouponValidate,
     # Calculate real savings � handle both flat and percentage discounts
     disc_pct   = int(coupon.get("discount_pct") or 0)
     disc_flat  = float(coupon.get("discount_flat") or 0.0)
-    # For percentage coupons, savings is recorded as 0 until applied to an actual
-    # payment amount (the webhook will record the real value). For flat coupons
-    # we store the flat amount immediately.
-    savings = disc_flat if disc_flat > 0 else 0.0
+    # For percentage coupons: savings recorded as negative to signal "pct type"
+    # The webhook records the real cash savings when payment is confirmed.
+    # For flat coupons: store the flat amount immediately.
+    savings = disc_flat if disc_flat > 0 else -(disc_pct)  # negative = pct marker
 
     use_coupon_db(body.code, body.learner_id, body.email, savings)
     log_activity(body.learner_id, "coupon:applied", f"code={body.code} disc_pct={disc_pct}% disc_flat={disc_flat}")
