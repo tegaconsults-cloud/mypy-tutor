@@ -2,7 +2,7 @@
 Dynamic Jinja2 SSR course landing pages for all 17 MyPy Tutor courses.
 """
 
-from jinja2 import Template
+from jinja2 import Environment
 from app.courses import COURSE_CATALOG, COURSES, TIER_PLANS
 
 # ---------------------------------------------------------------------------
@@ -780,9 +780,18 @@ def render_course_landing(course_slug: str) -> str:
     def _fmt(n: int) -> str:
         return "\u20a6{:,}".format(n)  # ₦ + comma-formatted number
 
+    _unlocks_count = tier_info.get("unlocks_count")
+    if _unlocks_count is None:
+        # Tier is missing the unlocks_count key — log and use a safe fallback rather
+        # than silently emitting "1" which would be factually wrong.
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "TIER_PLANS[%r] is missing 'unlocks_count' key — bundle text will be approximate.", tier_key
+        )
+        _unlocks_count = "several"
     bundle_text = (
         "The {} ({} one-time) unlocks this course plus {} total courses.".format(
-            tier_name, _fmt(tier_price), tier_info.get("unlocks_count", 1)
+            tier_name, _fmt(tier_price), _unlocks_count
         )
     )
 
@@ -826,5 +835,5 @@ def render_course_landing(course_slug: str) -> str:
         "faq_prereq_answer": faq_prereq,
     }
 
-    t = Template(COURSE_LANDING_TEMPLATE)
+    t = Environment(autoescape=True).from_string(COURSE_LANDING_TEMPLATE)
     return t.render(**context)
