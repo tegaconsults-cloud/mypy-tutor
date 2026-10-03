@@ -488,6 +488,21 @@ def init_db() -> None:
             )""")
 
             cur.execute("""
+            CREATE TABLE IF NOT EXISTS paystack_customers (
+                learner_id       TEXT PRIMARY KEY,
+                email            TEXT NOT NULL,
+                customer_code    TEXT NOT NULL DEFAULT '',
+                customer_id      INTEGER DEFAULT 0,
+                dva_account_num  TEXT DEFAULT '',
+                dva_bank_name    TEXT DEFAULT 'Paystack-Titan',
+                dva_account_name TEXT DEFAULT '',
+                dva_id           INTEGER DEFAULT 0,
+                plan             TEXT DEFAULT '',
+                created_at       DOUBLE PRECISION DEFAULT EXTRACT(EPOCH FROM NOW()),
+                updated_at       DOUBLE PRECISION DEFAULT EXTRACT(EPOCH FROM NOW())
+            )""")
+
+            cur.execute("""
             CREATE TABLE IF NOT EXISTS bank_transfer_proofs (
                 id            TEXT PRIMARY KEY,
                 learner_id    TEXT NOT NULL,
@@ -597,6 +612,8 @@ def init_db() -> None:
                 # Team member permissions and suspension support
                 "ALTER TABLE team_members ADD COLUMN IF NOT EXISTS permissions TEXT DEFAULT '[]'",
                 "ALTER TABLE team_members ADD COLUMN IF NOT EXISTS suspended INTEGER DEFAULT 0",
+                # Paystack DVA customer store
+                "ALTER TABLE paystack_customers ADD COLUMN IF NOT EXISTS plan TEXT DEFAULT ''",
                 # Referral overhaul — track paid successful referrals for withdrawal lock
                 "ALTER TABLE referrals ADD COLUMN IF NOT EXISTS successful_referrals INTEGER DEFAULT 0",
                 # Migrate data from old Supabase column names to new ones
@@ -1783,6 +1800,71 @@ def update_withdrawal_status(withdrawal_id: int, status: str, notes: str = "") -
                 (status, notes, withdrawal_id)
             )
             return cur.rowcount > 0
+
+
+# ---------------------------------------------------------------------------
+# Paystack Dedicated Virtual Account (DVA) helpers
+# ---------------------------------------------------------------------------
+
+def save_paystack_customer(learner_id: str, email: str, customer_code: str,
+                           customer_id: int = 0) -> None:
+    """Upsert the Paystack customer record for a learner."""
+    import time as _t
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO paystack_customers
+                  (learner_id, email, customer_code, customer_id, updated_at)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (learner_id) DO UPDATE SET
+                  email         = EXCLUDED.email,
+                  customer_code = EXCLUDED.customer_code,
+                  customer_id   = EXCLUDED.customer_id,
+                  updated_at    = EXCLUDED.updated_at
+            """, (learner_id, email.lower(), customer_code, customer_id, _t.time()))
+
+
+def save_paystack_dva(learner_id: str, account_number: str, bank_name: str,
+                      account_name: str, dva_id: int = 0) -> None:
+    """Save the dedicated virtual account details after provisioning."""
+    import time as _t
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE paystack_customers SET
+                  dva_account_num  = %s,
+                  dva_bank_name    = %s,
+                  dva_account_name = %s,
+                  dva_id           = %s,
+                  updated_at       = %s
+                WHERE learner_id = %s
+            """, (account_number, bank_name, account_name, dva_id, _t.time(), learner_id))
+
+
+def get_paystack_customer(learner_id: str) -> dict | None:
+    """Return the full Paystack customer + DVA record for a learner."""
+    import psycopg2.extras
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT * FROM paystack_customers WHERE learner_id = %s",
+                (learner_id,)
+            )
+            row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def get_paystack_customer_by_code(customer_code: str) -> dict | None:
+    """Look up a learner by their Paystack customer_code (used in webhooks)."""
+    import psycopg2.extras
+    with get_db() as conn:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                "SELECT * FROM paystack_customers WHERE customer_code = %s",
+                (customer_code,)
+            )
+            row = cur.fetchone()
+    return dict(row) if row else None
 
 
 # ---------------------------------------------------------------------------

@@ -109,6 +109,9 @@ from app.db import (
     update_user_profile_db, get_user_profile_db,
     # referral balance
     get_referral_bonus_balance,
+    # Paystack DVA helpers
+    get_paystack_customer, get_paystack_customer_by_code,
+    save_paystack_customer, save_paystack_dva,
     # referral withdrawals
     create_withdrawal_request, get_withdrawals_for_learner,
     # course purchases
@@ -1263,6 +1266,13 @@ async def auth_confirm(token: str) -> JSONResponse:
                             is_new_user=True,
                         )
                         upsert_email_automation(_lid, _e, _n)
+                        # Auto-provision Paystack DVA so user can pay immediately
+                        try:
+                            from app.paystack import get_or_create_dva as _dva_prov
+                            _dva_prov(_lid, _e, _n)
+                            logger.info("DVA provisioned on confirm for %s", _lid)
+                        except Exception as _dve:
+                            logger.debug("DVA provision on confirm failed (non-fatal): %s", _dve)
                     except Exception as _ee:
                         logger.debug("Confirm emails failed (non-fatal): %s", _ee)
                 threading.Thread(
@@ -2472,6 +2482,27 @@ async def paystack_webhook(request: Request) -> dict:
     event_type = event.get("event", "")
     data       = event.get("data", {})
 
+    # ── DVA assignment confirmation ─────────────────────────────────────────
+    if event_type == "dedicatedaccount.assign.success":
+        _cust     = data.get("customer", {})
+        _cust_code = _cust.get("customer_code", "") if isinstance(_cust, dict) else ""
+        _acct_num  = data.get("account_number", "")
+        _bank_info = data.get("bank", {})
+        _bank_name = _bank_info.get("name", "Paystack-Titan") if isinstance(_bank_info, dict) else "Paystack-Titan"
+        _acct_name = data.get("account_name", "")
+        _dva_id    = data.get("id", 0)
+        if _cust_code and _acct_num:
+            try:
+                from app.db import get_paystack_customer_by_code as _gpcbc2, save_paystack_dva as _spd
+                _rec = _gpcbc2(_cust_code)
+                if _rec:
+                    _spd(_rec["learner_id"], _acct_num, _bank_name, _acct_name, _dva_id)
+                    logger.info("DVA assigned via webhook: %s → %s (%s)",
+                                _rec["learner_id"], _acct_num, _bank_name)
+            except Exception as _dve:
+                logger.warning("DVA webhook update failed (non-fatal): %s", _dve)
+        return {"ok": True}
+
     if event_type == "charge.success":
         customer   = data.get("customer", {})
         email      = customer.get("email", "").lower()
@@ -2503,10 +2534,23 @@ async def paystack_webhook(request: Request) -> dict:
             except Exception as _idem_exc:
                 logger.warning("Webhook idempotency check failed (proceeding): %s", _idem_exc)
 
-        # Get learner_id from email
-        from app.db import load_email_account
+        # Get learner_id from email — also try DVA customer lookup for bank transfers
+        from app.db import load_email_account, get_paystack_customer_by_code as _gpcbc
         acct       = load_email_account(email)
         learner_id = acct["learner_id"] if acct else email
+
+        # For DVA (bank transfer) payments the customer_code is in the data
+        if not acct:
+            _cust = data.get("customer", {})
+            _cust_code = _cust.get("customer_code", "") if isinstance(_cust, dict) else ""
+            if _cust_code:
+                _dva_rec = _gpcbc(_cust_code)
+                if _dva_rec:
+                    learner_id = _dva_rec["learner_id"]
+                    email      = _dva_rec["email"] or email
+                    acct       = load_email_account(email)
+                    logger.info("Webhook: matched learner %s via DVA customer_code %s",
+                                learner_id, _cust_code)
 
         # -- Determine payment type from metadata -------------------------
         plan_meta    = str(meta.get("plan", "") or meta.get("tier", "")).lower().strip()
@@ -3767,6 +3811,107 @@ async def paystack_initialize(request: Request,
         "amount_ngn":        amount_ngn,
         "plan":              plan or course_name,
     }
+
+
+# ---------------------------------------------------------------------------
+# Paystack Dedicated Virtual Account (DVA) — the preferred payment flow
+# ---------------------------------------------------------------------------
+
+@app.post("/payments/dedicated-account")
+async def provision_dedicated_account(request: Request,
+                                       user=Depends(get_current_user)) -> dict:
+    """
+    Provision (or retrieve) a Paystack-Titan dedicated virtual account for the
+    authenticated learner.  Called automatically on email confirmation and
+    on-demand when the user opens the payment panel.
+
+    Returns the account number the user should transfer to.
+    The amount they transfer determines which plan they get (matched by webhook).
+    """
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to get your payment account.")
+
+    from app.paystack import get_or_create_dva as _dva
+    from app.db import get_paystack_customer as _gpc
+
+    learner_id = user.learner_id
+    email      = user.email or ""
+    name       = user.name  or ""
+
+    if not email:
+        # Pull from profile
+        _prof = get_profile(learner_id)
+        email = _prof.email or learner_id
+        name  = _prof.display_name or name
+
+    try:
+        result = _dva(learner_id, email, name)
+    except Exception as exc:
+        logger.error("DVA provisioning failed for %s: %s", learner_id, exc)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Could not provision your payment account: {str(exc)[:120]}. "
+                   "Please use the manual bank transfer option instead."
+        )
+
+    log_activity(learner_id, "payment:dva-provisioned",
+                 f"account={result.get('account_number', '')} bank={result.get('bank_name', '')}")
+
+    return {
+        "ok":             True,
+        "account_number": result["account_number"],
+        "bank_name":      result["bank_name"],
+        "account_name":   result["account_name"],
+        "customer_code":  result["customer_code"],
+        "instructions": [
+            "Transfer the exact amount for your chosen plan to the account below.",
+            "Use your email address as the narration/description.",
+            "Your account will be upgraded within seconds of the transfer being confirmed.",
+            "You will receive an email receipt automatically.",
+        ],
+        "plans": [
+            {"name": "Beginner Bundle",     "amount": 30000,  "tier": "tier1"},
+            {"name": "Intermediate Bundle", "amount": 60000,  "tier": "tier2"},
+            {"name": "Advanced Bundle",     "amount": 100000, "tier": "tier3"},
+            {"name": "Premium Bundle",      "amount": 150000, "tier": "tier4"},
+        ],
+    }
+
+
+@app.get("/payments/dedicated-account/{learner_id}")
+async def get_dedicated_account(learner_id: str,
+                                 user=Depends(get_current_user)) -> dict:
+    """
+    Return the learner's existing dedicated virtual account (if provisioned).
+    Provisions one if not yet created.
+    """
+    validate_learner_id(learner_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to view your payment account.")
+    if user.learner_id != learner_id:
+        raise HTTPException(status_code=403, detail="You can only view your own payment account.")
+
+    from app.db import get_paystack_customer as _gpc
+    existing = _gpc(learner_id)
+    if existing and existing.get("dva_account_num"):
+        return {
+            "ok":             True,
+            "account_number": existing["dva_account_num"],
+            "bank_name":      existing["dva_bank_name"],
+            "account_name":   existing["dva_account_name"],
+            "customer_code":  existing["customer_code"],
+        }
+
+    # Not provisioned yet — provision now
+    from app.paystack import get_or_create_dva as _dva
+    _prof = get_profile(learner_id)
+    email = _prof.email or user.email or learner_id
+    name  = _prof.display_name or user.name or ""
+    try:
+        result = _dva(learner_id, email, name)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc)[:200])
+    return {"ok": True, **result}
 
 
 @app.get("/payments/bank-details")
