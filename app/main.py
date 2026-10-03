@@ -4261,6 +4261,44 @@ async def admin_reject_bank_transfer(
     }
 
 
+@app.get("/admin/payments/bank-transfer/{proof_id}/proof")
+async def admin_get_proof_image(proof_id: str, request: Request) -> dict:
+    """Return full proof record including proof_b64/proof_url for admin receipt viewer."""
+    _require_admin(request)
+    import psycopg2.extras as _pge3
+    from app.db import get_db as _gdb3
+
+    try:
+        with _gdb3() as _conn:
+            with _conn.cursor(cursor_factory=_pge3.RealDictCursor) as _cur:
+                _cur.execute(
+                    "SELECT * FROM bank_transfer_proofs WHERE id=%s", (proof_id,)
+                )
+                row = _cur.fetchone()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"DB error: {exc}")
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Proof not found.")
+
+    d = dict(row)
+    return {
+        "id":           d["id"],
+        "learner_id":   d.get("learner_id", ""),
+        "email":        d.get("email", ""),
+        "plan":         d.get("plan", ""),
+        "amount":       d.get("amount", 0),
+        "reference":    d.get("reference", ""),
+        "status":       d.get("status", "pending"),
+        "notes":        d.get("notes", ""),
+        "admin_notes":  d.get("admin_notes", ""),
+        "proof_b64":    d.get("proof_b64", ""),
+        "proof_url":    d.get("proof_url", ""),
+        "submitted_at": d.get("submitted_at", 0),
+        "reviewed_at":  d.get("reviewed_at", 0),
+    }
+
+
 @app.get("/admin/certificates")
 async def admin_certificates(request: Request) -> dict:
     """Return certificates from the database with correct issue dates."""

@@ -996,63 +996,143 @@ async function loadActivity(){
 
 // ── Payments ───────────────────────────────────────────────────────────────
 async function loadPayments(){
-  const r=await api('/admin/payments'); const d=await r.json();
-  const rev=d.summary||{};
-  document.getElementById('p-total-rev').textContent='₦'+(rev.total_revenue||0).toLocaleString();
-  document.getElementById('p-confirmed').textContent=rev.confirmed||0;
-  document.getElementById('p-pending').textContent=rev.pending||0;
-
-  // ── Regular payments ───────────────────────────────────────────────────
-  document.getElementById('payments-body').innerHTML=(d.payments||[]).map(p=>{
-    const sc={confirmed:'gg',pending:'gy',refunded:'gr'}[p.status]||'grey';
-    const cfm=p.status==='pending'?`<button class="bsm bg2" onclick="confirmPayment('${p.id}')">✓ Confirm</button>`:'';
-    const amt = isNaN(+(p.amount)) ? '—' : '₦'+(+(p.amount)).toLocaleString();
-    const dt  = (p.created_at||'').split('T')[0] || '—';
-    return `<tr>
-      <td style="font-family:monospace;font-size:.75rem">${p.id}</td>
-      <td>${p.user_name||'—'}<br><span style="font-size:.7rem;color:#4a5568">${p.user_email||'—'}</span></td>
-      <td>${amt}</td><td>${p.plan||'—'}</td><td>${p.method||'—'}</td>
-      <td><span class="badge ${sc}">${p.status}</span></td>
-      <td>${dt}</td><td>${cfm}</td></tr>`;
-  }).join('')||'<tr><td colspan="8" style="color:#4a5568">No payments yet.</td></tr>';
-
-  // ── Bank transfer proofs ───────────────────────────────────────────────
-  const proofs = d.bank_transfer_proofs || [];
-  let proofsHtml = '';
-  if(proofs.length){
-    const rows = proofs.map(p=>{
-      const sc={pending:'gy',approved:'bg',rejected:'gr',reviewed:'gg'}[p.status]||'grey';
-      const amt = isNaN(+(p.amount)) ? '—' : '₦'+(+(p.amount)).toLocaleString();
-      const dt  = p.submitted_at_fmt || (p.submitted_at||'').toString().split('T')[0] || '—';
-      const actions = p.status==='pending' ? `
-        <button class="bsm bg2" onclick="approveBankTransfer('${p.id}')">✓ Approve</button>
-        <button class="bsm br"  onclick="rejectBankTransfer('${p.id}')">✕ Reject</button>` : '—';
-      return `<tr>
-        <td style="font-family:monospace;font-size:.72rem">${p.id}</td>
-        <td style="font-size:.78rem">${p.email||'—'}<br><span style="color:#4a5568;font-size:.68rem">${p.learner_id||'—'}</span></td>
-        <td>${amt}</td>
-        <td><span class="badge grey">${p.plan||'—'}</span></td>
-        <td style="font-size:.74rem">${p.reference||'—'}</td>
-        <td><span class="badge ${sc}">${p.status}</span></td>
-        <td style="font-size:.72rem;color:#4a5568">${dt}</td>
-        <td style="display:flex;gap:4px;flex-wrap:wrap">${actions}</td>
-      </tr>`;
-    }).join('');
-    proofsHtml = `
-      <div class="sec" style="margin-top:16px">
-        <h3 style="color:#fbbf24">🏦 Bank Transfer Proofs</h3>
-        <div style="overflow-x:auto"><table>
-          <thead><tr>
-            <th>Proof ID</th><th>Learner</th><th>Amount</th><th>Plan</th>
-            <th>Reference</th><th>Status</th><th>Date</th><th>Actions</th>
-          </tr></thead>
-          <tbody>${rows}</tbody>
-        </table></div>
-      </div>`;
-  }
-  // Inject proofs section after the payments table
+  const sect = document.getElementById('p-payments');
+  // Skeleton
+  document.getElementById('payments-body').innerHTML =
+    '<tr><td colspan="8"><span style="color:#4a5568;font-size:.8rem">Loading payments…</span></td></tr>';
   const proofsDest = document.getElementById('bank-proofs-section');
-  if(proofsDest) proofsDest.innerHTML = proofsHtml;
+  if(proofsDest) proofsDest.innerHTML = '<div style="color:#4a5568;font-size:.8rem;padding:8px">Loading proofs…</div>';
+
+  try {
+    const r = await api('/admin/payments');
+    if(r.status===403){doLogout();return;}
+    const d = await r.json();
+    const rev = d.summary||{};
+    document.getElementById('p-total-rev').textContent = '₦'+(rev.total_revenue||0).toLocaleString();
+    document.getElementById('p-confirmed').textContent = rev.confirmed||0;
+    document.getElementById('p-pending').textContent   = rev.pending||0;
+
+    // ── Regular payments ──────────────────────────────────────────────────
+    document.getElementById('payments-body').innerHTML = (d.payments||[]).map(p=>{
+      const sc  = {confirmed:'gg',pending:'gy',refunded:'gr'}[p.status]||'grey';
+      const cfm = p.status==='pending'
+        ? `<button class="bsm bg2" onclick="confirmPayment('${p.id}')">✓ Confirm</button>` : '';
+      const amt = isNaN(+(p.amount)) ? '—' : '₦'+(+(p.amount)).toLocaleString();
+      const dt  = (p.created_at||'').split('T')[0] || '—';
+      return `<tr>
+        <td style="font-family:monospace;font-size:.75rem">${p.id}</td>
+        <td>${p.user_name||'—'}<br><span style="font-size:.7rem;color:#4a5568">${p.user_email||'—'}</span></td>
+        <td>${amt}</td><td>${p.plan||'—'}</td><td>${p.method||'—'}</td>
+        <td><span class="badge ${sc}">${p.status}</span></td>
+        <td>${dt}</td><td>${cfm}</td></tr>`;
+    }).join('')||'<tr><td colspan="8" style="color:#4a5568">No payments yet.</td></tr>';
+
+    // ── Bank Transfer Proofs ──────────────────────────────────────────────
+    const proofs = d.bank_transfer_proofs || [];
+
+    // Update pending badge on nav
+    const pendingCount = proofs.filter(p=>p.status==='pending').length;
+    const paymentsNav = document.querySelector('[data-p="payments"]');
+    if(paymentsNav){
+      paymentsNav.innerHTML = pendingCount > 0
+        ? `💳 Payments <span style="background:#ef4444;color:#fff;border-radius:99px;font-size:.65rem;padding:1px 6px;margin-left:4px">${pendingCount}</span>`
+        : '💳 Payments';
+    }
+
+    let proofsHtml = '';
+    if(proofs.length){
+      const rows = proofs.map(p=>{
+        const sc  = {pending:'gy',approved:'gg',rejected:'gr'}[p.status]||'grey';
+        const amt = isNaN(+(p.amount)) ? '—' : '₦'+(+(p.amount)).toLocaleString();
+        const dt  = p.submitted_at_fmt || (() => {
+          try { return new Date(+(p.submitted_at)*1000).toLocaleDateString(); } catch { return '—'; }
+        })();
+        const actions = p.status==='pending' ? `
+          <button class="bsm bg2" onclick="approveBankTransfer('${p.id}')">✓ Approve</button>
+          <button class="bsm br"  onclick="rejectBankTransfer('${p.id}')">✕ Reject</button>` : '';
+        const viewBtn = `<button class="bsm" onclick="viewProof('${p.id}')">🖼 View</button>`;
+        return `<tr style="${p.status==='pending'?'background:rgba(245,158,11,.04);':''}">
+          <td style="font-family:monospace;font-size:.72rem">${p.id}</td>
+          <td style="font-size:.78rem">
+            <strong>${p.email||'—'}</strong><br>
+            <span style="color:#4a5568;font-size:.68rem">${p.learner_id||'—'}</span>
+          </td>
+          <td><strong style="color:#fcd34d">${amt}</strong></td>
+          <td><span class="badge grey">${p.plan||'—'}</span></td>
+          <td style="font-size:.74rem">${p.reference||'—'}</td>
+          <td><span class="badge ${sc}">${p.status}</span></td>
+          <td style="font-size:.72rem;color:#718096">${dt}</td>
+          <td style="display:flex;gap:4px;flex-wrap:wrap">${viewBtn}${actions}</td>
+        </tr>`;
+      }).join('');
+      proofsHtml = `
+        <div class="sec" style="margin-top:16px;border-color:rgba(245,158,11,.25);background:rgba(245,158,11,.03)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+            <h3 style="color:#fbbf24;margin:0">🏦 Bank Transfer Proofs
+              ${pendingCount>0?`<span style="background:#ef4444;color:#fff;border-radius:99px;font-size:.7rem;padding:2px 8px;margin-left:8px">${pendingCount} pending</span>`:''}
+            </h3>
+            <button class="bsm" onclick="loadPayments()" style="font-size:.72rem">⟳ Refresh</button>
+          </div>
+          <div style="overflow-x:auto"><table>
+            <thead><tr>
+              <th>Proof ID</th><th>Learner</th><th>Amount</th><th>Plan</th>
+              <th>Reference</th><th>Status</th><th>Date</th><th>Actions</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table></div>
+        </div>`;
+    } else {
+      proofsHtml = '<div class="sec" style="margin-top:16px;color:#4a5568;font-size:.82rem">No bank transfer proofs submitted yet.</div>';
+    }
+    if(proofsDest) proofsDest.innerHTML = proofsHtml;
+
+  } catch(e) {
+    document.getElementById('payments-body').innerHTML =
+      `<tr><td colspan="8" style="color:#ef4444">Failed to load payments: ${e.message||'network error'}</td></tr>`;
+    if(proofsDest) proofsDest.innerHTML = '';
+    console.error('loadPayments error:', e);
+  }
+}
+
+// View proof receipt image
+async function viewProof(proofId){
+  // Fetch the proof with image from a dedicated endpoint
+  try {
+    const r = await api(`/admin/payments/bank-transfer/${proofId}/proof`);
+    if(!r.ok){ toast('Could not load proof image',false); return; }
+    const d = await r.json();
+    const b64 = d.proof_b64||'';
+    const url = d.proof_url||'';
+    const modal = document.getElementById('modal-overlay');
+    const box   = document.getElementById('modal-box');
+    if(!modal||!box) return;
+    box.innerHTML = `
+      <button id="modal-close" onclick="document.getElementById('modal-overlay').classList.remove('open')">✕</button>
+      <h3 style="margin-bottom:12px;font-size:.95rem;color:#e2e8f0">🧾 Payment Receipt — ${proofId}</h3>
+      <div style="margin-bottom:10px;font-size:.82rem;color:#94a3b8">
+        <strong>Email:</strong> ${d.email||'—'} &nbsp;·&nbsp;
+        <strong>Plan:</strong> ${d.plan||'—'} &nbsp;·&nbsp;
+        <strong>Amount:</strong> ₦${(+(d.amount||0)).toLocaleString()} &nbsp;·&nbsp;
+        <strong>Status:</strong> <span class="badge ${d.status==='pending'?'gy':d.status==='approved'?'gg':'gr'}">${d.status}</span>
+      </div>
+      ${b64
+        ? `<img src="${b64}" style="max-width:100%;border-radius:8px;border:1px solid rgba(255,255,255,.1)" alt="Receipt"/>`
+        : url
+          ? `<a href="${url}" target="_blank" class="bsm bg2">Open Receipt URL</a>`
+          : '<div style="color:#64748b;font-size:.82rem">No receipt image available.</div>'
+      }
+      ${d.notes ? `<p style="margin-top:10px;font-size:.8rem;color:#64748b">Notes: ${d.notes}</p>` : ''}
+      <div style="margin-top:14px;display:flex;gap:8px">
+        ${d.status==='pending'
+          ? `<button class="bsm bg2" onclick="approveBankTransfer('${proofId}');document.getElementById('modal-overlay').classList.remove('open')">✓ Approve</button>
+             <button class="bsm br"  onclick="rejectBankTransfer('${proofId}');document.getElementById('modal-overlay').classList.remove('open')">✕ Reject</button>`
+          : ''}
+        <button class="bsm" onclick="document.getElementById('modal-overlay').classList.remove('open')">Close</button>
+      </div>`;
+    modal.classList.add('open');
+  } catch(e) {
+    toast('Error loading proof: ' + (e.message||''), false);
+  }
 }
 
 async function addPayment(){
