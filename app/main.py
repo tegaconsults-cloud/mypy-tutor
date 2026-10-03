@@ -1937,6 +1937,7 @@ async def courses_catalog() -> dict:
                 "category":     meta["category"],
                 "badge":        meta["badge"],
                 "paystack_url": "/payments/paystack/initialize",
+                "payment_page": f"/payment?course={name}&name={course.description.split(' — ')[0] if ' — ' in course.description else name.replace('-',' ').title()}&amount={meta['price_ngn']}&plan={name}",
             })
     result = {
         "courses":       courses_detail,
@@ -2029,9 +2030,11 @@ async def start_course(learner_id: str, course_name: str,
         tier_needed = "tier1" if "tier1" in allowed_tiers else \
                       "tier2" if "tier2" in allowed_tiers else "tier3"
         tier_names = {"tier1": "Beginner Bundle (?30,000)", "tier2": "Intermediate Bundle (?60,000)", "tier3": "Advanced Bundle (?100,000)"}
-        _emdash = "\u2014"
-        _naira  = "\u20a6"
+        import urllib.parse as _up
         _course_label = course.description.split(" " + _emdash + " ")[0] if (" " + _emdash + " ") in course.description else course.description.split()[0]
+        _payment_url  = (f"/payment?course={_up.quote(course_name)}"
+                         f"&name={_up.quote(_course_label)}"
+                         f"&amount={price}&plan={_up.quote(course_name)}")
         return JSONResponse(status_code=402, content={
             "error":              "upgrade_required",
             "course_name":        course_name,
@@ -2040,6 +2043,7 @@ async def start_course(learner_id: str, course_name: str,
             "course_category":    category,
             "bundle_option":      tier_names.get(tier_needed, "Premium"),
             "paystack_url":       "/payments/paystack/initialize",
+            "payment_page":       _payment_url,
             "message": (
                 f"{badge} **{_course_label}** costs {_naira}{price:,} "
                 f"(or unlock with the {tier_names.get(tier_needed, 'Premium')}). "
@@ -4386,6 +4390,14 @@ async def admin_update_task(task_id: str, status: str, request: Request) -> dict
     if not ok:
         raise HTTPException(status_code=404, detail="Task not found.")
     return {"ok": True}
+
+
+@app.get("/admin/tasks/list")
+async def admin_tasks_list(request: Request) -> dict:
+    """Return all tasks. Used by adminApi.tasks() in the frontend."""
+    _require_admin(request)
+    from app.admin import get_tasks as _get_tasks
+    return {"tasks": _get_tasks(), "total": len(_get_tasks())}
 
 
 @app.get("/admin/feedback")
@@ -6854,6 +6866,22 @@ async def serve_voice_integration() -> HTMLResponse:
     path = _os3.path.join("static", "voice-integration.html")
     if not _os3.path.exists(path):
         raise HTTPException(status_code=404, detail="Voice integration guide not found.")
+    with open(path, "r", encoding="utf-8") as f:
+        content = f.read()
+    return HTMLResponse(content=content)
+
+
+@app.get("/payment", response_class=HTMLResponse, include_in_schema=False)
+async def serve_payment_page() -> HTMLResponse:
+    """
+    Universal payment page — shown to users for ALL plan/course purchases.
+    Accepts URL params: ?plan=tier1&name=Beginner+Bundle&amount=30000&tier=tier1&course=python-dsa
+    The page shows Paystack checkout and bank transfer options side by side.
+    """
+    import os as _os_pay
+    path = _os_pay.path.join("static", "payment.html")
+    if not _os_pay.path.exists(path):
+        raise HTTPException(status_code=404, detail="Payment page not found.")
     with open(path, "r", encoding="utf-8") as f:
         content = f.read()
     return HTMLResponse(content=content)

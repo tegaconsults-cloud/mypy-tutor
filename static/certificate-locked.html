@@ -195,6 +195,8 @@ h2{color:#fcd34d;font-size:1.35rem;font-weight:800;margin-bottom:12px;text-align
     <p style="font-size:.82rem;color:#64748b;margin-bottom:14px;line-height:1.6;">
       Click below to open a secure Paystack checkout page — your plan name,
       amount, and account details will be pre-filled automatically.
+      <br/><a href="/payment?plan={{PLAN_NAME}}&amount={{PLAN_AMOUNT}}&name={{PLAN_DESCRIPTION}}&tier={{LEVEL_TITLE}}"
+         style="color:#93c5fd;font-size:.78rem;">Or open the full payment page →</a>
     </p>
     <button class="cta-ps" id="ps-btn" onclick="startPaystackCheckout()">
       <span id="ps-spinner" class="spin"></span>
@@ -273,7 +275,24 @@ h2{color:#fcd34d;font-size:1.35rem;font-weight:800;margin-bottom:12px;text-align
 
 <script>
 const API   = 'https://mypytutor.onrender.com';
-const TOKEN = localStorage.getItem('mpt_token') || '';
+
+// Read token dynamically at call time — supports multiple storage keys
+// used by different parts of the frontend
+function _getToken() {
+  return localStorage.getItem('mpt_token')
+      || localStorage.getItem('token')
+      || localStorage.getItem('auth_token')
+      || sessionStorage.getItem('mpt_token')
+      || '';
+}
+function _getLearnerID() {
+  return localStorage.getItem('mpt_learner_id')
+      || localStorage.getItem('learner_id')
+      || sessionStorage.getItem('mpt_learner_id')
+      || '';
+}
+// Keep TOKEN as a getter so it always reflects current sign-in state
+Object.defineProperty(window, 'TOKEN', { get: _getToken });
 
 // Pre-select plan based on what the server injected ({{PLAN_NAME}})
 const SERVER_PLAN   = '{{PLAN_NAME}}';
@@ -349,7 +368,7 @@ async function startPaystackCheckout() {
   const label   = document.getElementById('ps-label');
   const errEl   = document.getElementById('ps-error');
 
-  if (!TOKEN) {
+  if (!_getToken()) {
     errEl.textContent = 'Please sign in to MyPy Tutor first to start checkout.';
     errEl.style.display = 'block';
     return;
@@ -370,12 +389,12 @@ async function startPaystackCheckout() {
 
   try {
     // Get learner_id from local storage
-    const lid = localStorage.getItem('mpt_learner_id') || '';
+    const lid = _getLearnerID();
     const resp = await fetch(API + '/payments/paystack/initialize', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + TOKEN,
+        'Authorization': 'Bearer ' + _getToken(),
       },
       body: JSON.stringify({
         learner_id:  lid,
@@ -447,19 +466,22 @@ async function submitBankTransfer() {
   if (!plan)           return showBtAlert('Please select your plan.', false);
   if (amount <= 0)     return showBtAlert('Please enter the amount you paid.', false);
   if (!fileBase64)     return showBtAlert('Please upload your payment receipt image.', false);
-  if (!TOKEN)          return showBtAlert('Please sign in to MyPy Tutor first, then come back to submit your receipt.', false);
+  if (!_getToken())    return showBtAlert(
+    'Please <a href="https://mypytutor.com.ng" style="color:#93c5fd">sign in to MyPy Tutor</a> first, then return here to submit your receipt.',
+    false
+  );
 
   btn.disabled = true;
   btn.textContent = '⏳ Submitting…';
   clearBtAlert();
 
   try {
-    const lid = localStorage.getItem('mpt_learner_id') || '';
+    const lid = _getLearnerID();
     const resp = await fetch(API + '/payments/bank-transfer/submit', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + TOKEN,
+        'Authorization': 'Bearer ' + _getToken(),
       },
       body: JSON.stringify({
         plan,

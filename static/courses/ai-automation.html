@@ -863,8 +863,15 @@ function toggleFaq(qEl) {
 
 <script>
 const CI_API   = 'https://mypytutor.onrender.com';
-const CI_TOKEN = () => localStorage.getItem('mpt_token') || '';
-const CI_LID   = () => localStorage.getItem('mpt_learner_id') || '';
+const CI_TOKEN = () => localStorage.getItem('mpt_token')
+    || localStorage.getItem('token')
+    || localStorage.getItem('auth_token')
+    || sessionStorage.getItem('mpt_token')
+    || '';
+const CI_LID   = () => localStorage.getItem('mpt_learner_id')
+    || localStorage.getItem('learner_id')
+    || sessionStorage.getItem('mpt_learner_id')
+    || '';
 let   ciBankB64 = '';
 
 function openCheckout(e) {

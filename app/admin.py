@@ -687,5 +687,5 @@ async def send_announcement(target: str, subject: str, body_text: str) -> int:
 def _matches_target(target: str, tier: str) -> bool:
     if target == "all":   return True
     if target == "free":  return tier == "free"
-    if target == "paid":  return tier in ("tier1", "tier2", "tier3")
+    if target == "paid":  return tier in ("tier1", "tier2", "tier3", "tier4")
     return target == tier
