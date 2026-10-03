@@ -666,21 +666,21 @@ PROMPT_PLANS: dict[str, dict] = {
         "price_ngn":    2000,
         "daily_limit":  50,
         "description":  "50 AI prompts per day — perfect for casual learning and quick questions.",
-        "paystack_url": "https://paystack.shop/pay/vt_re4d3h52",
+        "paystack_url": "/payments/paystack/initialize",
     },
     "prompt-pro": {
         "name":         "Prompt Pro",
         "price_ngn":    5000,
         "daily_limit":  200,
         "description":  "200 AI prompts per day — for serious learners who want deep, frequent help from Sir. Tega.",
-        "paystack_url": "https://paystack.shop/pay/vt_re4d3h52",
+        "paystack_url": "/payments/paystack/initialize",
     },
     "prompt-unlimited": {
         "name":         "Prompt Unlimited",
         "price_ngn":    10000,
         "daily_limit":  999999,
         "description":  "Unlimited AI prompts — no cap, full access to Sir. Tega 24/7.",
-        "paystack_url": "https://paystack.shop/pay/vt_re4d3h52",
+        "paystack_url": "/payments/paystack/initialize",
     },
 }
 
@@ -697,7 +697,7 @@ TIER_PLANS: dict[str, dict] = {
         "description":  "Unlock ALL 4 Beginner courses: Fundamentals, Strings, Collections, Control Flow.",
         "eligible_courses": ["python-fundamentals","python-strings","python-collections","python-control-flow"],
         "unlocks_count": 4,
-        "paystack_url": "https://paystack.shop/pay/vt_re4d3h52",
+        "paystack_url": "/payments/paystack/initialize",
     },
     "tier2": {
         "name":         "Intermediate Bundle",
@@ -706,7 +706,7 @@ TIER_PLANS: dict[str, dict] = {
         "eligible_courses": ["python-fundamentals","python-strings","python-collections","python-control-flow",
                              "python-functions-advanced","python-oop","python-modules-stdlib"],
         "unlocks_count": 7,
-        "paystack_url": "https://paystack.shop/pay/vt_re4d3h52",
+        "paystack_url": "/payments/paystack/initialize",
     },
     "tier3": {
         "name":         "Advanced Bundle",
@@ -717,7 +717,7 @@ TIER_PLANS: dict[str, dict] = {
             if any(t in ("tier1", "tier2", "tier3") for t in v.get("tier_unlocks", []))
         ],
         "unlocks_count": 14,
-        "paystack_url": "https://paystack.shop/pay/vt_re4d3h52",
+        "paystack_url": "/payments/paystack/initialize",
     },
     "tier4": {
         "name":         "Premium Bundle",
@@ -725,7 +725,7 @@ TIER_PLANS: dict[str, dict] = {
         "description":  "Unlock ALL 17 courses including Machine Learning, AI & Prompt Engineering, and AI Automation.",
         "eligible_courses": list(COURSE_CATALOG.keys()),
         "unlocks_count": 17,
-        "paystack_url": "https://paystack.shop/pay/vt_re4d3h52",
+        "paystack_url": "/payments/paystack/initialize",
     },
 }
 

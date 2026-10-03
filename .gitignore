@@ -59,3 +59,12 @@ frontend-react/
 
 # Temp build/fix scripts
 _*.py
+
+# Diagnostic and one-time migration scripts — delete, don't commit
+diag_*.py
+blow_balances.py
+insert_payment_route.py
+migrate_to_supabase.py
+migrate_job.py
+fix_schema.py
+check_schema.py

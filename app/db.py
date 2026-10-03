@@ -769,7 +769,7 @@ def get_all_confirmed_emails() -> list[dict]:
     with get_db() as conn:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             # confirmed is BOOLEAN in Supabase — IS TRUE handles both TRUE and legacy cases
-            cur.execute("SELECT * FROM email_accounts WHERE confirmed IS TRUE")
+            cur.execute("SELECT * FROM email_accounts WHERE (confirmed = 1 OR confirmed IS TRUE)")
             rows = cur.fetchall()
     return [dict(r) for r in rows]
 

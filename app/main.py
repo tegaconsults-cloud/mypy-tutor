@@ -1614,7 +1614,7 @@ async def get_certificate(
                 "<html><body style='font-family:sans-serif;text-align:center;padding:40px'>"
                 "<h2>Certificate Locked</h2>"
                 "<p>Purchase {{PLAN_NAME}} to unlock your {{LEVEL_TITLE}} certificate.</p>"
-                "<a href='https://paystack.shop/pay/vt_re4d3h52'>Upgrade Now</a>"
+                "<a href='https://mypytutor.com.ng/admin.html'>Access Platform</a>"
                 "</body></html>"
             )
         _frontend_url_lock = _os.getenv("FRONTEND_URL", _os.getenv("APP_URL", "https://mypytutor.com.ng"))
@@ -1926,7 +1926,7 @@ async def courses_catalog() -> dict:
                 "tier_unlocks": meta["tier_unlocks"],
                 "category":     meta["category"],
                 "badge":        meta["badge"],
-                "paystack_url": "https://paystack.shop/pay/vt_re4d3h52",
+                "paystack_url": "/payments/paystack/initialize",
             })
     result = {
         "courses":       courses_detail,
@@ -1951,7 +1951,7 @@ async def course_price(course_name: str) -> dict:
         "price_ngn":    meta["price_ngn"],
         "tier_unlocks": meta["tier_unlocks"],
         "category":     meta["category"],
-        "paystack_url": "https://paystack.shop/pay/vt_re4d3h52",
+        "paystack_url": "/payments/paystack/initialize",
         "total_steps":  len(course.steps),
     }
 
@@ -2029,7 +2029,7 @@ async def start_course(learner_id: str, course_name: str,
             "course_badge":       badge,
             "course_category":    category,
             "bundle_option":      tier_names.get(tier_needed, "Premium"),
-            "paystack_url":       "https://paystack.shop/pay/vt_re4d3h52",
+            "paystack_url":       "/payments/paystack/initialize",
             "message": (
                 f"{badge} **{_course_label}** costs {_naira}{price:,} "
                 f"(or unlock with the {tier_names.get(tier_needed, 'Premium')}). "
@@ -2056,8 +2056,8 @@ async def start_course(learner_id: str, course_name: str,
             break
         except Exception as exc:
             last_exc = exc
-            exc_type = type(exc).__name__.lower()
-            if any(k in exc_type for k in ("ratelimit", "timeout", "serviceunavailable")):
+            _em = str(exc).lower()
+            if any(k in _em for k in ("429","ratelimit","rate_limit","timeout","timed out","503","overloaded")):
                 await asyncio.sleep(1)
 
     if content is None:
@@ -2132,8 +2132,8 @@ async def next_course_step(learner_id: str,
             break
         except Exception as exc2:
             last_exc2 = exc2
-            exc_type2 = type(exc2).__name__.lower()
-            if any(k in exc_type2 for k in ("ratelimit", "timeout", "serviceunavailable")):
+            _em2 = str(exc2).lower()
+            if any(k in _em2 for k in ("429","ratelimit","rate_limit","timeout","timed out","503","overloaded")):
                 await asyncio.sleep(1)
                 continue
             break
@@ -2198,8 +2198,8 @@ async def prev_course_step(learner_id: str,
             content = get_completion(system_prompt, messages, intent="course")
             break
         except Exception as exc:
-            exc_type = type(exc).__name__.lower()
-            if any(k in exc_type for k in ("ratelimit", "timeout", "serviceunavailable")):
+            _em = str(exc).lower()
+            if any(k in _em for k in ("429","ratelimit","rate_limit","timeout","timed out","503","overloaded")):
                 await asyncio.sleep(1)
                 continue
             break
@@ -2865,10 +2865,10 @@ async def admin_dashboard(request: Request) -> dict:
         with _gdb() as _conn:
             with _conn.cursor() as _cur:
                 wat_date = _wat_date_key()
-                email_count      = _q(_cur, 0, "SELECT COUNT(*) FROM email_accounts WHERE confirmed IS TRUE")
+                email_count      = _q(_cur, 0, "SELECT COUNT(*) FROM email_accounts WHERE (confirmed = 1 OR confirmed IS TRUE)")
                 profile_count    = _q(_cur, 0, "SELECT COUNT(*) FROM learner_profiles WHERE tier != 'deleted'")
                 confirmed_unique = _q(_cur, 0,
-                    "SELECT COUNT(DISTINCT learner_id) FROM email_accounts WHERE confirmed IS TRUE")
+                    "SELECT COUNT(DISTINCT learner_id) FROM email_accounts WHERE (confirmed = 1 OR confirmed IS TRUE)")
                 total_users      = max(email_count, profile_count, confirmed_unique)
 
                 # ── Active today ─────────────────────────────────────────
@@ -2878,7 +2878,7 @@ async def admin_dashboard(request: Request) -> dict:
 
                 # ── New users 24h ────────────────────────────────────────
                 new_users_24h    = _q(_cur, 0,
-                    "SELECT COUNT(*) FROM email_accounts WHERE confirmed IS TRUE "
+                    "SELECT COUNT(*) FROM email_accounts WHERE (confirmed = 1 OR confirmed IS TRUE) "
                     "AND to_timestamp(created_at) >= NOW() - INTERVAL '24 hours'")
 
                 # ── Tier breakdown ────────────────────────────────────────
@@ -2888,7 +2888,7 @@ async def admin_dashboard(request: Request) -> dict:
                             SELECT ea.learner_id
                             FROM email_accounts ea
                             LEFT JOIN learner_profiles lp ON lp.learner_id = ea.learner_id
-                            WHERE confirmed IS TRUE
+                            WHERE (confirmed = 1 OR confirmed IS TRUE)
                               AND COALESCE(lp.tier, 'free') = %s
                               AND COALESCE(lp.tier, 'free') != 'deleted'
                         ) t""", (_tier,))
@@ -6069,7 +6069,7 @@ def _backfill_email_automation() -> None:
                            COALESCE(ea.name, ea.full_name, split_part(ea.email,'@',1)) AS name
                     FROM email_accounts ea
                     LEFT JOIN email_automation ema ON ema.learner_id = ea.learner_id
-                    WHERE ea.confirmed IS TRUE AND ema.learner_id IS NULL
+                    WHERE (ea.confirmed = 1 OR ea.confirmed IS TRUE) AND ema.learner_id IS NULL
                 """)
                 missing = _bcur.fetchall()
         for row in missing:
