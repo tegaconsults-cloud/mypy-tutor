@@ -601,7 +601,7 @@ async def send_announcement(target: str, subject: str, body_text: str) -> int:
         with _gdb() as conn:
             with conn.cursor(cursor_factory=_pge.RealDictCursor) as cur:
                 cur.execute(
-                    "SELECT learner_id, email, name FROM email_accounts WHERE confirmed IS TRUE"
+                    "SELECT learner_id, email, name FROM email_accounts WHERE (confirmed = 1 OR confirmed IS TRUE)"
                 )
                 rows = cur.fetchall()
         for r in rows:

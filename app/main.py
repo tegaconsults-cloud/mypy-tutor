@@ -1,5 +1,5 @@
-﻿"""
-FastAPI application � MyPy Tutor (secured).
+"""
+FastAPI application — MyPy Tutor (secured).
 Security layer: rate limiting, input validation, security headers, sanitised errors.
 """
 
@@ -27,7 +27,7 @@ from fastapi import Depends
 from fastapi.security import HTTPBearer as _HTTPBearer
 from pydantic import BaseModel as _BM, Field as _Field
 
-# Optional bearer dependency � declared here (module top) so it is available
+# Optional bearer dependency — declared here (module top) so it is available
 # to ALL route handlers regardless of definition order.
 # Routes use Depends(_bearer_optional) to read the token when present without
 # requiring authentication (auto_error=False means missing token ? None, not 401).
@@ -166,7 +166,7 @@ def _wat_greeting(name: str, is_new: bool = False) -> str:
     return f"{time_str}, {first}! {emoji} Welcome back to MyPy Tutor."
 
 # ---------------------------------------------------------------------------
-# Sentry error tracking � initialised early so all errors are captured.
+# Sentry error tracking — initialised early so all errors are captured.
 # Set SENTRY_DSN in Render dashboard ? Environment to enable.
 # Free tier: 5,000 errors/month. No-op when SENTRY_DSN is unset.
 # ---------------------------------------------------------------------------
@@ -183,7 +183,7 @@ if _sentry_dsn:
                 FastApiIntegration(transaction_style="endpoint"),
             ],
             # Capture 10% of transactions for performance monitoring
-            # (free tier has limits � keep this low)
+            # (free tier has limits — keep this low)
             traces_sample_rate=0.1,
             # Don't send PII (emails, IPs) to Sentry
             send_default_pii=False,
@@ -193,7 +193,7 @@ if _sentry_dsn:
         )
         logger.info("Sentry initialised (dsn configured)")
     except ImportError:
-        logger.warning("sentry-sdk not installed � run: pip install sentry-sdk[fastapi]")
+        logger.warning("sentry-sdk not installed — run: pip install sentry-sdk[fastapi]")
     except Exception as _sentry_exc:
         logger.warning("Sentry init failed (non-fatal): %s", _sentry_exc)
 
@@ -202,7 +202,7 @@ if _sentry_dsn:
 # ---------------------------------------------------------------------------
 
 try:
-    import app.llm_client  # noqa: F401 � validates GROQ_API_KEY at startup
+    import app.llm_client  # noqa: F401 — validates GROQ_API_KEY at startup
 except ValueError as exc:
     logger.error("Startup error: %s", exc)
     raise
@@ -214,7 +214,7 @@ try:
     logger.info("Database ready")
 except Exception as _db_exc:
     logger.warning(
-        "Database not available at startup: %s � "
+        "Database not available at startup: %s — "
         "set DATABASE_URL in Render ? mypy-tutor ? Environment. "
         "App will start but DB-dependent features will error until it is set.",
         _db_exc
@@ -255,7 +255,7 @@ _allowed_origins = list(filter(None, [
 
 app.add_middleware(SecurityMiddleware)
 
-# GZip all responses =1KB � reduces bandwidth ~70% on Render's metered egress
+# GZip all responses =1KB — reduces bandwidth ~70% on Render's metered egress
 from starlette.middleware.gzip import GZipMiddleware
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 
@@ -296,7 +296,7 @@ async def chat(request: ChatRequest, req: Request,
 
     # When authenticated, enforce learner_id matches token so XP/activity
     # is never credited to a different user's profile.
-    # Anonymous users (no token) pass freely � they use the free-tier quota.
+    # Anonymous users (no token) pass freely — they use the free-tier quota.
     if user is not None and user.learner_id != request.learner_id:
         raise HTTPException(
             status_code=403,
@@ -333,7 +333,7 @@ async def chat(request: ChatRequest, req: Request,
 
     # -- Resolve conversation_id ------------------------------------------
     # Use client-provided conv_id if present; otherwise fall back to a
-    # local synthetic ID. Do NOT call sb_get_or_create_conversation here �
+    # local synthetic ID. Do NOT call sb_get_or_create_conversation here —
     # it makes a synchronous network call to Supabase which blocks the
     # event loop and adds 200-400ms latency to every message.
     conv_id = request.conversation_id or f"local_{request.learner_id}"
@@ -353,7 +353,7 @@ async def chat(request: ChatRequest, req: Request,
             )
             history_messages = [{"role": m["role"], "content": str(m["content"])[:MAX_HISTORY_MSG_LEN]} for m in sb_history]
         except Exception:
-            pass  # non-fatal � continue without history
+            pass  # non-fatal — continue without history
     history_messages.append({"role": "user", "content": request.message})
 
     # -- LLM call with context-window overflow recovery -------------------
@@ -441,7 +441,7 @@ async def chat(request: ChatRequest, req: Request,
     save_prompt_history(request.learner_id, "user",      request.message, intent, detected_topic or "")
     save_prompt_history(request.learner_id, "assistant", content,         intent, detected_topic or "")
 
-    # -- Supabase writes are background tasks � never block the response ----
+    # -- Supabase writes are background tasks — never block the response ----
     background_tasks.add_task(
         sb_save_message, conv_id, request.learner_id, "user",
         request.message, intent, detected_topic or ""
@@ -525,7 +525,7 @@ async def ping() -> dict:
       2. Add Monitor ? HTTP(s) ? URL: https://mypytutor.onrender.com/ping
       3. Check interval: 5 minutes (keeps Render free tier awake)
       4. Alert contacts: add your email / Telegram
-    Returns 200 OK in <5ms � no DB or Supabase calls.
+    Returns 200 OK in <5ms — no DB or Supabase calls.
     """
     return {"ok": True}
 
@@ -567,7 +567,7 @@ async def favicon() -> HTMLResponse:
 
 
 # ---------------------------------------------------------------------------
-# Auth � Google OAuth
+# Auth — Google OAuth
 # ---------------------------------------------------------------------------
 
 @app.get("/auth/config")
@@ -644,7 +644,7 @@ async def auth_google_callback(code: str = None, error: str = None) -> JSONRespo
             lp.display_name = user.name
             from app.progress import save_profile as _sp
             _sp(lp)
-        # Mirror to Supabase � non-blocking (fire-and-forget)
+        # Mirror to Supabase — non-blocking (fire-and-forget)
         threading.Thread(
             target=sb_upsert_profile,
             args=(user.learner_id, user.email, user.name),
@@ -691,7 +691,7 @@ async def auth_google_callback(code: str = None, error: str = None) -> JSONRespo
 
 @app.post("/auth/google", response_model=AuthResponse)
 async def auth_google(request: GoogleAuthRequest) -> AuthResponse:
-    """One-Tap / GSI token submitted directly from client � uses strict signature verification."""
+    """One-Tap / GSI token submitted directly from client — uses strict signature verification."""
     payload  = await verify_google_token_strict(request.credential)
     user     = get_or_create_user(payload)
     is_new   = not bool(get_profile(user.learner_id).topics_seen)
@@ -755,7 +755,7 @@ async def auth_me(user=Depends(require_user)) -> AuthResponse:
 
 
 # ---------------------------------------------------------------------------
-# Auth � GitHub OAuth
+# Auth — GitHub OAuth
 # ---------------------------------------------------------------------------
 
 @app.get("/auth/github/login")
@@ -789,7 +789,7 @@ async def auth_github_login() -> JSONResponse:
 @app.get("/auth/github/callback")
 async def auth_github_callback(code: str = None, error: str = None,
                                 state: str = None) -> JSONResponse:
-    """Handle GitHub OAuth callback � exchange code for token, fetch profile, sign in."""
+    """Handle GitHub OAuth callback — exchange code for token, fetch profile, sign in."""
     from fastapi.responses import RedirectResponse
     import urllib.parse, json
 
@@ -875,7 +875,7 @@ async def auth_github_callback(code: str = None, error: str = None,
                 email=email,
                 name=name,
                 picture=picture,
-                google_sub=github_id,   # repurposed field � stores GitHub id
+                google_sub=github_id,   # repurposed field — stores GitHub id
             )
             logger.info("New GitHub user: %s (%s)", name, email)
         else:
@@ -1015,7 +1015,7 @@ async def validate_code_endpoint(request: Request) -> dict:
     except Exception:
         pass
 
-    # Check coupon codes � these are applied at checkout, not signup
+    # Check coupon codes — these are applied at checkout, not signup
     try:
         coupon = validate_coupon_db(raw, "any")
         if coupon:
@@ -1050,7 +1050,7 @@ async def auth_signup(request: EmailSignUpWithCode) -> dict:
     Optional code field accepts BOTH:
     - Access codes (admin-generated, grant a tier after email confirmation)
     - Referral codes (user-generated, track discount, credited after payment)
-    If the code is invalid, signup still proceeds � we just skip the reward.
+    If the code is invalid, signup still proceeds — we just skip the reward.
     """
     # Terms of Service must be accepted before account creation
     if not request.terms_accepted:
@@ -1061,7 +1061,7 @@ async def auth_signup(request: EmailSignUpWithCode) -> dict:
 
     pw_hash = hash_password(request.password)
 
-    # Validate code � check access_codes table first, then referrals
+    # Validate code — check access_codes table first, then referrals
     access_code = request.access_code.strip().upper() if request.access_code else ""
     code_rec      = None   # access code record
     referral_rec  = None   # referral code record
@@ -1078,16 +1078,16 @@ async def auth_signup(request: EmailSignUpWithCode) -> dict:
             if referral_rec and referral_rec.get("uses", 0) < referral_rec.get("max_uses", 50):
                 code_type = "referral"
             else:
-                # Try as a coupon code � valid coupons are stored and shown at checkout
+                # Try as a coupon code — valid coupons are stored and shown at checkout
                 try:
                     coupon_rec = validate_coupon_db(access_code, "any")
                     if coupon_rec:
                         code_type = "coupon"
                     else:
-                        logger.info("Unrecognised code at signup: %s � proceeding without reward", access_code)
+                        logger.info("Unrecognised code at signup: %s — proceeding without reward", access_code)
                         access_code = ""
                 except Exception:
-                    logger.info("Unrecognised code at signup: %s � proceeding without reward", access_code)
+                    logger.info("Unrecognised code at signup: %s — proceeding without reward", access_code)
                     access_code = ""
 
     success, message = register_email(request.email, request.name, pw_hash)
@@ -1097,7 +1097,7 @@ async def auth_signup(request: EmailSignUpWithCode) -> dict:
     from app.email_auth import _make_learner_id, _pending, _confirmed
     learner_id = _make_learner_id(request.email)
 
-    # Store code info in pending � applied on email confirmation.
+    # Store code info in pending — applied on email confirmation.
     # IMPORTANT: register_email() may auto-confirm (dev/no-SMTP mode), in which
     # case _pending[email] is deleted by confirm_email_token(). We must check
     # _pending still has the entry before writing to it, and apply codes directly
@@ -1109,7 +1109,7 @@ async def auth_signup(request: EmailSignUpWithCode) -> dict:
             _pending[email_lower]["access_tier"]    = code_rec["tier"]
             _pending[email_lower]["access_disc_pct"] = int(code_rec.get("discount_pct") or 0)
         elif email_lower in _confirmed:
-            # Auto-confirmed path � apply access code directly now
+            # Auto-confirmed path — apply access code directly now
             try:
                 from app.db import validate_access_code as _vac, redeem_access_code as _rac, upgrade_tier_db
                 from app.progress import apply_tier_upgrade
@@ -1125,14 +1125,14 @@ async def auth_signup(request: EmailSignUpWithCode) -> dict:
         if email_lower in _pending:
             _pending[email_lower]["referral_code"] = access_code
         elif email_lower in _confirmed:
-            # Auto-confirmed � record referral use directly
+            # Auto-confirmed — record referral use directly
             try:
                 from app.db import use_referral_code as _urc
                 _urc(access_code, email_lower, learner_id, discount_pct=5, payment_amount=0)
             except Exception as exc:
                 logger.warning("Direct referral record failed: %s", exc)
     elif access_code and code_type == "coupon" and coupon_rec:
-        # Store the coupon code so it survives to checkout � applied at payment time
+        # Store the coupon code so it survives to checkout — applied at payment time
         if email_lower in _pending:
             _pending[email_lower]["coupon_code"]     = access_code
             _pending[email_lower]["coupon_disc_pct"] = int(coupon_rec.get("discount_pct") or 0)
@@ -1311,13 +1311,13 @@ async def resend_confirmation(request: Request) -> dict:
     from app.email_auth import _pending, _confirmed, _get_token_serializer, _send_email_async
     import time as _t
 
-    # Already confirmed � tell them to just sign in
+    # Already confirmed — tell them to just sign in
     if email in _confirmed:
         return {"ok": True, "message": "Your email is already confirmed. Please sign in."}
 
     pending = _pending.get(email)
     if not pending:
-        # Not pending and not confirmed � account doesn't exist or was lost on restart
+        # Not pending and not confirmed — account doesn't exist or was lost on restart
         return {
             "ok":     True,
             "message": (
@@ -1351,7 +1351,7 @@ async def resend_confirmation(request: Request) -> dict:
                           f"<p>Hi {name},</p><p>Confirm your account: <a href='{confirm_url}'>{confirm_url}</a></p>",
                           text_body)
 
-    # Check if email is actually configured � if not, auto-confirm instead
+    # Check if email is actually configured — if not, auto-confirm instead
     from app.email_auth import confirm_email_token as _cet
     email_user = _os.getenv("EMAIL_USER", "")
     email_pass = _os.getenv("EMAIL_PASS", "")
@@ -1474,7 +1474,7 @@ async def survey_feedback(fb: SurveyFeedback, req: Request) -> dict:
 
 @app.get("/feedback/summary", response_model=FeedbackSummary)
 async def feedback_summary(request: Request) -> FeedbackSummary:
-    """Internal business KPIs � admin only."""
+    """Internal business KPIs — admin only."""
     _require_admin(request)
     return get_summary()
 
@@ -1495,7 +1495,7 @@ class _EnquiryRequest(_BM):
 @app.post("/enquiry")
 async def submit_enquiry(body: _EnquiryRequest) -> dict:
     """
-    User support enquiry � forwarded to support@mypytutor.com.ng
+    User support enquiry — forwarded to support@mypytutor.com.ng
     which is linked to tega.com.ng@gmail.com via ADMIN_EMAIL env var.
     Also persists to SQLite for admin visibility.
     """
@@ -1551,20 +1551,20 @@ async def get_certificate(
     if level not in CERT_CONFIGS:
         raise HTTPException(status_code=400, detail="Invalid certificate level.")
 
-    # Admin preview: skip eligibility � admin token required
+    # Admin preview: skip eligibility — admin token required
     if admin_view and request:
         try:
             _require_admin(request)
         except HTTPException:
-            admin_view = False   # invalid token � fall through to normal check
+            admin_view = False   # invalid token — fall through to normal check
 
     # When a real user is authenticated, always use their session identity.
     # This prevents name spoofing: supply ?name=FakeName&learner_id=victim_id.
     # Anonymous / public certificate pages (e.g. from email link) are still
-    # allowed � they go through the normal eligibility check below.
+    # allowed — they go through the normal eligibility check below.
     if user is not None:
         learner_id = user.learner_id   # always use session learner_id
-        # Resolve display name from session user � ignore client-supplied ?name=
+        # Resolve display name from session user — ignore client-supplied ?name=
         session_name = (user.name or "").strip()
         if not session_name:
             # Fallback: load from profile
@@ -1751,7 +1751,7 @@ async def get_certificate(
 
 
 # ---------------------------------------------------------------------------
-# Certificate verification � public endpoint linked from cert emails
+# Certificate verification — public endpoint linked from cert emails
 # ---------------------------------------------------------------------------
 
 @app.get("/verify/{cert_id}", response_class=HTMLResponse)
@@ -1845,7 +1845,7 @@ async def get_progress(learner_id: str,
 
     # Only expose tier to the owner of the profile (matching session token)
     # or unauthenticated requests for the learner's OWN data.
-    # We expose tier freely here because the frontend needs it for XP display �
+    # We expose tier freely here because the frontend needs it for XP display —
     # but we strip the tier from any request where the token belongs to a
     # DIFFERENT learner (cross-user enumeration).
     exposed_tier = profile.tier
@@ -1854,7 +1854,7 @@ async def get_progress(learner_id: str,
             from app.auth import verify_session_token
             token_lid = verify_session_token(credentials.credentials)
             if token_lid != learner_id:
-                exposed_tier = ""   # different user � hide tier
+                exposed_tier = ""   # different user — hide tier
         except Exception:
             exposed_tier = ""
 
@@ -2013,7 +2013,7 @@ async def start_course(learner_id: str, course_name: str,
 
     profile = get_profile(learner_id)
 
-    # Dynamic access check � driven by COURSE_CATALOG tier_unlocks
+    # Dynamic access check — driven by COURSE_CATALOG tier_unlocks
     from app.courses import COURSE_CATALOG
     meta = COURSE_CATALOG.get(course_name, {})
     allowed_tiers = set(meta.get("tier_unlocks", []))
@@ -2167,7 +2167,7 @@ async def next_course_step(learner_id: str,
 
 
 # ---------------------------------------------------------------------------
-# Course � previous lesson (re-deliver the previous step without advancing)
+# Course — previous lesson (re-deliver the previous step without advancing)
 # ---------------------------------------------------------------------------
 
 @app.post("/course/prev")
@@ -2188,7 +2188,7 @@ async def prev_course_step(learner_id: str,
     if not course:
         raise HTTPException(status_code=404, detail="Course not found.")
 
-    # Step back � minimum is step 1
+    # Step back — minimum is step 1
     if profile.current_course_step > 1:
         from app.progress import save_profile as _sp
         profile.current_course_step -= 1
@@ -2233,7 +2233,7 @@ async def generate_quiz(request: QuizRequest, req: Request,
                         user=Depends(get_current_user)) -> QuizResponse:
     validate_topic(request.topic)
     # If a token is provided, enforce it matches the learner_id in the body.
-    # Anonymous (no token) quiz requests are still allowed � they use IP-based
+    # Anonymous (no token) quiz requests are still allowed — they use IP-based
     # rate limiting and the free daily limit just like anonymous chat.
     if user is not None and user.learner_id != request.learner_id:
         raise HTTPException(status_code=403, detail="learner_id does not match your session.")
@@ -2289,7 +2289,7 @@ async def generate_quiz(request: QuizRequest, req: Request,
 async def evaluate_quiz_answer(request: QuizAnswerRequest,
                                user=Depends(get_current_user)) -> QuizAnswerResponse:
     validate_topic(request.topic)
-    # If authenticated, enforce learner_id matches token � prevents XP farming
+    # If authenticated, enforce learner_id matches token — prevents XP farming
     # for other users. Anonymous quiz answers (free-tier) are still accepted.
     if user is not None and user.learner_id != request.learner_id:
         raise HTTPException(status_code=403, detail="learner_id does not match your session.")
@@ -2360,7 +2360,7 @@ async def generate_exercise(learner_id: str, topic: str,
     validate_learner_id(learner_id)
     validate_topic(topic)
     # Authenticated users must match their own learner_id.
-    # Anonymous users (no token) are allowed � free-tier discovery via chat.
+    # Anonymous users (no token) are allowed — free-tier discovery via chat.
     if user is not None and user.learner_id != learner_id:
         raise HTTPException(status_code=403, detail="learner_id does not match your session.")
     profile  = get_profile(learner_id)
@@ -2403,7 +2403,7 @@ def _parse_quiz(raw: str) -> tuple[str, list[str]]:
     return question, options
 
 # ---------------------------------------------------------------------------
-# Paystack webhook � handles tier bundles, individual course purchases, prompt plans
+# Paystack webhook — handles tier bundles, individual course purchases, prompt plans
 # ---------------------------------------------------------------------------
 
 # Map Paystack plan name (lowercase) ? internal tier
@@ -2456,11 +2456,11 @@ async def paystack_webhook(request: Request) -> dict:
     body_bytes  = await request.body()
 
     # -- CRITICAL: always verify the HMAC signature.
-    # If PAYSTACK_SECRET_KEY is not set we reject the request entirely �
+    # If PAYSTACK_SECRET_KEY is not set we reject the request entirely —
     # accepting unsigned webhooks would let anyone fake a payment.
     if not secret_key:
         logger.error(
-            "PAYSTACK_SECRET_KEY env var is not set � rejecting webhook. "
+            "PAYSTACK_SECRET_KEY env var is not set — rejecting webhook. "
             "Add it to Render ? Environment immediately."
         )
         raise HTTPException(status_code=400, detail="Webhook not configured")
@@ -2470,7 +2470,7 @@ async def paystack_webhook(request: Request) -> dict:
         secret_key.encode(), body_bytes, hashlib.sha512
     ).hexdigest()
     if not hmac.compare_digest(sig_header, expected):
-        logger.warning("Paystack webhook signature mismatch � ignored")
+        logger.warning("Paystack webhook signature mismatch — ignored")
         raise HTTPException(status_code=400, detail="Invalid signature")
 
     import json as _json
@@ -2525,7 +2525,7 @@ async def paystack_webhook(request: Request) -> dict:
                         )
                         existing = _idem_cur.fetchone()
                         if existing:
-                            logger.info("Paystack webhook: duplicate reference %s � skipped", reference)
+                            logger.info("Paystack webhook: duplicate reference %s — skipped", reference)
                             return {"ok": True}
                         _idem_cur.execute(
                             "INSERT INTO processed_webhooks (reference) VALUES (%s)",
@@ -2568,7 +2568,7 @@ async def paystack_webhook(request: Request) -> dict:
                     savings   = disc_flat if disc_flat > 0 else round(amount_ngn * disc_pct / 100, 2)
                     use_coupon_db(coupon_code, learner_id, email, savings)
                     logger.info(
-                        "Paystack webhook: coupon %s applied for %s � savings ?%.2f",
+                        "Paystack webhook: coupon %s applied for %s — savings ?%.2f",
                         coupon_code, email, savings
                     )
             except Exception as _coupon_exc:
@@ -2581,7 +2581,7 @@ async def paystack_webhook(request: Request) -> dict:
                                    data.get("reference", ""))
             payment = add_payment(email, customer.get("name", email),
                                   amount_ngn, f"Course: {course_meta}", "paystack")
-            # Paystack charge.success means the payment IS confirmed � mark it immediately
+            # Paystack charge.success means the payment IS confirmed — mark it immediately
             confirm_payment(payment.id)
             invoice_id = f"INV-{_sec.token_hex(5).upper()}"
             create_invoice_db(invoice_id, payment.id, learner_id, email,
@@ -2653,7 +2653,7 @@ async def paystack_webhook(request: Request) -> dict:
                                   updated_at  = EXTRACT(EPOCH FROM NOW())
                             """, (learner_id, prompt_plan, prompt_plan))
                 except Exception:
-                    pass  # non-fatal � in-memory reset still applied
+                    pass  # non-fatal — in-memory reset still applied
                 log_activity(learner_id, "payment:prompt_plan",
                              f"plan={prompt_plan} limit={daily_limit} | ?{amount_ngn:.0f}")
 
@@ -2672,12 +2672,12 @@ async def paystack_webhook(request: Request) -> dict:
                 import secrets as _sec
                 payment    = add_payment(email, customer.get("name", email),
                                          amount_ngn, plan_label, "paystack")
-                # Paystack charge.success = payment IS confirmed � mark immediately
+                # Paystack charge.success = payment IS confirmed — mark immediately
                 confirm_payment(payment.id)
                 invoice_id = f"INV-{_sec.token_hex(5).upper()}"
                 create_invoice_db(invoice_id, payment.id, learner_id, email,
                                   customer.get("name", email), plan_label, amount_ngn)
-                # Non-blocking Supabase mirror � webhook must return 200 fast
+                # Non-blocking Supabase mirror — webhook must return 200 fast
                 threading.Thread(
                     target=sb_save_payment,
                     args=(payment.id, email, customer.get("name", email),
@@ -3410,7 +3410,7 @@ async def admin_user_detail(learner_id: str, request: Request) -> dict:
         },
     }
 
-# set-tier � uses apply_tier_upgrade for atomic memory+SQLite+Supabase consistency
+# set-tier — uses apply_tier_upgrade for atomic memory+SQLite+Supabase consistency
 @app.post("/admin/users/{learner_id}/set-tier")
 async def admin_set_tier(learner_id: str, request: Request) -> dict:
     _require_admin(request)
@@ -3679,21 +3679,21 @@ async def admin_confirm_payment(payment_id: str, request: Request) -> dict:
             )
             from app.services.email_service import send_admin_notification as _svc_adm
             _svc_adm(
-                subject=f"Payment confirmed: ?{float(row['amount']):,.0f} � {row['plan']}",
+                subject=f"Payment confirmed: ?{float(row['amount']):,.0f} — {row['plan']}",
                 body=f"User: {row['user_name']} ({row['user_email']})\n"
                      f"Amount: {row['currency']} {float(row['amount']):,.0f}\n"
                      f"Plan: {row['plan']}\nPayment ID: {row['id']}"
                      + (f"\nTier upgraded to: {tier}" if tier else ""),
             )
     except ImportError:
-        pass   # circular import guard � tier upgrade still succeeded via upgrade_tier_db
+        pass   # circular import guard — tier upgrade still succeeded via upgrade_tier_db
     except Exception as _pay_exc:
         logger.warning("Post-confirm actions failed (non-fatal): %s", _pay_exc)
     return {"ok": True}
 
 
 # ---------------------------------------------------------------------------
-# Bank transfer proof-of-payment � upload, admin review, approve/reject
+# Bank transfer proof-of-payment — upload, admin review, approve/reject
 # ---------------------------------------------------------------------------
 
 
@@ -3947,7 +3947,7 @@ async def submit_bank_transfer_proof(
     """
     Learner submits bank transfer proof-of-payment.
     Accepts JSON with: plan, amount, reference, proof_image_base64 (optional),
-    proof_url (optional � if hosted elsewhere), notes.
+    proof_url (optional — if hosted elsewhere), notes.
     Creates a pending bank_transfer_proofs record and notifies admin.
     """
     if not user:
@@ -4005,14 +4005,14 @@ async def submit_bank_transfer_proof(
         from app.services.email_service import send_admin_notification
         import datetime as _dt3
         send_admin_notification(
-            subject=f"Bank Transfer Proof Submitted � ?{amount:,.0f} ({plan})",
+            subject=f"Bank Transfer Proof Submitted — ?{amount:,.0f} ({plan})",
             body=(
                 f"Learner: {user.name} ({email})\n"
                 f"Learner ID: {learner_id}\n"
                 f"Plan: {plan}\n"
                 f"Amount: ?{amount:,.0f}\n"
-                f"Reference: {ref or '�'}\n"
-                f"Notes: {notes or '�'}\n"
+                f"Reference: {ref or '—'}\n"
+                f"Notes: {notes or '—'}\n"
                 f"Proof ID: {proof_id}\n"
                 f"Submitted: {_dt3.datetime.fromtimestamp(submitted_at).strftime('%Y-%m-%d %H:%M UTC')}\n\n"
                 f"Review and approve at: {_os.getenv('FRONTEND_URL', 'https://mypytutor.com.ng')}/admin"
@@ -4083,7 +4083,7 @@ async def admin_approve_bank_transfer(
     request: Request,
 ) -> dict:
     """
-    Admin approves a bank transfer proof � upgrades the learner's tier
+    Admin approves a bank transfer proof — upgrades the learner's tier
     and sends a confirmation email.
     """
     _require_admin(request)
@@ -4239,9 +4239,9 @@ async def admin_reject_bank_transfer(
         )
         html = _shell(body_html, "Bank transfer could not be verified.")
         text = (f"Hi,\n\nYour bank transfer for {proof['plan']} could not be verified.\n"
-                f"Reason: {reason}\n\nPlease try again or contact support.\n\n� MyPy Tutor Team")
+                f"Reason: {reason}\n\nPlease try again or contact support.\n\n— MyPy Tutor Team")
         _dispatch_async(proof["email"],
-                        "Bank Transfer � Action Required",
+                        "Bank Transfer — Action Required",
                         html, text, "bank_transfer_rejected")
     except Exception as _ne3:
         logger.debug("Rejection email failed (non-fatal): %s", _ne3)
@@ -4268,7 +4268,7 @@ async def admin_certificates(request: Request) -> dict:
 
 @app.get("/admin/team")
 async def admin_team(request: Request) -> dict:
-    """Return team members and tasks � both from SQLite (persistent)."""
+    """Return team members and tasks — both from SQLite (persistent)."""
     _require_admin(request)
     from app.admin import get_team as _get_team, get_tasks as _get_tasks
     return {
@@ -4576,7 +4576,7 @@ async def admin_test_email(request: Request) -> dict:
                     json={
                         "from":     email_from if from_has_address else "MyPy Tutor <onboarding@resend.dev>",
                         "to":       [to],
-                        "subject":  "MyPy Tutor � Email Delivery Test",
+                        "subject":  "MyPy Tutor — Email Delivery Test",
                         "html":     test_html_full,
                         "text":     test_txt,
                     },
@@ -4600,7 +4600,7 @@ async def admin_test_email(request: Request) -> dict:
     else:
         results["resend"] = {"ok": False, "error": "RESEND_API_KEY not set"}
 
-    # If Resend succeeded, return immediately � no need to test SMTP
+    # If Resend succeeded, return immediately — no need to test SMTP
     if results["resend"]["ok"]:
         return {
             "ok": True, "sent": True, "provider_used": "resend",
@@ -4622,7 +4622,7 @@ async def admin_test_email(request: Request) -> dict:
             ef = f"MyPy Tutor <{email_user}>"
         try:
             msg = MIMEMultipart("alternative")
-            msg["Subject"] = "MyPy Tutor � Email Delivery Test"
+            msg["Subject"] = "MyPy Tutor — Email Delivery Test"
             msg["From"]    = ef
             msg["To"]      = to
             msg["Reply-To"] = email_user
@@ -4635,7 +4635,7 @@ async def admin_test_email(request: Request) -> dict:
             smtp_q.put((True, ""))
         except smtplib.SMTPAuthenticationError as exc:
             smtp_q.put((False,
-                f"AUTH FAILED: {exc} � "
+                f"AUTH FAILED: {exc} — "
                 "EMAIL_PASS must be a Gmail App Password (16 chars). "
                 "Create at myaccount.google.com/apppasswords"))
         except smtplib.SMTPException as exc:
@@ -4650,7 +4650,7 @@ async def admin_test_email(request: Request) -> dict:
         ok_s, err_s = smtp_q.get()
         results["smtp"] = {"ok": ok_s, "error": err_s if not ok_s else ""}
     else:
-        results["smtp"] = {"ok": False, "error": "Timed out after 12s � check EMAIL_HOST/PORT"}
+        results["smtp"] = {"ok": False, "error": "Timed out after 12s — check EMAIL_HOST/PORT"}
 
     if results["smtp"]["ok"]:
         return {
@@ -4658,7 +4658,7 @@ async def admin_test_email(request: Request) -> dict:
             "to": to, "config": config_status, "results": results,
         }
 
-    # -- Both failed � return detailed per-provider errors -------------------
+    # -- Both failed — return detailed per-provider errors -------------------
     # Build a human-readable diagnosis
     resend_err = results["resend"]["error"]
     smtp_err   = results["smtp"]["error"]
@@ -4674,7 +4674,7 @@ async def admin_test_email(request: Request) -> dict:
         diagnosis.append("Resend: " + resend_err)
 
     if "auth failed" in smtp_err.lower():
-        diagnosis.append("SMTP: Gmail App Password is wrong � re-create at "
+        diagnosis.append("SMTP: Gmail App Password is wrong — re-create at "
                          "myaccount.google.com/apppasswords")
     elif smtp_err:
         diagnosis.append("SMTP: " + smtp_err)
@@ -4775,7 +4775,7 @@ async def generate_assignment(learner_id: str, topic: str,
         raise HTTPException(status_code=502, detail="AI service error. Please try again.")
 
     assignment_id = _sec.token_hex(8).upper()
-    title = f"{topic} � Coding Assignment"
+    title = f"{topic} — Coding Assignment"
     create_assignment_db(assignment_id, learner_id, title, content)
     log_activity(learner_id, "assignment:generated", f"topic={topic}")
     return {"assignment_id": assignment_id, "learner_id": learner_id,
@@ -4859,19 +4859,19 @@ _LESSON_RESOURCES: dict[str, list[dict]] = {
                                       {"type":"video",   "label":"Python in 100 Seconds (Fireship)", "url":"https://www.youtube.com/watch?v=x7X9w_GIm1s"}],
     "Python Syntax":                 [{"type":"docs",    "label":"W3Schools Python Syntax",           "url":"https://www.w3schools.com/python/python_syntax.asp"}],
     "Python Variables":              [{"type":"docs",    "label":"W3Schools Variables",               "url":"https://www.w3schools.com/python/python_variables.asp"},
-                                      {"type":"article", "label":"Real Python � Variables",           "url":"https://realpython.com/python-variables/"}],
+                                      {"type":"article", "label":"Real Python — Variables",           "url":"https://realpython.com/python-variables/"}],
     "Python Data Types":             [{"type":"docs",    "label":"W3Schools Data Types",              "url":"https://www.w3schools.com/python/python_datatypes.asp"}],
     "Python Strings":                [{"type":"docs",    "label":"W3Schools Strings",                 "url":"https://www.w3schools.com/python/python_strings.asp"},
-                                      {"type":"article", "label":"Real Python � Strings",             "url":"https://realpython.com/python-strings/"}],
+                                      {"type":"article", "label":"Real Python — Strings",             "url":"https://realpython.com/python-strings/"}],
     "Python Lists":                  [{"type":"docs",    "label":"W3Schools Lists",                   "url":"https://www.w3schools.com/python/python_lists.asp"}],
     "Python Dictionaries":           [{"type":"docs",    "label":"W3Schools Dictionaries",            "url":"https://www.w3schools.com/python/python_dictionaries.asp"}],
     "Python Functions":              [{"type":"docs",    "label":"W3Schools Functions",               "url":"https://www.w3schools.com/python/python_functions.asp"},
-                                      {"type":"article", "label":"Real Python � Functions",           "url":"https://realpython.com/defining-your-own-python-function/"}],
+                                      {"type":"article", "label":"Real Python — Functions",           "url":"https://realpython.com/defining-your-own-python-function/"}],
     "Classes and Objects":           [{"type":"docs",    "label":"W3Schools OOP",                     "url":"https://www.w3schools.com/python/python_classes.asp"},
-                                      {"type":"article", "label":"Real Python � OOP",                 "url":"https://realpython.com/python3-object-oriented-programming/"}],
+                                      {"type":"article", "label":"Real Python — OOP",                 "url":"https://realpython.com/python3-object-oriented-programming/"}],
     "Python Inheritance":            [{"type":"docs",    "label":"W3Schools Inheritance",             "url":"https://www.w3schools.com/python/python_inheritance.asp"}],
     "Python RegEx":                  [{"type":"docs",    "label":"W3Schools RegEx",                   "url":"https://www.w3schools.com/python/python_regex.asp"},
-                                      {"type":"tool",    "label":"Regex101 � Live tester",            "url":"https://regex101.com/"}],
+                                      {"type":"tool",    "label":"Regex101 — Live tester",            "url":"https://regex101.com/"}],
     "File Handling":                 [{"type":"docs",    "label":"W3Schools File Handling",           "url":"https://www.w3schools.com/python/python_file_handling.asp"}],
     "Python JSON":                   [{"type":"docs",    "label":"W3Schools JSON",                    "url":"https://www.w3schools.com/python/python_json.asp"}],
     "NumPy Intro & Getting Started": [{"type":"docs",    "label":"NumPy Official Docs",               "url":"https://numpy.org/doc/stable/"},
@@ -4884,7 +4884,7 @@ _LESSON_RESOURCES: dict[str, list[dict]] = {
 _DEFAULT_RESOURCES = [
     {"type":"docs",  "label":"Python Official Documentation", "url":"https://docs.python.org/3/"},
     {"type":"docs",  "label":"W3Schools Python Tutorial",     "url":"https://www.w3schools.com/python/"},
-    {"type":"tool",  "label":"Python Tutor � Visualiser",     "url":"https://pythontutor.com/"},
+    {"type":"tool",  "label":"Python Tutor — Visualiser",     "url":"https://pythontutor.com/"},
 ]
 
 
@@ -4933,7 +4933,7 @@ async def apply_coupon(body: CouponValidate,
     if not coupon:
         raise HTTPException(status_code=404, detail="Coupon is invalid or exhausted.")
 
-    # Calculate real savings � handle both flat and percentage discounts
+    # Calculate real savings — handle both flat and percentage discounts
     disc_pct   = int(coupon.get("discount_pct") or 0)
     disc_flat  = float(coupon.get("discount_flat") or 0.0)
     # For percentage coupons: savings recorded as negative to signal "pct type"
@@ -4963,7 +4963,7 @@ async def apply_coupon(body: CouponValidate,
 # REFERRAL routes
 # ---------------------------------------------------------------------------
 
-# REFERRAL routes � specific paths BEFORE dynamic /{learner_id}
+# REFERRAL routes — specific paths BEFORE dynamic /{learner_id}
 @app.get("/referral/balance/{learner_id}")
 async def referral_balance(learner_id: str,
                            user=Depends(get_current_user)) -> dict:
@@ -5062,7 +5062,7 @@ async def use_referral(body: ReferralUse,
                        user=Depends(get_current_user)) -> dict:
     """
     Record that a new user signed up with a referral code.
-    Requires auth � learner_id in body must match session token to prevent
+    Requires auth — learner_id in body must match session token to prevent
     fake referral use records.
     """
     # Require auth: only the signed-up user can record their own referral use
@@ -5251,7 +5251,7 @@ async def use_referral_balance_for_course(request: Request,
 @app.get("/invoice/{invoice_id}", response_class=HTMLResponse)
 async def get_invoice(invoice_id: str,
                       user=Depends(get_current_user)) -> HTMLResponse:
-    """Return a printable invoice. Requires authentication � owner or admin only."""
+    """Return a printable invoice. Requires authentication — owner or admin only."""
     import re as _re4
     if not _re4.match(r'^[A-Z0-9\-]{4,30}$', invoice_id):
         raise HTTPException(status_code=400, detail="Invalid invoice ID.")
@@ -5393,7 +5393,7 @@ async def admin_delete_coupon(code: str, request: Request) -> dict:
 
 @app.put("/admin/coupons/{code}/deactivate")
 async def admin_deactivate_coupon(code: str, request: Request) -> dict:
-    """Deactivate a coupon (soft disable � preserves usage history)."""
+    """Deactivate a coupon (soft disable — preserves usage history)."""
     _require_admin(request)
     try:
 
@@ -5440,7 +5440,7 @@ async def admin_activate_coupon(code: str, request: Request) -> dict:
         raise HTTPException(status_code=500, detail="Could not activate coupon.")
 
 # ---------------------------------------------------------------------------
-# ACCESS CODE routes � DEPRECATED
+# ACCESS CODE routes — DEPRECATED
 # Access codes have been removed. Use coupon codes for discounts and
 # referral codes for user rewards. Any existing access codes in the DB
 # will continue to be honoured at signup for backwards compatibility,
@@ -5449,7 +5449,7 @@ async def admin_activate_coupon(code: str, request: Request) -> dict:
 
 @app.get("/admin/access-codes")
 async def admin_list_access_codes(request: Request) -> dict:
-    """Deprecated � access codes removed. Returns empty list."""
+    """Deprecated — access codes removed. Returns empty list."""
     _require_admin(request)
     return {
         "codes":      [],
@@ -5461,7 +5461,7 @@ async def admin_list_access_codes(request: Request) -> dict:
 
 @app.post("/admin/access-codes/generate")
 async def admin_generate_access_code(request: Request) -> dict:
-    """Deprecated � access code generation removed."""
+    """Deprecated — access code generation removed."""
     _require_admin(request)
     raise HTTPException(
         status_code=410,
@@ -5583,7 +5583,7 @@ async def admin_learner_history(learner_id: str, request: Request) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# SUPABASE � Conversation & history routes
+# SUPABASE — Conversation & history routes
 # ---------------------------------------------------------------------------
 
 @app.get("/conversations/{learner_id}")
@@ -5648,7 +5648,7 @@ async def get_conversation(learner_id: str, conversation_id: str,
 @app.post("/conversations/{learner_id}/new")
 async def new_conversation(learner_id: str, background_tasks: BackgroundTasks,
                            user=Depends(get_current_user)) -> dict:
-    """Start a fresh conversation. Owner-only � requires auth."""
+    """Start a fresh conversation. Owner-only — requires auth."""
     validate_learner_id(learner_id)
     if user is None:
         raise HTTPException(status_code=401, detail="Sign in to start a conversation.")
@@ -5656,7 +5656,7 @@ async def new_conversation(learner_id: str, background_tasks: BackgroundTasks,
         raise HTTPException(status_code=403, detail="You can only create your own conversations.")
     import secrets as _sec
     conv_id = f"local_{_sec.token_hex(8)}"
-    # Fire-and-forget Supabase insert � does NOT block the response
+    # Fire-and-forget Supabase insert — does NOT block the response
     if sb_enabled():
         real_id = _sec.token_hex(16)
         def _insert_conv():
@@ -5676,12 +5676,12 @@ async def new_conversation(learner_id: str, background_tasks: BackgroundTasks,
 
 
 # ---------------------------------------------------------------------------
-# SUPABASE � Status & health check
+# SUPABASE — Status & health check
 # ---------------------------------------------------------------------------
 
 @app.get("/supabase/status")
 async def supabase_status(request: Request) -> dict:
-    """Check whether Supabase is configured and reachable. Admin-only � leaks infra URL."""
+    """Check whether Supabase is configured and reachable. Admin-only — leaks infra URL."""
     _require_admin(request)
     if not sb_enabled():
         return {"enabled": False,
@@ -5692,10 +5692,10 @@ async def supabase_status(request: Request) -> dict:
         sb.table("profiles").select("id").limit(1).execute()
         return {"enabled": True, "status": "connected"}
     except Exception as exc:
-        # Return generic error � do NOT expose internal connection details
+        # Return generic error — do NOT expose internal connection details
         logger.warning("Supabase status check failed: %s", exc)
         return {"enabled": True, "status": "error",
-                "detail": "Connection test failed � check Render logs for details."}
+                "detail": "Connection test failed — check Render logs for details."}
 
 
 # ---------------------------------------------------------------------------
@@ -6065,7 +6065,7 @@ async def admin_unsubscribe_learner(request: Request) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# STARTUP � Supabase data recovery on Render restart
+# STARTUP — Supabase data recovery on Render restart
 # ---------------------------------------------------------------------------
 
 def _mirror_referral_code_to_supabase(code: str, owner_id: str, owner_email: str,
@@ -6079,7 +6079,7 @@ def _mirror_referral_code_to_supabase(code: str, owner_id: str, owner_email: str
 
 def _recover_from_supabase() -> None:
     """
-    CRITICAL STARTUP RECOVERY � runs on every boot.
+    CRITICAL STARTUP RECOVERY — runs on every boot.
 
     Render free tier wipes the filesystem on every deploy.
     This function:
@@ -6088,7 +6088,7 @@ def _recover_from_supabase() -> None:
 
     Called AFTER init_db() and _load_confirmed_from_db().
     Safe to call even when Supabase is not configured (no-ops gracefully).
-    Now uses PostgreSQL as the primary store � learner_progress recovery
+    Now uses PostgreSQL as the primary store — learner_progress recovery
     is skipped (already in PostgreSQL). Only email accounts and referral
     codes need Supabase recovery.
     """
@@ -6100,7 +6100,7 @@ def _recover_from_supabase() -> None:
     from app.email_auth import _confirmed, _by_id
 
     if not sb_enabled():
-        logger.info("Supabase not configured � skipping cloud recovery")
+        logger.info("Supabase not configured — skipping cloud recovery")
         return
 
     sb = get_supabase()
@@ -6150,7 +6150,7 @@ def _recover_from_supabase() -> None:
         logger.warning("Supabase email recovery failed: %s", exc)
 
     # -- Step 2: Learner progress ---------------------------------------------
-    # Skipped � PostgreSQL is now the primary store. Progress is already there.
+    # Skipped — PostgreSQL is now the primary store. Progress is already there.
     # No need to pull from Supabase on every boot.
 
     # -- Step 3: Recover referral codes --------------------------------------
@@ -6194,7 +6194,7 @@ def _recover_from_supabase() -> None:
 
 
 # Run recovery in a background thread.
-# daemon=True � never blocks Render's uvicorn worker from completing startup.
+# daemon=True — never blocks Render's uvicorn worker from completing startup.
 threading.Thread(
     target=_recover_from_supabase,
     daemon=True,
@@ -6344,7 +6344,7 @@ async def get_profile_data(learner_id: str,
 
     is_owner = (user is not None and user.learner_id == learner_id)
 
-    # Base data � safe to return to anyone (no tier/email exposure to non-owners)
+    # Base data — safe to return to anyone (no tier/email exposure to non-owners)
     result = {
         "learner_id":   learner_id,
         "display_name": db_profile.get("display_name") or lp.display_name or "",
@@ -6375,7 +6375,7 @@ async def update_profile(learner_id: str, body: UserProfileUpdate,
     if user.learner_id != learner_id:
         raise HTTPException(status_code=403, detail="You can only edit your own profile.")
 
-    # Sanitise photo_url � accept only https:// URLs or base64 data URLs for images.
+    # Sanitise photo_url — accept only https:// URLs or base64 data URLs for images.
     # Reject javascript: URIs, plain strings, and other non-image content.
     import re as _re2
     photo = body.photo_url.strip() if body.photo_url else ""
@@ -6385,7 +6385,7 @@ async def update_profile(learner_id: str, body: UserProfileUpdate,
         if not is_data_url and not is_https_url:
             raise HTTPException(status_code=400,
                 detail="photo_url must be an https:// URL or a base64 data:image/... URL.")
-        # Enforce size limit on base64 images (max 2MB decoded � ~2.7MB base64)
+        # Enforce size limit on base64 images (max 2MB decoded — ~2.7MB base64)
         if is_data_url and len(photo) > 2_800_000:
             raise HTTPException(status_code=400,
                 detail="Profile picture too large. Maximum size is 2MB.")
@@ -6416,12 +6416,12 @@ async def update_profile(learner_id: str, body: UserProfileUpdate,
 
 
 # ---------------------------------------------------------------------------
-# Account deletion � NDPR/GDPR right to erasure (Article 17)
+# Account deletion — NDPR/GDPR right to erasure (Article 17)
 # ---------------------------------------------------------------------------
 
 class _DeleteAccountRequest(_BM):
     password: str = _Field(..., min_length=1, max_length=128,
-                           description="Current password � confirms the user's identity")
+                           description="Current password — confirms the user's identity")
     confirm:  str = _Field(..., min_length=1, max_length=20,
                            description="Must equal 'DELETE' to confirm intent")
 
@@ -6431,7 +6431,7 @@ async def delete_account(body: _DeleteAccountRequest,
                          user=Depends(require_user)) -> dict:
     """
     Permanently delete the authenticated user's account.
-    NDPR/GDPR right to erasure � permanently removes PII, anonymises
+    NDPR/GDPR right to erasure — permanently removes PII, anonymises
     learning data, retains payment records for 7 years (Nigerian tax law).
     Requires: current password + confirmation string 'DELETE'.
     """
@@ -6451,7 +6451,7 @@ async def delete_account(body: _DeleteAccountRequest,
                 status_code=401,
                 detail="Incorrect password. Account deletion cancelled."
             )
-    # OAuth users (Google/GitHub): no password to verify � identity already proved by session token
+    # OAuth users (Google/GitHub): no password to verify — identity already proved by session token
 
     try:
         from app.db import delete_account as _delete_account_db
@@ -6473,7 +6473,7 @@ async def delete_account(body: _DeleteAccountRequest,
         from app.progress import _store as _ps
         _ps.pop(user.learner_id, None)
     except Exception:
-        pass  # Non-fatal � caches will expire naturally
+        pass  # Non-fatal — caches will expire naturally
 
     # Clean up Supabase asynchronously
     try:
@@ -6502,13 +6502,13 @@ async def delete_account(body: _DeleteAccountRequest,
 
 
 # ---------------------------------------------------------------------------
-# FIX: Invoice PDF generation (ReportLab � no weasyprint, free tier safe)
+# FIX: Invoice PDF generation (ReportLab — no weasyprint, free tier safe)
 # ---------------------------------------------------------------------------
 
 @app.get("/invoice/{invoice_id}/pdf")
 async def get_invoice_pdf(invoice_id: str,
                           user=Depends(get_current_user)) -> JSONResponse:
-    """Generate a downloadable PDF invoice. Requires auth � owner only."""
+    """Generate a downloadable PDF invoice. Requires auth — owner only."""
     import re as _re5
     if not _re5.match(r'^[A-Z0-9\-]{4,30}$', invoice_id):
         raise HTTPException(status_code=400, detail="Invalid invoice ID.")
@@ -6542,7 +6542,7 @@ async def get_invoice_pdf(invoice_id: str,
             "hdr", parent=styles["Title"], textColor=navy, fontSize=22, spaceAfter=4)))
         story.append(Paragraph(
             "Powered by TeamTega Technologies Limited<br/>"
-            "Certified by Teamsamikoko Global Academy � Reg No: 3508656",
+            "Certified by Teamsamikoko Global Academy — Reg No: 3508656",
             ParagraphStyle("sub", parent=styles["Normal"], textColor=grey, fontSize=9, spaceAfter=16)))
 
         # Invoice title + meta
@@ -6597,14 +6597,14 @@ async def get_invoice_pdf(invoice_id: str,
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
     except ImportError:
-        raise HTTPException(status_code=503, detail="PDF generation not available � install reportlab.")
+        raise HTTPException(status_code=503, detail="PDF generation not available — install reportlab.")
     except Exception as exc:
         logger.error("PDF generation error: %s", exc)
         raise HTTPException(status_code=500, detail="Could not generate PDF invoice.")
 
 
 # ---------------------------------------------------------------------------
-# FIX: Paystack metadata � store learner_id in payment so Google users
+# FIX: Paystack metadata — store learner_id in payment so Google users
 #      can be auto-upgraded via webhook (no email-matching required)
 # ---------------------------------------------------------------------------
 
@@ -6778,13 +6778,13 @@ async def tts_voices() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# FIX: Render persistent disk � DB_PATH env var documented in render.yaml
-#      (no code change needed � db.py already reads DB_PATH env var)
+# FIX: Render persistent disk — DB_PATH env var documented in render.yaml
+#      (no code change needed — db.py already reads DB_PATH env var)
 # ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------
-# Static assets � icons, manifest, certificates (NOT the full frontend app)
+# Static assets — icons, manifest, certificates (NOT the full frontend app)
 # The HTML frontend is served by Vercel (github.com/tegaconsults-cloud/mypytutor)
 # Render serves only the API + certificate HTML generation + static assets
 # ---------------------------------------------------------------------------
@@ -6795,7 +6795,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static_assets")
 
 @app.get("/", include_in_schema=False)
 async def root() -> dict:
-    """API root � confirms the backend is alive. Frontend is on Vercel."""
+    """API root — confirms the backend is alive. Frontend is on Vercel."""
     return {
         "service": "MyPy Tutor API",
         "status":  "ok",
