@@ -5028,41 +5028,128 @@ async def validate_coupon(body: CouponValidate,
 @app.post("/coupons/apply")
 async def apply_coupon(body: CouponValidate,
                        user=Depends(get_current_user)) -> dict:
-    """Apply a coupon to a learner. Requires authentication."""
+    """
+    Apply a coupon to a learner. Requires authentication.
+
+    Behaviour by coupon type:
+      discount_pct == 100 + plan is a course slug → record_course_purchase (free access)
+      discount_pct == 100 + plan is tier1-4       → upgrade_tier_db (free tier upgrade)
+      discount_pct == 100 + plan == 'any'          → grant tier1 (free promo)
+      partial discount (< 100%)                   → record coupon only; payment still needed
+    """
     if not user:
         raise HTTPException(status_code=401, detail="Sign in to apply a coupon.")
-    if not body.learner_id or not body.email:
-        raise HTTPException(status_code=400, detail="learner_id and email required.")
-    # Prevent recording a coupon use on behalf of another learner
+    if not body.learner_id or body.learner_id == "default":
+        raise HTTPException(status_code=400, detail="learner_id required.")
     if user.learner_id != body.learner_id:
         raise HTTPException(status_code=403, detail="learner_id does not match your session.")
-    coupon = validate_coupon_db(body.code, body.plan)
-    if not coupon:
-        raise HTTPException(status_code=404, detail="Coupon is invalid or exhausted.")
 
-    # Calculate real savings — handle both flat and percentage discounts
+    # Resolve email: use body email if provided, otherwise fall back to the session user
+    email = (body.email or "").strip()
+    if not email:
+        email = getattr(user, "email", "") or body.learner_id
+
+    coupon = validate_coupon_db(body.code, body.plan or "any")
+    if not coupon:
+        raise HTTPException(status_code=404, detail="Coupon is invalid, expired, or not applicable.")
+
     disc_pct   = int(coupon.get("discount_pct") or 0)
     disc_flat  = float(coupon.get("discount_flat") or 0.0)
-    # For percentage coupons: savings recorded as negative to signal "pct type"
-    # The webhook records the real cash savings when payment is confirmed.
-    # For flat coupons: store the flat amount immediately.
-    savings = disc_flat if disc_flat > 0 else -(disc_pct)  # negative = pct marker
+    coupon_plan = (coupon.get("plan") or "any").lower().strip()
 
-    use_coupon_db(body.code, body.learner_id, body.email, savings)
-    log_activity(body.learner_id, "coupon:applied", f"code={body.code} disc_pct={disc_pct}% disc_flat={disc_flat}")
+    # Valid tiers and known course slugs for routing
+    _valid_tiers   = {"tier1", "tier2", "tier3", "tier4"}
+    from app.courses import COURSE_CATALOG as _CC
+    _is_course     = coupon_plan in _CC
+    _is_tier       = coupon_plan in _valid_tiers
+    _is_full       = disc_pct == 100
 
-    msg = "Coupon applied!"
-    if disc_pct:
-        msg = f"Coupon applied! {disc_pct}% discount will be deducted at checkout."
+    access_granted  = False
+    granted_what    = ""   # human-readable description for response
+
+    # ── FULL-ACCESS COUPON: grant without payment ─────────────────────────
+    if _is_full:
+        if _is_course:
+            # 100% discount on a specific course → record purchase at ₦0
+            try:
+                record_course_purchase(
+                    body.learner_id, coupon_plan, 0.0,
+                    f"coupon-{body.code}"
+                )
+                access_granted = True
+                granted_what   = f"course:{coupon_plan}"
+                log_activity(body.learner_id, "coupon:course-access",
+                             f"code={body.code} course={coupon_plan}")
+            except Exception as _cpe:
+                logger.error("coupon course grant failed: %s", _cpe)
+                raise HTTPException(status_code=500, detail="Could not grant course access.")
+
+        elif _is_tier:
+            # 100% discount on a tier bundle → upgrade tier
+            try:
+                upgrade_tier_db(body.learner_id, coupon_plan)
+                from app.progress import apply_tier_upgrade as _atu
+                _atu(body.learner_id, coupon_plan)
+                access_granted = True
+                granted_what   = f"tier:{coupon_plan}"
+                log_activity(body.learner_id, "coupon:tier-upgrade",
+                             f"code={body.code} tier={coupon_plan}")
+            except Exception as _tue:
+                logger.error("coupon tier upgrade failed: %s", _tue)
+                raise HTTPException(status_code=500, detail="Could not upgrade tier.")
+
+        else:
+            # 100% discount with plan='any' — grant tier1 (free promo access)
+            try:
+                upgrade_tier_db(body.learner_id, "tier1")
+                from app.progress import apply_tier_upgrade as _atu2
+                _atu2(body.learner_id, "tier1")
+                access_granted = True
+                granted_what   = "tier:tier1"
+                log_activity(body.learner_id, "coupon:tier-upgrade",
+                             f"code={body.code} tier=tier1 (any-plan promo)")
+            except Exception as _tue2:
+                logger.error("coupon promo tier upgrade failed: %s", _tue2)
+                raise HTTPException(status_code=500, detail="Could not apply promo access.")
+
+    # ── Record coupon use (savings = 0 for full-access; plan amount for partials) ──
+    savings = 0.0 if _is_full else (disc_flat if disc_flat > 0 else -(disc_pct))
+    try:
+        use_coupon_db(body.code, body.learner_id, email, savings)
+    except Exception as _uce:
+        # Non-fatal — access was already granted above if applicable
+        logger.warning("use_coupon_db failed (non-fatal): %s", _uce)
+
+    log_activity(body.learner_id, "coupon:applied",
+                 f"code={body.code} disc_pct={disc_pct}% disc_flat={disc_flat} granted={granted_what or 'none'}")
+
+    # ── Build response message ────────────────────────────────────────────
+    if access_granted:
+        if "course:" in granted_what:
+            cname = granted_what.split(":", 1)[1].replace("-", " ").title()
+            msg = f"✅ Coupon applied! You now have full access to {cname}."
+        else:
+            tier_labels = {
+                "tier1": "Beginner Bundle", "tier2": "Intermediate Bundle",
+                "tier3": "Advanced Bundle",  "tier4": "Premium Bundle",
+            }
+            tlabel = tier_labels.get(granted_what.split(":", 1)[-1], granted_what)
+            msg = f"✅ Coupon applied! Your account has been upgraded to {tlabel}."
+    elif disc_pct:
+        msg = f"Coupon saved! {disc_pct}% discount will be deducted at checkout."
     elif disc_flat:
-        msg = f"Coupon applied! ?{disc_flat:,.0f} discount will be deducted at checkout."
+        msg = f"Coupon saved! ₦{disc_flat:,.0f} discount will be deducted at checkout."
+    else:
+        msg = "Coupon applied!"
 
     return {
-        "ok":            True,
-        "code":          coupon["code"],
-        "discount_pct":  disc_pct,
-        "discount_flat": disc_flat,
-        "message":       msg,
+        "ok":             True,
+        "code":           coupon["code"],
+        "discount_pct":   disc_pct,
+        "discount_flat":  disc_flat,
+        "access_granted": access_granted,
+        "granted_what":   granted_what,
+        "message":        msg,
     }
 
 
