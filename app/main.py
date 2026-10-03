@@ -3900,9 +3900,24 @@ async def provision_dedicated_account(request: Request,
     name       = user.name  or ""
 
     if not email:
-        # Pull from profile
+        # Pull from profile, then authoritative email_accounts table.
+        # NEVER fall back to learner_id — it looks like an email but isn't.
         _prof = get_profile(learner_id)
-        email = _prof.email or learner_id
+        email = _prof.email or ""
+        if not email or "@" not in email:
+            try:
+                from app.db import get_db as _gdb_dva
+                with _gdb_dva() as _dc:
+                    with _dc.cursor() as _dcur:
+                        _dcur.execute(
+                            "SELECT email FROM email_accounts WHERE learner_id=%s LIMIT 1",
+                            (learner_id,)
+                        )
+                        _erow = _dcur.fetchone()
+                        if _erow and _erow[0]:
+                            email = _erow[0]
+            except Exception:
+                pass
         name  = _prof.display_name or name
 
     try:
@@ -3966,7 +3981,21 @@ async def get_dedicated_account(learner_id: str,
     # Not provisioned yet — provision now
     from app.paystack import get_or_create_dva as _dva
     _prof = get_profile(learner_id)
-    email = _prof.email or user.email or learner_id
+    email = _prof.email or user.email or ""
+    if not email or "@" not in email:
+        try:
+            from app.db import get_db as _gdb_dva2
+            with _gdb_dva2() as _dc2:
+                with _dc2.cursor() as _dcur2:
+                    _dcur2.execute(
+                        "SELECT email FROM email_accounts WHERE learner_id=%s LIMIT 1",
+                        (learner_id,)
+                    )
+                    _erow2 = _dcur2.fetchone()
+                    if _erow2 and _erow2[0]:
+                        email = _erow2[0]
+        except Exception:
+            pass
     name  = _prof.display_name or user.name or ""
     try:
         result = _dva(learner_id, email, name)
@@ -4550,11 +4579,25 @@ async def admin_referrals(request: Request) -> dict:
     import datetime as _dt
     with _gdb() as _conn:
         with _conn.cursor(cursor_factory=_pge.RealDictCursor) as _cur:
-            _cur.execute("SELECT * FROM referrals ORDER BY uses DESC")
+            # Fetch referrals and LEFT JOIN email_accounts so we always get a
+            # real email even when owner_email was mis-stored as a learner_id.
+            _cur.execute("""
+                SELECT r.*,
+                       COALESCE(
+                           CASE WHEN r.owner_email LIKE '%@%' THEN r.owner_email END,
+                           ea.email,
+                           r.owner_email
+                       ) AS resolved_email
+                FROM referrals r
+                LEFT JOIN email_accounts ea ON ea.learner_id = r.owner_id
+                ORDER BY r.uses DESC
+            """)
             refs = _cur.fetchall()
     result = []
     for r in refs:
         d = dict(r)
+        # Use the resolved real email as the display owner_email
+        d["owner_email"]    = d.pop("resolved_email", d.get("owner_email", ""))
         d["created_at_fmt"] = _dt.datetime.fromtimestamp(d["created_at"]).strftime("%Y-%m-%d")
         d["bonus_balance"]  = round(d.get("bonus_balance", 0), 2)
         uses = get_referral_uses(d["code"])
@@ -5219,7 +5262,25 @@ async def get_my_referral(learner_id: str,
     import secrets as _sec
     code    = _sec.token_hex(4).upper()
     profile = get_profile(learner_id)
-    email   = profile.email or learner_id
+    # Resolve email: prefer email_accounts (authoritative) over learner_profiles,
+    # and NEVER fall back to learner_id (which looks like e_xxxxxxxx).
+    email   = profile.email or ""
+    if not email or "@" not in email:
+        try:
+            from app.db import get_db as _gdb_ref2
+            with _gdb_ref2() as _refc:
+                with _refc.cursor() as _refcur:
+                    _refcur.execute(
+                        "SELECT email FROM email_accounts WHERE learner_id=%s LIMIT 1",
+                        (learner_id,)
+                    )
+                    _erow = _refcur.fetchone()
+                    if _erow:
+                        email = _erow[0] or email
+        except Exception:
+            pass
+    if not email or "@" not in email:
+        email = ""   # leave blank rather than store learner_id as email
     create_referral_code(code, learner_id, email)
     # Credit ₦5,000 welcome bonus to the new user's referral balance immediately
     try:
@@ -5420,7 +5481,21 @@ async def use_referral_balance_for_course(request: Request,
 
     # Record the course purchase (same as a normal paid purchase)
     profile = get_profile(learner_id)
-    email   = profile.email or learner_id
+    email   = profile.email or ""
+    if not email or "@" not in email:
+        try:
+            from app.db import get_db as _gdb_rbal
+            with _gdb_rbal() as _rbc:
+                with _rbc.cursor() as _rbcur:
+                    _rbcur.execute(
+                        "SELECT email FROM email_accounts WHERE learner_id=%s LIMIT 1",
+                        (learner_id,)
+                    )
+                    _rb_row = _rbcur.fetchone()
+                    if _rb_row and _rb_row[0]:
+                        email = _rb_row[0]
+        except Exception:
+            pass
     record_course_purchase(learner_id, course_name, amount, f"referral-balance-{learner_id[:8]}")
 
     log_activity(learner_id, "referral:balance-used-for-course",

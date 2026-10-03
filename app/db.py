@@ -620,6 +620,16 @@ def init_db() -> None:
                 "UPDATE payments       SET user_email=email     WHERE user_email='' AND email    IS NOT NULL AND email    <> ''",
                 "UPDATE payments       SET user_name=name       WHERE user_name=''  AND name     IS NOT NULL AND name     <> ''",
                 "UPDATE email_accounts SET name=full_name       WHERE name=''       AND full_name IS NOT NULL AND full_name <> ''",
+                # Fix referral rows where owner_email was accidentally stored as a learner_id
+                # (pattern: no '@' character). Back-fill from email_accounts where possible.
+                """
+                UPDATE referrals r
+                SET owner_email = ea.email
+                FROM email_accounts ea
+                WHERE ea.learner_id = r.owner_id
+                  AND ea.email LIKE '%@%'
+                  AND (r.owner_email NOT LIKE '%@%' OR r.owner_email = '')
+                """,
             ]
             for _sql in _col_migrations:
                 try:
