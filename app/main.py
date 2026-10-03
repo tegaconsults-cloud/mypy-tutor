@@ -2913,20 +2913,27 @@ async def admin_dashboard(request: Request) -> dict:
         with _gdb() as _conn:
             with _conn.cursor() as _cur:
                 wat_date = _wat_date_key()
-                email_count      = _q(_cur, 0, "SELECT COUNT(*) FROM email_accounts WHERE (confirmed = 1 OR confirmed IS TRUE)")
-                profile_count    = _q(_cur, 0, "SELECT COUNT(*) FROM learner_profiles WHERE tier != 'deleted'")
-                confirmed_unique = _q(_cur, 0,
-                    "SELECT COUNT(DISTINCT learner_id) FROM email_accounts WHERE (confirmed = 1 OR confirmed IS TRUE)")
-                total_users      = max(email_count, profile_count, confirmed_unique)
+
+                # ── Total users: ALL registrations (confirmed or not) ─────
+                # Use the largest of: all email_accounts rows, all non-deleted
+                # learner profiles. Unconfirmed signups are real registered users.
+                all_email_count  = _q(_cur, 0, "SELECT COUNT(*) FROM email_accounts")
+                conf_email_count = _q(_cur, 0,
+                    "SELECT COUNT(*) FROM email_accounts WHERE (confirmed = 1 OR confirmed IS TRUE)")
+                profile_count    = _q(_cur, 0,
+                    "SELECT COUNT(*) FROM learner_profiles WHERE tier != 'deleted'")
+                total_users      = max(all_email_count, conf_email_count, profile_count)
 
                 # ── Active today ─────────────────────────────────────────
                 active_today     = _q(_cur, 0,
                     "SELECT COUNT(DISTINCT key) FROM daily_prompt_counts WHERE date_str=%s AND count>0",
                     (wat_date,))
 
-                # ── New users 24h ────────────────────────────────────────
+                # ── New users 24h — all signups, not just confirmed ───────
+                # Confirmed filter excluded: new users rarely confirm within minutes.
                 new_users_24h    = _q(_cur, 0,
-                    "SELECT COUNT(*) FROM email_accounts WHERE (confirmed = 1 OR confirmed IS TRUE) "
+                    "SELECT COUNT(*) FROM email_accounts "
+                    "WHERE created_at IS NOT NULL "
                     "AND to_timestamp(created_at) >= NOW() - INTERVAL '24 hours'")
 
                 # ── Tier breakdown ────────────────────────────────────────
@@ -2941,30 +2948,76 @@ async def admin_dashboard(request: Request) -> dict:
                               AND COALESCE(lp.tier, 'free') != 'deleted'
                         ) t""", (_tier,))
 
-                # ── Revenue ───────────────────────────────────────────────
+                # ── Revenue: Paystack payments + approved bank transfers ──
+                # payments table: Paystack/card payments
+                # bank_transfer_proofs table: bank transfers approved by admin
                 try:
-                    _cur.execute("SELECT COALESCE(SUM(amount),0), COUNT(*) FROM payments WHERE status='confirmed'")
+                    _cur.execute(
+                        "SELECT COALESCE(SUM(amount),0), COUNT(*) FROM payments WHERE status='confirmed'"
+                    )
                     _rev = _cur.fetchone()
-                    total_revenue  = float(_rev[0] or 0)
-                    confirmed_pmts = int(_rev[1]   or 0)
+                    paystack_rev   = float(_rev[0] or 0)
+                    paystack_conf  = int(_rev[1] or 0)
                 except Exception as _re:
-                    logger.warning("revenue query failed: %s", _re)
-                    total_revenue = 0.0
-                    confirmed_pmts = 0
+                    logger.warning("paystack revenue query failed: %s", _re)
+                    paystack_rev  = 0.0
+                    paystack_conf = 0
 
-                pending_pmts   = _q(_cur, 0, "SELECT COUNT(*) FROM payments WHERE status='pending'")
-                total_pmts     = _q(_cur, 0, "SELECT COUNT(*) FROM payments")
-                today_rev      = float(_q(_cur, 0,
+                try:
+                    _cur.execute(
+                        "SELECT COALESCE(SUM(amount),0), COUNT(*) FROM bank_transfer_proofs WHERE status='approved'"
+                    )
+                    _brev = _cur.fetchone()
+                    btp_rev  = float(_brev[0] or 0)
+                    btp_conf = int(_brev[1] or 0)
+                except Exception as _btre:
+                    logger.warning("bank transfer revenue query failed: %s", _btre)
+                    btp_rev  = 0.0
+                    btp_conf = 0
+
+                total_revenue  = paystack_rev + btp_rev
+                confirmed_pmts = paystack_conf + btp_conf
+
+                # pending: Paystack pending + bank transfers awaiting review
+                paystack_pending = _q(_cur, 0,
+                    "SELECT COUNT(*) FROM payments WHERE status='pending'")
+                btp_pending      = _q(_cur, 0,
+                    "SELECT COUNT(*) FROM bank_transfer_proofs WHERE status='pending'")
+                pending_pmts     = paystack_pending + btp_pending
+
+                paystack_total = _q(_cur, 0, "SELECT COUNT(*) FROM payments")
+                btp_total      = _q(_cur, 0, "SELECT COUNT(*) FROM bank_transfer_proofs")
+                total_pmts     = paystack_total + btp_total
+
+                # Today's revenue: Paystack + bank transfers approved today
+                paystack_today = float(_q(_cur, 0,
                     "SELECT COALESCE(SUM(amount),0) FROM payments "
                     "WHERE status='confirmed' AND DATE(to_timestamp(created_at)) = %s::date",
                     (today_str,)) or 0)
+                btp_today      = float(_q(_cur, 0,
+                    "SELECT COALESCE(SUM(amount),0) FROM bank_transfer_proofs "
+                    "WHERE status='approved' AND DATE(to_timestamp(submitted_at)) = %s::date",
+                    (today_str,)) or 0)
+                today_rev      = paystack_today + btp_today
 
-                # Revenue by plan
+                # Revenue by plan: merge both sources
                 try:
-                    _cur.execute("SELECT plan, COALESCE(SUM(amount),0) FROM payments WHERE status='confirmed' GROUP BY plan")
+                    _cur.execute(
+                        "SELECT plan, COALESCE(SUM(amount),0) FROM payments "
+                        "WHERE status='confirmed' GROUP BY plan"
+                    )
                     by_plan = {r[0]: float(r[1]) for r in _cur.fetchall()}
                 except Exception:
                     by_plan = {}
+                try:
+                    _cur.execute(
+                        "SELECT plan, COALESCE(SUM(amount),0) FROM bank_transfer_proofs "
+                        "WHERE status='approved' GROUP BY plan"
+                    )
+                    for _br in _cur.fetchall():
+                        by_plan[_br[0]] = by_plan.get(_br[0], 0.0) + float(_br[1])
+                except Exception:
+                    pass
 
                 # ── Other counts ──────────────────────────────────────────
                 cert_count  = _q(_cur, 0, "SELECT COUNT(*) FROM certificates")

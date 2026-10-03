@@ -200,39 +200,87 @@ def get_payments() -> list[dict]:
 
 
 def get_revenue_summary() -> dict:
-    """Compute revenue summary from PostgreSQL payments table."""
+    """Compute revenue summary from PostgreSQL — Paystack payments + approved bank transfers."""
     try:
         import psycopg2.extras
         from app.db import get_db as _gdb
         today = date.today().isoformat()
         with _gdb() as conn:
             with conn.cursor() as cur:
+                # ── Paystack / card payments ──────────────────────────────
                 cur.execute(
                     "SELECT COALESCE(SUM(amount),0), COUNT(*) FROM payments WHERE status='confirmed'"
                 )
                 row = cur.fetchone()
-                total_rev = float(row[0] or 0)
-                confirmed = int(row[1] or 0)
+                paystack_rev  = float(row[0] or 0)
+                paystack_conf = int(row[1] or 0)
+
                 cur.execute("SELECT COUNT(*) FROM payments WHERE status='pending'")
-                pending = cur.fetchone()[0]
+                paystack_pending = cur.fetchone()[0]
+
                 cur.execute("SELECT COUNT(*) FROM payments")
-                total_pmts = cur.fetchone()[0]
+                paystack_total = cur.fetchone()[0]
+
                 cur.execute(
                     "SELECT COALESCE(SUM(amount),0) FROM payments "
                     "WHERE status='confirmed' AND DATE(to_timestamp(created_at))=%s", (today,)
                 )
-                today_rev = cur.fetchone()[0]
+                paystack_today = float(cur.fetchone()[0] or 0)
+
                 cur.execute(
                     "SELECT plan, SUM(amount) FROM payments WHERE status='confirmed' GROUP BY plan"
                 )
                 by_plan = {r[0]: float(r[1]) for r in cur.fetchall()}
+
+                # ── Bank transfer proofs (approved by admin) ──────────────
+                try:
+                    cur.execute(
+                        "SELECT COALESCE(SUM(amount),0), COUNT(*) FROM bank_transfer_proofs WHERE status='approved'"
+                    )
+                    brow = cur.fetchone()
+                    btp_rev  = float(brow[0] or 0)
+                    btp_conf = int(brow[1] or 0)
+                except Exception:
+                    btp_rev, btp_conf = 0.0, 0
+
+                try:
+                    cur.execute("SELECT COUNT(*) FROM bank_transfer_proofs WHERE status='pending'")
+                    btp_pending = int(cur.fetchone()[0] or 0)
+                except Exception:
+                    btp_pending = 0
+
+                try:
+                    cur.execute("SELECT COUNT(*) FROM bank_transfer_proofs")
+                    btp_total = int(cur.fetchone()[0] or 0)
+                except Exception:
+                    btp_total = 0
+
+                try:
+                    cur.execute(
+                        "SELECT COALESCE(SUM(amount),0) FROM bank_transfer_proofs "
+                        "WHERE status='approved' AND DATE(to_timestamp(submitted_at))=%s", (today,)
+                    )
+                    btp_today = float(cur.fetchone()[0] or 0)
+                except Exception:
+                    btp_today = 0.0
+
+                try:
+                    cur.execute(
+                        "SELECT plan, SUM(amount) FROM bank_transfer_proofs "
+                        "WHERE status='approved' GROUP BY plan"
+                    )
+                    for r in cur.fetchall():
+                        by_plan[r[0]] = by_plan.get(r[0], 0.0) + float(r[1])
+                except Exception:
+                    pass
+
         return {
-            "total_revenue": total_rev,
-            "today_revenue": float(today_rev or 0),
-            "total_payments": total_pmts,
-            "confirmed": confirmed,
-            "pending": pending,
-            "by_plan": by_plan,
+            "total_revenue":  paystack_rev + btp_rev,
+            "today_revenue":  paystack_today + btp_today,
+            "total_payments": paystack_total + btp_total,
+            "confirmed":      paystack_conf + btp_conf,
+            "pending":        paystack_pending + btp_pending,
+            "by_plan":        by_plan,
         }
     except Exception as e:
         logger.warning("get_revenue_summary DB failed: %s", e)
