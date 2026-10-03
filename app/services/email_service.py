@@ -462,7 +462,7 @@ def send_learning_reminder(name: str, email: str, streak_days: int = 0,
           "<p style='color:#475569;line-height:1.7;margin:0 0 12px;'>"
           "Your daily Python learning session is waiting. Even 15 minutes a day builds mastery.</p>"
         + topic_html
-        + _cta("&#128218; Continue Learning", app)
+        + _cta("&#128218; Continue Learning", app + "/?panel=chat")
         + "<p style='color:#64748b;font-size:0.82rem;'>"
           "<strong style='color:" + PRIMARY + ";'>The MyPy Tutor Team</strong></p>"
     )
@@ -546,7 +546,7 @@ def send_product_update_email(name: str, email: str, subject: str,
         "<p style='color:#1e293b;margin:0 0 16px;'>Hi <strong>" + first + "</strong>,</p>"
         + body_html
         + _hr()
-        + _cta("&#128640; Open MyPy Tutor", app)
+        + _cta("&#128640; Open MyPy Tutor", app + "/?panel=chat")
         + unsubscribe_line
     )
     html = _shell(body, subject)
@@ -803,7 +803,7 @@ def send_signin_greeting_email(name: str, email: str, greeting: str,
         f"<p style='color:#1e293b;margin:0 0 8px;'><strong style='font-size:1.1rem;'>{headline}</strong></p>"
         f"<p style='color:#475569;line-height:1.7;margin:0 0 16px;'>{sub}</p>"
         + _box(tips)
-        + _cta(cta_label, site)
+        + _cta(cta_label, site + "/?panel=chat")
         + "<p style='color:#64748b;font-size:0.82rem;margin:0;'>"
           "Warm regards,<br/><strong style='color:" + PRIMARY + ";'>Sir. Tega &amp; The MyPy Tutor Team</strong></p>"
     )
