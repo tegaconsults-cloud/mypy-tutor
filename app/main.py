@@ -124,6 +124,7 @@ from app.supabase_client import (
     sb_save_certificate, sb_save_payment, sb_update_tier, sb_enabled,
     sb_load_all_email_accounts,
 )
+from app.courses_landing import render_course_landing as _render_course_landing
 
 logger = logging.getLogger(__name__)
 
@@ -7145,26 +7146,33 @@ async def serve_payment_page() -> HTMLResponse:
 
 
 # ---------------------------------------------------------------------------
-# AI Automation course landing page
+# Generic course landing pages — all 17 courses served from Jinja2 template
+# IMPORTANT: this route must remain AFTER all specific /courses/* sub-routes
+# (/courses/catalog, /courses/catalog/{name}/price) to avoid shadowing them.
 # ---------------------------------------------------------------------------
 
-@app.get("/courses/ai-automation", response_class=HTMLResponse, include_in_schema=False)
-async def serve_ai_automation_landing() -> HTMLResponse:
-    """Serve the AI Automation course landing page."""
-    import os as _os_aia
-    path = _os_aia.path.join("static", "courses", "ai-automation.html")
-    if not _os_aia.path.exists(path):
-        raise HTTPException(status_code=404, detail="AI Automation landing page not found.")
-    with open(path, "r", encoding="utf-8") as f:
-        content = f.read()
-    return HTMLResponse(content=content)
+@app.get("/courses/{course_slug}", response_class=HTMLResponse, include_in_schema=False)
+async def serve_course_landing(course_slug: str) -> HTMLResponse:
+    """
+    Dynamically render a course landing page for any of the 17 courses.
+    Uses the Jinja2 template in app/courses_landing.py — no separate HTML files.
+    """
+    from app.courses import COURSE_CATALOG
+    if course_slug not in COURSE_CATALOG:
+        raise HTTPException(status_code=404, detail=f"No landing page for course: {course_slug!r}")
+    try:
+        html = _render_course_landing(course_slug)
+    except Exception as _exc:
+        logger.error("Course landing render error for %s: %s", course_slug, _exc)
+        raise HTTPException(status_code=500, detail="Could not render course page.")
+    return HTMLResponse(content=html)
 
 
-@app.get("/courses/ai-automation/", response_class=HTMLResponse, include_in_schema=False)
-async def serve_ai_automation_landing_slash() -> HTMLResponse:
-    """Trailing-slash redirect for the AI Automation landing page."""
+@app.get("/courses/{course_slug}/", response_class=HTMLResponse, include_in_schema=False)
+async def serve_course_landing_slash(course_slug: str) -> HTMLResponse:
+    """Trailing-slash redirect to canonical URL."""
     from fastapi.responses import RedirectResponse
-    return RedirectResponse(url="/courses/ai-automation", status_code=301)
+    return RedirectResponse(url=f"/courses/{course_slug}", status_code=301)
 
 
 # Serve icons under /icons/ directly (shortcut used in admin.html)
