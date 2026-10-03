@@ -868,10 +868,19 @@ const CI_TOKEN = () => localStorage.getItem('mpt_token')
     || localStorage.getItem('auth_token')
     || sessionStorage.getItem('mpt_token')
     || '';
-const CI_LID   = () => localStorage.getItem('mpt_learner_id')
-    || localStorage.getItem('learner_id')
-    || sessionStorage.getItem('mpt_learner_id')
-    || '';
+const CI_LID = () => {
+  const lid = localStorage.getItem('mpt_learner_id')
+      || localStorage.getItem('learner_id')
+      || sessionStorage.getItem('mpt_learner_id')
+      || '';
+  if (lid) return lid;
+  try {
+    const tok = CI_TOKEN();
+    if (!tok) return '';
+    const p = JSON.parse(atob(tok.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+    return p.learner_id || p.sub || p.id || '';
+  } catch(e) { return ''; }
+};
 let   ciBankB64 = '';
 
 function openCheckout(e) {

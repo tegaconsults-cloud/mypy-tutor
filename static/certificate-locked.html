@@ -286,10 +286,19 @@ function _getToken() {
       || '';
 }
 function _getLearnerID() {
-  return localStorage.getItem('mpt_learner_id')
+  // Try all common storage keys
+  const lid = localStorage.getItem('mpt_learner_id')
       || localStorage.getItem('learner_id')
       || sessionStorage.getItem('mpt_learner_id')
       || '';
+  if (lid) return lid;
+  // Fallback: decode learner_id from the JWT token payload
+  try {
+    const tok = _getToken();
+    if (!tok) return '';
+    const payload = JSON.parse(atob(tok.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+    return payload.learner_id || payload.sub || payload.id || '';
+  } catch(e) { return ''; }
 }
 // Keep TOKEN as a getter so it always reflects current sign-in state
 Object.defineProperty(window, 'TOKEN', { get: _getToken });
@@ -369,7 +378,7 @@ async function startPaystackCheckout() {
   const errEl   = document.getElementById('ps-error');
 
   if (!_getToken()) {
-    errEl.textContent = 'Please sign in to MyPy Tutor first to start checkout.';
+    errEl.innerHTML = 'Please <a href="https://mypytutor.com.ng" style="color:#93c5fd">sign in to MyPy Tutor</a> first to start checkout.';
     errEl.style.display = 'block';
     return;
   }
@@ -377,7 +386,7 @@ async function startPaystackCheckout() {
   // Determine amount — use server-injected amount first, then lookup
   const amount = SERVER_AMOUNT || PLAN_AMOUNTS[SERVER_PLAN];
   if (!amount) {
-    errEl.textContent = 'Could not determine plan price. Please use bank transfer instead.';
+    errEl.innerHTML = 'Could not determine plan price. Please use bank transfer instead.';
     errEl.style.display = 'block';
     return;
   }
@@ -411,7 +420,7 @@ async function startPaystackCheckout() {
     // Redirect to the Paystack checkout page — amount + plan + email are pre-loaded
     window.location.href = data.authorization_url;
   } catch(err) {
-    errEl.textContent = err.message || 'Could not open checkout. Please use bank transfer.';
+    errEl.innerHTML = err.message || 'Could not open checkout. Please use bank transfer.';
     errEl.style.display = 'block';
     btn.disabled = false;
     spinner.style.display = 'none';
@@ -508,13 +517,13 @@ async function submitBankTransfer() {
 
 function showBtAlert(msg, ok) {
   const el = document.getElementById('bt-alert');
-  el.textContent = msg;
+  el.innerHTML = msg;   // innerHTML so links render correctly
   el.className = 'alert visible ' + (ok ? 'ok' : 'err');
 }
 function clearBtAlert() {
   const el = document.getElementById('bt-alert');
   el.className = 'alert';
-  el.textContent = '';
+  el.innerHTML = '';
 }
 </script>
 </body>

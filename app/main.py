@@ -3731,7 +3731,11 @@ async def paystack_initialize(request: Request,
     course_name = str(body.get("course_name", "")).strip()
     coupon_code = str(body.get("coupon_code", "")).strip().upper()
 
-    if user.learner_id != learner_id:
+    # If frontend didn't send learner_id (JWT decode failed), use session user
+    if not learner_id:
+        learner_id = user.learner_id
+
+    if learner_id and user.learner_id != learner_id:
         raise HTTPException(status_code=403, detail="learner_id does not match your session.")
     if amount_ngn <= 0:
         raise HTTPException(status_code=400, detail="Amount must be greater than zero.")
