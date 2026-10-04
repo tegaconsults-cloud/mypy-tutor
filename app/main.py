@@ -3809,8 +3809,44 @@ async def paystack_initialize(request: Request,
 
     if learner_id and user.learner_id != learner_id:
         raise HTTPException(status_code=403, detail="learner_id does not match your session.")
+
+    # If amount_ngn was not sent or is 0, auto-resolve from plan/course name.
+    # This is a safety net: frontends sometimes fail to read the price from URL params.
     if amount_ngn <= 0:
-        raise HTTPException(status_code=400, detail="Amount must be greater than zero.")
+        from app.courses import COURSE_CATALOG as _CC_init, TIER_PLANS as _TP_init
+        _resolved = False
+        # 1. Try exact course slug
+        if course_name and course_name in _CC_init:
+            amount_ngn = float(_CC_init[course_name]["price_ngn"])
+            _resolved = True
+        # 2. Try plan string as course slug
+        if not _resolved and plan.lower() in _CC_init:
+            amount_ngn = float(_CC_init[plan.lower()]["price_ngn"])
+            _resolved = True
+        # 3. Try canonical tier plan labels / keys
+        if not _resolved:
+            _tier_label_map = {
+                "beginner bundle": ("tier1", 30000),
+                "intermediate bundle": ("tier2", 60000),
+                "advanced bundle": ("tier3", 100000),
+                "premium bundle": ("tier4", 150000),
+                "tier1": ("tier1", 30000),
+                "tier2": ("tier2", 60000),
+                "tier3": ("tier3", 100000),
+                "tier4": ("tier4", 150000),
+            }
+            _lookup = _tier_label_map.get(plan.lower())
+            if _lookup:
+                amount_ngn = float(_lookup[1])
+                _resolved = True
+        if not _resolved or amount_ngn <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Amount must be greater than zero. Could not resolve price for plan='{plan}' course='{course_name}'."
+            )
+        logger.info("paystack_initialize: auto-resolved amount %s from plan='%s' course='%s'",
+                    amount_ngn, plan, course_name)
+
     if not plan and not course_name:
         raise HTTPException(status_code=400, detail="plan or course_name is required.")
 
