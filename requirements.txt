@@ -33,3 +33,7 @@ python-dotenv==1.0.1
 
 # ── PDF generation (invoice download) ────────────────────────────────────
 reportlab==4.2.5
+
+# ── Templating (course landing pages via Jinja2 SSR) ─────────────────────
+jinja2==3.1.5
+markupsafe==3.0.2
