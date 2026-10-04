@@ -3,6 +3,7 @@ Dynamic Jinja2 SSR course landing pages for all 17 MyPy Tutor courses.
 """
 
 from jinja2 import Environment
+from markupsafe import Markup
 from app.courses import COURSE_CATALOG, COURSES, TIER_PLANS
 
 # ---------------------------------------------------------------------------
@@ -819,7 +820,9 @@ def render_course_landing(course_slug: str) -> str:
     context = {
         "course_slug":      course_slug,
         "course_title":     course_title,
-        "badge":            catalog.get("badge", "\U0001f4d8"),
+        # Wrap badge in Markup so autoescape doesn't convert emoji to HTML entities.
+        # Badge values come from the hardcoded COURSE_CATALOG dict, never from user input.
+        "badge":            Markup(catalog.get("badge", "\U0001f4d8")),
         "category":         catalog.get("category", "Python"),
         "price_ngn":        price_ngn,
         "tier_name":        tier_name,

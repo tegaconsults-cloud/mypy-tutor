@@ -7151,6 +7151,32 @@ async def serve_payment_page() -> HTMLResponse:
 # (/courses/catalog, /courses/catalog/{name}/price) to avoid shadowing them.
 # ---------------------------------------------------------------------------
 
+# AI Automation gets its bespoke rich page first (outcomes grid + workflow cards).
+# The generic template is a fine fallback if the file ever goes missing.
+@app.get("/courses/ai-automation", response_class=HTMLResponse, include_in_schema=False)
+async def serve_ai_automation_landing() -> HTMLResponse:
+    """Bespoke AI Automation landing page — richer than the generic template."""
+    import os as _os_aia
+    path = _os_aia.path.join("static", "courses", "ai-automation.html")
+    if _os_aia.path.exists(path):
+        with open(path, "r", encoding="utf-8") as _f:
+            return HTMLResponse(content=_f.read())
+    # File missing — fall through to generic template
+    try:
+        html = _render_course_landing("ai-automation")
+        return HTMLResponse(content=html)
+    except Exception as _exc:
+        logger.error("AI Automation landing render error: %s", _exc)
+        raise HTTPException(status_code=404, detail="AI Automation landing page not found.")
+
+
+@app.get("/courses/ai-automation/", response_class=HTMLResponse, include_in_schema=False)
+async def serve_ai_automation_slash() -> HTMLResponse:
+    """Trailing-slash redirect for the AI Automation landing page."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/courses/ai-automation", status_code=301)
+
+
 @app.get("/courses/{course_slug}", response_class=HTMLResponse, include_in_schema=False)
 async def serve_course_landing(course_slug: str) -> HTMLResponse:
     """
