@@ -2437,14 +2437,23 @@ _PAYSTACK_PLAN_TIER: dict[str, str] = {
     "plan_tier4":           "tier4",
 }
 
-# Prompt plan names ? prompt tier key
+# Prompt plan names → prompt tier key
 _PAYSTACK_PROMPT_PLAN: dict[str, str] = {
-    "prompt starter":   "prompt-starter",
-    "prompt pro":       "prompt-pro",
-    "prompt unlimited": "prompt-unlimited",
-    "prompt_starter":   "prompt-starter",
-    "prompt_pro":       "prompt-pro",
-    "prompt_unlimited": "prompt-unlimited",
+    "prompt starter":        "prompt-starter",
+    "prompt starter plan":   "prompt-starter",
+    "prompt-starter":        "prompt-starter",
+    "prompt-starter-plan":   "prompt-starter",
+    "prompt_starter":        "prompt-starter",
+    "prompt pro":            "prompt-pro",
+    "prompt pro plan":       "prompt-pro",
+    "prompt-pro":            "prompt-pro",
+    "prompt-pro-plan":       "prompt-pro",
+    "prompt_pro":            "prompt-pro",
+    "prompt unlimited":      "prompt-unlimited",
+    "prompt unlimited plan": "prompt-unlimited",
+    "prompt-unlimited":      "prompt-unlimited",
+    "prompt-unlimited-plan": "prompt-unlimited",
+    "prompt_unlimited":      "prompt-unlimited",
 }
 
 
@@ -2662,23 +2671,47 @@ async def paystack_webhook(request: Request) -> dict:
                 today = _dtt.date.today().isoformat()
                 from app.security import _daily_prompt_store
                 _daily_prompt_store[learner_id] = (today, 0)
-                # Persist prompt plan on learner profile as a special tier prefix
-                # so the daily limit is restored on Render restart
+                # Persist prompt plan on learner profile — update ONLY prompt_plan,
+                # never overwrite the user's course tier (tier1-4).
                 try:
                     from app.db import get_db as _gdb2
                     with _gdb2() as _pc:
                         with _pc.cursor() as _pcc:
                             _pcc.execute("""
-                                INSERT INTO learner_profiles (learner_id, tier, prompt_plan)
-                                VALUES (%s, %s, %s)
+                                INSERT INTO learner_profiles (learner_id, prompt_plan)
+                                VALUES (%s, %s)
                                 ON CONFLICT(learner_id) DO UPDATE SET
                                   prompt_plan = EXCLUDED.prompt_plan,
                                   updated_at  = EXTRACT(EPOCH FROM NOW())
-                            """, (learner_id, prompt_plan, prompt_plan))
+                            """, (learner_id, prompt_plan))
                 except Exception:
                     pass  # non-fatal — in-memory reset still applied
                 log_activity(learner_id, "payment:prompt_plan",
                              f"plan={prompt_plan} limit={daily_limit} | ?{amount_ngn:.0f}")
+                # Prompt plan purchased — do NOT upgrade course tier.
+                # Record payment and return early so the tier block below is skipped.
+                import secrets as _sec_pp
+                _pp_payment = add_payment(email, customer.get("name", email),
+                                          amount_ngn, f"Prompt Plan: {prompt_plan}", "paystack")
+                confirm_payment(_pp_payment.id)
+                create_invoice_db(
+                    f"INV-{_sec_pp.token_hex(5).upper()}", _pp_payment.id,
+                    learner_id, email, customer.get("name", email),
+                    f"Prompt Plan: {prompt_plan}", amount_ngn
+                )
+                try:
+                    from app.services.email_service import send_payment_receipt_email as _spp_email
+                    _spp_email(
+                        name=customer.get("name", email),
+                        email=email,
+                        amount=amount_ngn,
+                        plan=f"Prompt Plan: {prompt_plan} ({daily_limit} prompts/day)",
+                        payment_id=_pp_payment.id,
+                    )
+                except Exception:
+                    pass
+                return {"ok": True, "event": "prompt_plan", "plan": prompt_plan,
+                        "daily_limit": daily_limit}
 
             if tier:
                 upgrade_tier_db(learner_id, tier)        # SQLite + Supabase
