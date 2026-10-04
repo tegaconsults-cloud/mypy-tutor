@@ -3839,6 +3839,20 @@ async def paystack_initialize(request: Request,
             if _lookup:
                 amount_ngn = float(_lookup[1])
                 _resolved = True
+        # 4. Try prompt plans (prompt-starter / prompt-pro / prompt-unlimited)
+        if not _resolved:
+            from app.courses import PROMPT_PLANS as _PP_init
+            _plan_key = plan.lower().replace(" ", "-").replace("_", "-")
+            if _plan_key in _PP_init:
+                amount_ngn = float(_PP_init[_plan_key]["price_ngn"])
+                _resolved = True
+            else:
+                # also try matching by name
+                for _pk, _pv in _PP_init.items():
+                    if plan.lower() in _pv.get("name", "").lower() or _pk in plan.lower():
+                        amount_ngn = float(_pv["price_ngn"])
+                        _resolved = True
+                        break
         if not _resolved or amount_ngn <= 0:
             raise HTTPException(
                 status_code=400,
@@ -7112,7 +7126,22 @@ async def get_payment_metadata(learner_id: str,
     if user.learner_id != learner_id:
         raise HTTPException(status_code=403, detail="You can only generate metadata for your own account.")
     lp    = get_profile(learner_id)
-    email = lp.email or ""
+    email = lp.email or user.email or ""
+    # Resolve email from email_accounts if still blank
+    if not email or "@" not in email:
+        try:
+            from app.db import get_db as _gdb_em
+            with _gdb_em() as _ec:
+                with _ec.cursor() as _ecur:
+                    _ecur.execute(
+                        "SELECT email FROM email_accounts WHERE learner_id=%s LIMIT 1",
+                        (learner_id,)
+                    )
+                    _er = _ecur.fetchone()
+                    if _er and _er[0]:
+                        email = _er[0]
+        except Exception:
+            pass
 
     # Check if this learner has an unused coupon recorded (applied but not yet
     # consumed by a webhook). Pass it through to Paystack metadata so the
