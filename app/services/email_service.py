@@ -310,15 +310,18 @@ def send_course_completion_email(name: str, email: str, course_name: str,
 
 # ── 5. Certificate ────────────────────────────────────────────────────────────
 def send_certificate_email(name: str, email: str, cert_level: str, cert_id: str,
-                           programme: str = "") -> None:
+                           programme: str = "", learner_id: str = "") -> None:
     first        = name.split()[0] if name else "Learner"
-    frontend     = _frontend_url()
-    api          = _app_url()
-    verify_url   = api + "/verify/" + cert_id
-    cert_url     = (frontend + "/certificate/" + cert_level
+    api          = _app_url()       # backend — cert and verify routes live here
+    # View Certificate: backend route GET /certificate/{level}?learner_id=...&name=...
+    # We need the real learner_id, not a slice of cert_id
+    _lid         = learner_id or ""
+    cert_url     = (api + "/certificate/" + cert_level
                     + "?name=" + name.replace(" ", "%20")
-                    + "&learner_id=" + cert_id.split("-")[0]  # cert_id encodes learner prefix
+                    + "&learner_id=" + _lid
                     + "&admin_view=false")
+    # Verify: also backend route GET /verify/{cert_id}
+    verify_url   = api + "/verify/" + cert_id
     # Use specific programme name if provided, otherwise fall back to level title
     label        = programme if programme else cert_level.title() + " Python Programme"
     details = (
@@ -588,15 +591,16 @@ def send_admin_notification(subject: str, body: str) -> None:
     if not admin_email:
         logger.warning("[email] ADMIN_EMAIL not set — skipping admin notification: %s", subject)
         return
-    app     = _frontend_url()
+    # Admin dashboard lives on the BACKEND (onrender.com), not the frontend domain
+    backend = _app_url()
     content = (
         "<h2 style='color:#DC2626;font-size:1.1rem;margin:0 0 12px;'>&#9888; Admin Notification</h2>"
         + _box("<strong>" + subject + "</strong><br/><br/>" + body.replace("\n", "<br/>"),
                bg="#fff1f2", border="#DC2626")
-        + _cta("Open Admin Dashboard", app + "/admin.html", color="#DC2626")
+        + _cta("Open Admin Dashboard", backend + "/admin.html", color="#DC2626")
     )
     html = _shell(content, "Admin: " + subject)
-    text = "Admin Notification\n\n" + subject + "\n\n" + body + "\n\nAdmin panel: " + app + "/admin.html"
+    text = "Admin Notification\n\n" + subject + "\n\n" + body + "\n\nAdmin panel: " + backend + "/admin.html"
     threading.Thread(
         target=_dispatch,
         args=(admin_email, "[MyPyTutor Admin] " + subject, html, text, "admin_notification"),

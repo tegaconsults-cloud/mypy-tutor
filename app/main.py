@@ -1744,7 +1744,7 @@ async def get_certificate(
                 _email_for_cert = _edu.get("email", "")
         if _email_for_cert:
             _svc_cert(clean_name, _email_for_cert, level, cert_id,
-                      programme=_programme_label)
+                      programme=_programme_label, learner_id=learner_id)
     except Exception as _cert_email_exc:
         logger.warning("Certificate email dispatch failed (non-fatal): %s", _cert_email_exc)
 
