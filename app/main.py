@@ -4362,6 +4362,26 @@ async def admin_approve_bank_transfer(
         else:              tier = "tier1"
 
     learner_id = proof["learner_id"]
+    if not learner_id:
+        # Proof was submitted without a learner_id — try to resolve from email_accounts
+        try:
+            from app.db import get_db as _gdb_lid
+            with _gdb_lid() as _lc:
+                with _lc.cursor() as _lcur:
+                    _lcur.execute(
+                        "SELECT learner_id FROM email_accounts WHERE email=%s LIMIT 1",
+                        (proof["email"].lower(),)
+                    )
+                    _lrow = _lcur.fetchone()
+                    if _lrow:
+                        learner_id = _lrow[0]
+        except Exception:
+            pass
+    if not learner_id:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Cannot approve proof {proof_id}: learner_id is missing and could not be resolved from email."
+        )
 
     # Check if plan is an individual course slug — grant course access instead of tier
     from app.courses import COURSE_CATALOG as _CC_approve
