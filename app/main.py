@@ -2542,7 +2542,9 @@ async def paystack_webhook(request: Request) -> dict:
         # Get learner_id from email — also try DVA customer lookup for bank transfers
         from app.db import load_email_account, get_paystack_customer_by_code as _gpcbc
         acct       = load_email_account(email)
-        learner_id = acct["learner_id"] if acct else email
+        learner_id = acct["learner_id"] if acct else (
+            str(meta.get("learner_id", "") or "").strip() or email
+        )
 
         # For DVA (bank transfer) payments the customer_code is in the data
         if not acct:
@@ -2556,6 +2558,22 @@ async def paystack_webhook(request: Request) -> dict:
                     acct       = load_email_account(email)
                     logger.info("Webhook: matched learner %s via DVA customer_code %s",
                                 learner_id, _cust_code)
+
+        # Final safety: if learner_id still looks like an email, try learner_profiles
+        if learner_id and "@" in learner_id:
+            try:
+                from app.db import get_db as _gdb_lid
+                with _gdb_lid() as _lc:
+                    with _lc.cursor() as _lcur:
+                        _lcur.execute(
+                            "SELECT learner_id FROM learner_profiles WHERE email=%s LIMIT 1",
+                            (learner_id,)
+                        )
+                        _lrow = _lcur.fetchone()
+                        if _lrow and _lrow[0]:
+                            learner_id = _lrow[0]
+            except Exception:
+                pass
 
         # -- Determine payment type from metadata -------------------------
         plan_meta    = str(meta.get("plan", "") or meta.get("tier", "")).lower().strip()
@@ -3804,6 +3822,28 @@ async def paystack_initialize(request: Request,
         )
 
     email        = user.email or ""
+    if not email or "@" not in email:
+        _prof = get_profile(learner_id or user.learner_id)
+        email = _prof.email or ""
+        if not email or "@" not in email:
+            try:
+                from app.db import get_db as _gdb_init
+                with _gdb_init() as _dc:
+                    with _dc.cursor() as _dcur:
+                        _dcur.execute(
+                            "SELECT email FROM email_accounts WHERE learner_id=%s LIMIT 1",
+                            (learner_id or user.learner_id,)
+                        )
+                        _erow = _dcur.fetchone()
+                        if _erow and _erow[0]:
+                            email = _erow[0]
+            except Exception:
+                pass
+    if not email or "@" not in email:
+        raise HTTPException(
+            status_code=400,
+            detail="We could not find your email address. Please update your profile before checkout."
+        )
     amount_kobo  = int(round(amount_ngn * 100))   # Paystack expects kobo (1 NGN = 100 kobo)
     callback_url = _os.getenv(
         "PAYSTACK_CALLBACK_URL",
@@ -3872,6 +3912,54 @@ async def paystack_initialize(request: Request,
         "access_code":       access_code,
         "amount_ngn":        amount_ngn,
         "plan":              plan or course_name,
+    }
+
+
+@app.get("/payments/paystack/verify/{reference}")
+async def paystack_verify(
+    reference: str,
+    user=Depends(get_current_user),
+) -> dict:
+    """
+    Verify a Paystack payment by reference.
+    Calls Paystack GET /transaction/verify/{reference} and returns
+    {status, paid, plan, amount_kobo, amount_ngn, reference}.
+    Frontend calls this on the /payment/callback page to confirm payment.
+    Requires authentication — prevents unauthenticated balance probing.
+    """
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to verify payment.")
+    import re as _re_ref
+    if not _re_ref.match(r'^[a-zA-Z0-9_\-]{4,100}$', reference):
+        raise HTTPException(status_code=400, detail="Invalid reference format.")
+    secret_key = _os.getenv("PAYSTACK_SECRET_KEY", "")
+    if not secret_key:
+        raise HTTPException(status_code=503, detail="Payment system not configured.")
+    try:
+        import httpx as _hx2
+        resp = _hx2.get(
+            f"https://api.paystack.co/transaction/verify/{reference}",
+            headers={"Authorization": f"Bearer {secret_key}"},
+            timeout=15,
+        )
+        data = resp.json()
+    except Exception as exc:
+        logger.error("Paystack verify error: %s", exc)
+        raise HTTPException(status_code=502, detail="Could not reach Paystack.")
+    if not data.get("status"):
+        raise HTTPException(status_code=400, detail=data.get("message", "Verification failed."))
+    txn = data.get("data", {})
+    paid = txn.get("status") == "success"
+    amount_kobo = int(txn.get("amount", 0))
+    meta = txn.get("metadata") or {}
+    plan = str(meta.get("plan", "") or meta.get("tier", "") or "")
+    return {
+        "status":      txn.get("status", ""),
+        "paid":        paid,
+        "plan":        plan,
+        "amount_kobo": amount_kobo,
+        "amount_ngn":  amount_kobo / 100,
+        "reference":   reference,
     }
 
 
@@ -4113,6 +4201,44 @@ async def submit_bank_transfer_proof(
     except Exception as _ne:
         logger.debug("Admin notification for bank proof failed (non-fatal): %s", _ne)
 
+    # Send learner confirmation email (non-blocking)
+    try:
+        from app.services.email_service import _dispatch_async, _shell, _box, _cta, PRIMARY, GOLD
+        import datetime as _dt_btp
+        _btp_name  = user.name or email.split("@")[0]
+        _btp_first = _btp_name.split()[0] if _btp_name else "Learner"
+        _btp_date  = _dt_btp.datetime.utcnow().strftime("%d %B %Y, %H:%M UTC")
+        _body_html = (
+            f"<p style='color:#1e293b;margin:0 0 12px;'>Hi <strong>{_btp_first}</strong>,</p>"
+            f"<h2 style='color:{PRIMARY};font-size:1.2rem;margin:0 0 12px;'>&#9989; Receipt Received</h2>"
+            f"<p style='color:#475569;line-height:1.7;margin:0 0 16px;'>"
+            f"We have received your bank transfer receipt for "
+            f"<strong>{plan}</strong> and it is now pending admin review.</p>"
+            + _box(
+                f"<strong>Plan:</strong> {plan}<br/>"
+                f"<strong>Amount:</strong> &#8358;{amount:,.0f}<br/>"
+                f"<strong>Reference:</strong> {ref or '&#8212;'}<br/>"
+                f"<strong>Proof ID:</strong> {proof_id}<br/>"
+                f"<strong>Submitted:</strong> {_btp_date}",
+                bg="#f0fdf4", border="#16A34A",
+            )
+            + "<p style='color:#475569;font-size:.85rem;line-height:1.7;'>"
+              "Your account will be upgraded within <strong>24 hours</strong> after admin review. "
+              "You will receive another email once approved.</p>"
+            + _cta("&#128640; Go to MyPy Tutor", _os.getenv("FRONTEND_URL", "https://mypytutor.com.ng"))
+        )
+        _html_full = _shell(_body_html, "Receipt received — pending admin review.")
+        _dispatch_async(
+            email,
+            f"Receipt Received — {plan} | MyPy Tutor",
+            _html_full,
+            f"Hi {_btp_first},\n\nWe received your payment receipt for {plan} (₦{amount:,.0f}).\n"
+            f"Proof ID: {proof_id}\nYour account will be upgraded within 24 hours.\n\n— MyPy Tutor Team",
+            "bank_transfer_received",
+        )
+    except Exception as _btp_email_exc:
+        logger.debug("Learner bank-transfer receipt email failed (non-fatal): %s", _btp_email_exc)
+
     return {
         "ok":         True,
         "proof_id":   proof_id,
@@ -4236,6 +4362,44 @@ async def admin_approve_bank_transfer(
         else:              tier = "tier1"
 
     learner_id = proof["learner_id"]
+
+    # Check if plan is an individual course slug — grant course access instead of tier
+    from app.courses import COURSE_CATALOG as _CC_approve
+    plan_slug = (proof["plan"] or "").strip().lower()
+    if plan_slug in _CC_approve:
+        # Individual course purchase — grant course access, not a tier upgrade
+        record_course_purchase(learner_id, plan_slug,
+                               float(proof["amount"]), proof_id)
+        from app.admin import add_payment, confirm_payment as _cfp
+        _p_course = add_payment(
+            user_email=proof["email"],
+            user_name=proof.get("email", "").split("@")[0],
+            amount=float(proof["amount"]),
+            plan=proof["plan"],
+            method="bank_transfer",
+            notes=f"Proof ID: {proof_id}" + (f" | {admin_notes}" if admin_notes else ""),
+        )
+        _cfp(_p_course.id)
+        try:
+            from app.services.email_service import send_payment_receipt_email
+            send_payment_receipt_email(
+                name=proof["email"].split("@")[0],
+                email=proof["email"],
+                amount=float(proof["amount"]),
+                plan=proof["plan"],
+                payment_id=_p_course.id,
+                currency="NGN",
+            )
+        except Exception:
+            pass
+        log_activity("admin", "payment:bank-transfer-approved-course",
+                     f"proof={proof_id} learner={learner_id} course={plan_slug}")
+        return {
+            "ok": True, "proof_id": proof_id,
+            "tier": None, "tier_label": f"Course: {plan_slug}",
+            "message": f"Bank transfer approved. {proof['email']} granted access to {plan_slug}.",
+        }
+
     upgrade_tier_db(learner_id, tier)
     apply_tier_upgrade(learner_id, tier)
 
@@ -7143,6 +7307,52 @@ async def serve_payment_page() -> HTMLResponse:
     with open(path, "r", encoding="utf-8") as f:
         content = f.read()
     return HTMLResponse(content=content)
+
+
+@app.get("/payment/callback", response_class=HTMLResponse, include_in_schema=False)
+async def payment_callback(
+    reference: str = "",
+    trxref: str = "",
+    request: Request = None,
+) -> HTMLResponse:
+    """
+    Paystack redirects the user here after checkout (both card and bank transfer).
+    Serves a success confirmation page. The reference param is set by Paystack.
+    If the user is already on the frontend SPA, JS will detect ?payment=success
+    instead (see payment.html).
+    """
+    ref = reference or trxref or ""
+    frontend_url = _os.getenv("FRONTEND_URL", "https://mypytutor.com.ng")
+    html_content = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Payment — MyPy Tutor</title>
+  <meta http-equiv="refresh" content="4; url={frontend_url}/?payment=success&ref={ref}"/>
+  <style>
+    body{{font-family:'Segoe UI',Arial,sans-serif;background:#07090f;color:#e2e8f0;
+         display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;}}
+    .card{{background:rgba(255,255,255,.05);border:1px solid rgba(16,185,129,.3);
+          border-radius:16px;padding:40px 32px;max-width:460px;text-align:center;}}
+    h2{{color:#6ee7b7;font-size:1.4rem;margin:0 0 12px;}}
+    p{{color:#94a3b8;font-size:.9rem;line-height:1.7;margin:0 0 20px;}}
+    a{{color:#60a5fa;text-decoration:none;font-weight:600;}}
+    .ref{{font-size:.75rem;color:#475569;margin-top:8px;}}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div style="font-size:2.5rem;margin-bottom:12px;">&#x2705;</div>
+    <h2>Payment Received!</h2>
+    <p>Thank you for your payment. Your account will be updated
+       automatically. Redirecting you to MyPy Tutor&#8230;</p>
+    <a href="{frontend_url}/?payment=success&ref={ref}">&#8592; Back to MyPy Tutor</a>
+    {f'<p class="ref">Reference: {ref}</p>' if ref else ''}
+  </div>
+</body>
+</html>"""
+    return HTMLResponse(content=html_content)
 
 
 # ---------------------------------------------------------------------------
