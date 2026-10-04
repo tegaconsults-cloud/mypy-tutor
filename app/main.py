@@ -3842,17 +3842,19 @@ async def paystack_initialize(request: Request,
         # 4. Try prompt plans (prompt-starter / prompt-pro / prompt-unlimited)
         if not _resolved:
             from app.courses import PROMPT_PLANS as _PP_init
-            _plan_key = plan.lower().replace(" ", "-").replace("_", "-")
-            if _plan_key in _PP_init:
-                amount_ngn = float(_PP_init[_plan_key]["price_ngn"])
-                _resolved = True
-            else:
-                # also try matching by name
-                for _pk, _pv in _PP_init.items():
-                    if plan.lower() in _pv.get("name", "").lower() or _pk in plan.lower():
-                        amount_ngn = float(_pv["price_ngn"])
-                        _resolved = True
-                        break
+            # Normalize: "Prompt Starter Plan" -> "prompt-starter-plan"
+            _plan_norm = plan.lower().replace(" ", "-").replace("_", "-")
+            for _pk, _pv in _PP_init.items():
+                _pname_norm = _pv.get("name", "").lower().replace(" ", "-")
+                # Match: exact slug, slug prefix, or plan string contains slug
+                if (_plan_norm == _pk
+                        or _plan_norm.startswith(_pk)
+                        or _pk in _plan_norm
+                        or _pname_norm in _plan_norm
+                        or _plan_norm in _pname_norm):
+                    amount_ngn = float(_pv["price_ngn"])
+                    _resolved = True
+                    break
         if not _resolved or amount_ngn <= 0:
             raise HTTPException(
                 status_code=400,
