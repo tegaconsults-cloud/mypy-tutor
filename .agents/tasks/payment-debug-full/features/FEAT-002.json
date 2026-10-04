@@ -2,7 +2,7 @@
   "id": "FEAT-002",
   "type": "fix",
   "description": "Fix 6 payment bugs in app/main.py. These are independent of the static HTML fixes (FEAT-003) and must be applied first since the static pages call these backend routes. All changes are surgical — no refactoring outside the named bugs.",
-  "status": "pending",
+  "status": "completed",
   "steps": [
     "FIX 1 (email blank in /payments/paystack/initialize, line ~3806): After 'email = user.email or \"\"', add a DB fallback that queries email_accounts WHERE learner_id=learner_id, then learner_profiles.email, before failing. If email is still blank/missing '@' after fallback, raise HTTPException(400, 'We could not find your email address. Please update your profile before checkout.'). Pattern to follow: the identical fallback already exists in POST /payments/dedicated-account (lines ~3900-3915).",
 
@@ -34,5 +34,5 @@
     "python -c \"from app.main import app; routes=[r.path for r in app.routes]; print([r for r in routes if 'callback' in r or 'verify' in r])\" → lists '/payment/callback' and '/payments/paystack/verify/{reference}'"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "All 6 fixes applied to app/main.py. Route verification: callback_ok, verify_ok confirmed by python import check. Fix 1: email blank fallback added in paystack_initialize, queries email_accounts then raises 400 with clear message. Fix 2: webhook learner_id assignment now uses metadata fallback before email string, plus post-DVA safety check queries learner_profiles. Fix 3: GET /payment/callback added after serve_payment_page, returns styled HTML success page with 4s meta-refresh redirect. Fix 4: GET /payments/paystack/verify/{reference} added after paystack_initialize, requires auth, validates reference format, calls Paystack verify API. Fix 5: learner confirmation email added in submit_bank_transfer_proof after admin notification, uses _dispatch_async non-blocking. Fix 6: course-slug check added in admin_approve_bank_transfer before upgrade_tier_db — if plan matches COURSE_CATALOG key, calls record_course_purchase and returns early without tier upgrade. INTEGRATION VERIFIED (Iteration 1): callback_ok, verify_ok, COURSE_CATALOG 17 entries, _dispatch_async importable, learner_id fallback chain confirmed at lines 2544-2575, email blank guard confirmed at line 3844-3847, course-slug early-return confirmed at lines 4370-4405."
 }
