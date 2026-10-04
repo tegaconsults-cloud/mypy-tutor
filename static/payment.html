@@ -239,6 +239,25 @@ body::before{
 </div>
 
 <script>
+// ── Payment success detection ─────────────────────────────────────────────
+(function detectPaymentSuccess() {
+  const _sp = new URLSearchParams(location.search);
+  if (_sp.get('payment') === 'success' || _sp.get('status') === 'success') {
+    const ref = _sp.get('ref') || _sp.get('reference') || _sp.get('trxref') || '';
+    const banner = document.createElement('div');
+    banner.innerHTML = `
+      <div style="position:fixed;top:0;left:0;right:0;z-index:9999;
+        background:rgba(16,185,129,.15);border-bottom:1px solid rgba(16,185,129,.4);
+        padding:14px 24px;text-align:center;font-size:.9rem;color:#6ee7b7;
+        font-family:'Segoe UI',Arial,sans-serif;">
+        ✅ <strong>Payment received!</strong> Your account will be updated automatically.
+        ${ref ? ` Reference: <code style="background:rgba(255,255,255,.08);padding:1px 6px;border-radius:4px;">${ref}</code>` : ''}
+        &nbsp;·&nbsp;<a href="https://mypytutor.com.ng" style="color:#93c5fd;">Go to MyPy Tutor →</a>
+      </div>`;
+    document.body.prepend(banner);
+  }
+})();
+
 // ── Config ───────────────────────────────────────────────────────────────────
 const API = 'https://mypytutor.onrender.com';
 

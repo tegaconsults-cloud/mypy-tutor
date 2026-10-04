@@ -203,13 +203,6 @@ h2{color:#fcd34d;font-size:1.35rem;font-weight:800;margin-bottom:12px;text-align
       <span id="ps-label">🚀 Pay Now — Unlock Certificate</span>
     </button>
     <p id="ps-error" style="display:none;color:#fca5a5;font-size:.82rem;margin-top:8px;text-align:center;border-radius:8px;padding:8px 12px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);"></p>
-    <script>
-      // Show correct amount on button as soon as page loads
-      (function(){
-        var a = SERVER_AMOUNT || PLAN_AMOUNTS[SERVER_PLAN] || 0;
-        if(a) document.getElementById('ps-label').textContent = '\uD83D\uDE80 Pay \u20A6'+a.toLocaleString()+' \u2014 Unlock Certificate';
-      })();
-    </script>
     <p style="font-size:.74rem;color:#4a5568;margin-top:10px;text-align:center;">
       Secured by Paystack · Card, bank transfer &amp; USSD accepted
     </p>
@@ -525,6 +518,13 @@ function clearBtAlert() {
   el.className = 'alert';
   el.innerHTML = '';
 }
+
+// ── Set Paystack button label once SERVER_AMOUNT is known ─────────────────
+(function(){
+  var a = SERVER_AMOUNT || PLAN_AMOUNTS[SERVER_PLAN] || 0;
+  if(a) document.getElementById('ps-label').textContent =
+    '\uD83D\uDE80 Pay \u20A6' + a.toLocaleString() + ' \u2014 Unlock Certificate';
+})();
 </script>
 </body>
 </html>
