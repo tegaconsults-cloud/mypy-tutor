@@ -1,0 +1,38 @@
+{
+  "id": "FEAT-002",
+  "type": "fix",
+  "description": "Fix 6 payment bugs in app/main.py. These are independent of the static HTML fixes (FEAT-003) and must be applied first since the static pages call these backend routes. All changes are surgical — no refactoring outside the named bugs.",
+  "status": "pending",
+  "steps": [
+    "FIX 1 (email blank in /payments/paystack/initialize, line ~3806): After 'email = user.email or \"\"', add a DB fallback that queries email_accounts WHERE learner_id=learner_id, then learner_profiles.email, before failing. If email is still blank/missing '@' after fallback, raise HTTPException(400, 'We could not find your email address. Please update your profile before checkout.'). Pattern to follow: the identical fallback already exists in POST /payments/dedicated-account (lines ~3900-3915).",
+
+    "FIX 2 (learner_id becomes email string in webhook, line ~2545): The line 'learner_id = acct[\"learner_id\"] if acct else email' sets learner_id to the email string when load_email_account returns None (Google OAuth users). Replace with: learner_id = acct[\"learner_id\"] if acct else (str(meta.get(\"learner_id\", \"\") or \"\").strip() or email). Then immediately after the full DVA fallback block (after the 'if _cust_code:' block, around line ~2557), add a safety check: if learner_id and '@' in learner_id: query learner_profiles WHERE email=learner_id LIMIT 1; if found, use that learner_id.",
+
+    "FIX 3 (add GET /payment/callback route): After the existing @app.get('/payment', ...) function (around line 7146), add a new @app.get('/payment/callback', response_class=HTMLResponse, include_in_schema=False) route. It reads query params 'reference' and 'trxref' (both optional). Returns a self-contained HTML page with a green success card that says 'Payment Received!' and includes a <meta http-equiv=refresh> redirect to {FRONTEND_URL}/?payment=success&ref={ref} after 4 seconds. Also includes a manual link to {FRONTEND_URL}/?payment=success&ref={ref}.",
+
+    "FIX 4 (add GET /payments/paystack/verify/{reference} endpoint): After the paystack_initialize function (around line ~3880), add @app.get('/payments/paystack/verify/{reference}'). Requires authentication (user=Depends(get_current_user), raises 401 if user is None). Validates reference format with regex r'^[a-zA-Z0-9_\\-]{4,100}$'. Calls httpx.get('https://api.paystack.co/transaction/verify/{reference}') with Bearer secret_key header. Returns {status, paid (bool), plan, amount_kobo, amount_ngn, reference}. On Paystack error: raises HTTPException(502). On missing secret key: raises HTTPException(503).",
+
+    "FIX 5 (learner receipt email in bank-transfer/submit, around line ~4120): After the admin notification block inside submit_bank_transfer_proof (after the send_admin_notification call), add a non-blocking learner confirmation email using _dispatch_async from app/services/email_service.py. Use _shell(), _box(), _cta() helpers. Subject: 'Receipt Received — {plan} | MyPy Tutor'. Body: shows plan, amount, reference, proof_id, submitted timestamp. Wrap in try/except, log failures as logger.debug (non-fatal).",
+
+    "FIX 6 (course-slug routing in bank-transfer approve, inside admin_approve_bank_transfer around line ~4209): Before the '_valid_tiers' block, check if proof['plan'].lower().strip() is a key in COURSE_CATALOG (from app/courses.py). If it is: call record_course_purchase(learner_id, plan_slug, float(proof['amount']), proof_id), add_payment(...) + confirm_payment(...), send_payment_receipt_email, log_activity, and return early with {ok:True, tier:None, tier_label:'Course: {plan_slug}', message:...}. Skip upgrade_tier_db entirely for course-slug plans.",
+
+    "After all 6 fixes, commit: 'fix: payment flow bugs — email blank, learner_id fallback, callback route, verify endpoint, receipt email, course-slug approve'"
+  ],
+  "acceptance_criteria": [
+    "POST /payments/paystack/initialize with a user whose user.email is blank does NOT return a Paystack 'No such customer' error — it either finds email from DB or returns a clear 400 with 'could not find your email address'",
+    "Paystack webhook with a Google OAuth user (no email_accounts row) resolves learner_id to the real learner_id (not the email string) via metadata or learner_profiles fallback",
+    "GET /payment/callback?reference=TEST returns HTTP 200 HTML containing 'Payment Received!' and a redirect to FRONTEND_URL/?payment=success",
+    "GET /payments/paystack/verify/TEST with valid token returns HTTP 502 (Paystack unreachable for fake ref) or structured JSON — NOT 401 or 404 or 500",
+    "POST /payments/bank-transfer/submit returns {ok:true, proof_id:...} AND triggers a learner confirmation email (visible in server logs or email provider)",
+    "POST /admin/payments/bank-transfer/{proof_id}/approve for a proof with plan='python-dsa' creates a course_purchases row — does NOT change tier to tier1"
+  ],
+  "verification": [
+    "Start server: uvicorn app.main:app --reload --port 8000",
+    "GET http://localhost:8000/health → {status: ok}",
+    "GET http://localhost:8000/payment/callback?reference=TESTREF → HTTP 200, HTML contains 'Payment Received!'",
+    "GET http://localhost:8000/payments/paystack/verify/TESTREF with Authorization: Bearer <valid_token> → HTTP 502 or JSON (not 404, 401, 500)",
+    "python -c \"from app.main import app; routes=[r.path for r in app.routes]; print([r for r in routes if 'callback' in r or 'verify' in r])\" → lists '/payment/callback' and '/payments/paystack/verify/{reference}'"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

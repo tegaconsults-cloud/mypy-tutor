@@ -1,0 +1,28 @@
+{
+  "id": "FEAT-003",
+  "type": "fix",
+  "description": "Fix 2 static HTML issues: (1) payment.html missing payment-success detection banner, (2) certificate-locked.html inline <script> ReferenceError because SERVER_AMOUNT/PLAN_AMOUNTS are referenced before they are defined. Independent of FEAT-002 at the file level, but logically depends on FEAT-002's /payment/callback route existing.",
+  "status": "pending",
+  "steps": [
+    "FIX A (static/payment.html — add success banner): At the very top of the existing <script> block (before 'const API = ...'), insert an IIFE that checks URLSearchParams for payment=success or status=success. If found, creates a fixed-position green banner div and prepends it to document.body. Banner shows: '✅ Payment received! Your account will be updated automatically.' plus the reference code if present (from ?ref= or ?reference= or ?trxref=) and a link 'Go to MyPy Tutor →' pointing to https://mypytutor.com.ng",
+
+    "FIX B (static/certificate-locked.html — fix inline script ReferenceError): Remove the inline <script> block that is inside the Paystack panel <div> (it reads: '(function(){ var a = SERVER_AMOUNT || PLAN_AMOUNTS[SERVER_PLAN] || 0; if(a) document.getElementById(\"ps-label\")...'). This block runs before the main <script> defines SERVER_AMOUNT/PLAN_AMOUNTS, causing ReferenceError. Instead, add the same IIFE at the very END of the main <script> block (just before </script>), after all variable and function declarations. The IIFE sets the ps-label button text to the correct price.",
+
+    "Commit: 'fix: payment.html success banner + certificate-locked.html ReferenceError'"
+  ],
+  "acceptance_criteria": [
+    "Opening http://localhost:8000/payment?payment=success&ref=TEST123 in a browser shows a green banner at the top with 'Payment received!' and 'TEST123'",
+    "Opening http://localhost:8000/certificate/basic (for a learner with no tier — server returns 402 with certificate-locked.html) shows the correct price on the Pay Now button (e.g. '🚀 Pay ₦30,000 — Unlock Certificate') with no browser console ReferenceError",
+    "All existing Paystack and bank-transfer functionality in payment.html still works (startPaystack(), submitProof(), applyCoupon() functions are unchanged)"
+  ],
+  "verification": [
+    "Start server: uvicorn app.main:app --reload --port 8000",
+    "curl -s 'http://localhost:8000/payment?payment=success&ref=ABC' | grep -o 'Payment received' → prints 'Payment received' (the banner HTML is in the page source... wait, it's JS not SSR — verify in browser instead)",
+    "In browser: open http://localhost:8000/payment?payment=success → green banner visible",
+    "In browser: open http://localhost:8000/certificate/basic (unauthenticated) → button shows price, no console ReferenceError",
+    "python -c \"open('static/payment.html').read()\" | grep -c 'detectPaymentSuccess' — should be >= 1",
+    "python -c \"content=open('static/certificate-locked.html').read(); print('inline_script_gone' if 'SERVER_AMOUNT || PLAN_AMOUNTS' not in content.split('</script>')[0].split('<script>')[1] else 'STILL_BROKEN')\""
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

@@ -1,0 +1,23 @@
+{
+  "project_type": "FastAPI Python backend (app/) + vanilla HTML/JS static frontend (static/)",
+  "language": "Python 3.11, vanilla JavaScript (no build step)",
+  "build_system": "No build step. Dependencies: pip install -r requirements.txt. Server: uvicorn app.main:app --reload",
+  "test_framework": "No automated test suite present. Verification is manual: start the server and curl/check endpoints.",
+  "build_command": "pip install -r requirements.txt",
+  "test_command": "uvicorn app.main:app --reload --port 8000",
+  "verification_instructions": "1) Start server: uvicorn app.main:app --reload. 2) GET /health → {status:ok}. 3) Test each endpoint manually per FEAT verification steps. No pytest/unittest files exist.",
+  "snapshot_or_generated_files": null,
+  "environment_constraints": "DATABASE_URL must be set for DB operations. PAYSTACK_SECRET_KEY required for Paystack calls. RESEND_API_KEY for email. In dev without these, most endpoints return 503 gracefully — that is expected and acceptable.",
+  "contribution_requirements": "No AGENTS.md or CONTRIBUTING.md. Keep changes surgical — no refactoring outside the specific bugs. Match existing code style (no type hints on new vars, f-strings, logger.debug for non-fatal errors).",
+  "key_patterns": "All DB calls use 'with get_db() as conn: with conn.cursor(...) as cur:' pattern. Non-fatal errors are caught and logged with logger.debug/logger.warning — never re-raised. Email sends are non-blocking via _dispatch_async. Route handlers use Depends(get_current_user) for auth; user=None means unauthenticated. Error responses use raise HTTPException(status_code=..., detail=...) which main.py maps to {error: ...} JSON.",
+  "relevant_files": [
+    "app/main.py",
+    "static/payment.html",
+    "static/certificate-locked.html",
+    "app/paystack.py",
+    "app/db.py",
+    "app/services/email_service.py",
+    "app/courses.py"
+  ],
+  "directory_structure": "app/ = all Python backend (main.py is the FastAPI app, db.py is the DB layer, paystack.py is DVA helpers, services/email_service.py is the email provider). static/ = all HTML/CSS/JS served directly by FastAPI. .agents/tasks/ = workflow artifacts (do not commit). _diag_admin.py, _diag_admin2.py = orphan diagnostic scripts to delete."
+}
