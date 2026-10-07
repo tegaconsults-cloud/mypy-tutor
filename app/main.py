@@ -7332,6 +7332,249 @@ async def tts_voices() -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Gemini voice routes
+# ---------------------------------------------------------------------------
+# POST /tts/speak   — text → Gemini TTS → base64 WAV audio
+# POST /voice/chat  — base64 audio → Gemini STT → chat LLM → Gemini TTS
+#                     → returns transcript + reply text + base64 WAV audio
+# ---------------------------------------------------------------------------
+
+def _gemini_tts(text: str, voice: str = "Aoede") -> bytes:
+    """
+    Call Gemini 3.8 TTS and return raw WAV bytes.
+    Uses the google-genai SDK (separate from google-generativeai used for chat).
+    Voice options: Aoede, Kore, Charon, Puck, Fenrir, Leda, Orus, Zephyr.
+    Aoede = warm, clear female voice — closest to a tutor.
+    Falls back to empty bytes on any error so callers can degrade gracefully.
+    """
+    api_key = _os.getenv("GEMINI_API_KEY", "")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY not set")
+    try:
+        from google import genai as _gai
+        from google.genai import types as _gtypes
+        _gai_client = _gai.Client(api_key=api_key)
+        response = _gai_client.models.generate_content(
+            model="gemini-2.5-flash-preview-tts",
+            contents=text,
+            config=_gtypes.GenerateContentConfig(
+                response_modalities=["AUDIO"],
+                speech_config=_gtypes.SpeechConfig(
+                    voice_config=_gtypes.VoiceConfig(
+                        prebuilt_voice_config=_gtypes.PrebuiltVoiceConfig(
+                            voice_name=voice
+                        )
+                    )
+                ),
+            ),
+        )
+        # Extract PCM audio from response
+        import base64 as _b64
+        audio_data = response.candidates[0].content.parts[0].inline_data.data
+        # audio_data is already bytes (PCM). Wrap in WAV container.
+        return _pcm_to_wav(audio_data, sample_rate=24000, channels=1, sample_width=2)
+    except Exception as _exc:
+        logger.error("Gemini TTS error: %s", _exc)
+        raise
+
+
+def _gemini_stt(audio_b64: str, mime_type: str = "audio/webm") -> str:
+    """
+    Transcribe audio using Gemini's audio understanding.
+    Sends base64-encoded audio and asks Gemini to return just the transcript.
+    """
+    api_key = _os.getenv("GEMINI_API_KEY", "")
+    if not api_key:
+        raise RuntimeError("GEMINI_API_KEY not set")
+    try:
+        from google import genai as _gai
+        from google.genai import types as _gtypes
+        import base64 as _b64
+        _gai_client = _gai.Client(api_key=api_key)
+        audio_bytes = _b64.b64decode(audio_b64)
+        response = _gai_client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=[
+                _gtypes.Part(
+                    inline_data=_gtypes.Blob(mime_type=mime_type, data=audio_bytes)
+                ),
+                "Transcribe the speech in this audio exactly as spoken. "
+                "Return ONLY the transcript text, nothing else.",
+            ],
+        )
+        return (response.text or "").strip()
+    except Exception as _exc:
+        logger.error("Gemini STT error: %s", _exc)
+        raise
+
+
+def _pcm_to_wav(pcm: bytes, sample_rate: int = 24000,
+                channels: int = 1, sample_width: int = 2) -> bytes:
+    """Wrap raw PCM bytes in a proper WAV container."""
+    import io, struct
+    buf = io.BytesIO()
+    data_len   = len(pcm)
+    byte_rate  = sample_rate * channels * sample_width
+    block_align = channels * sample_width
+    # RIFF header
+    buf.write(b"RIFF")
+    buf.write(struct.pack("<I", 36 + data_len))   # chunk size
+    buf.write(b"WAVE")
+    # fmt sub-chunk
+    buf.write(b"fmt ")
+    buf.write(struct.pack("<I", 16))              # sub-chunk size
+    buf.write(struct.pack("<H", 1))               # PCM = 1
+    buf.write(struct.pack("<H", channels))
+    buf.write(struct.pack("<I", sample_rate))
+    buf.write(struct.pack("<I", byte_rate))
+    buf.write(struct.pack("<H", block_align))
+    buf.write(struct.pack("<H", sample_width * 8))  # bits per sample
+    # data sub-chunk
+    buf.write(b"data")
+    buf.write(struct.pack("<I", data_len))
+    buf.write(pcm)
+    return buf.getvalue()
+
+
+@app.post("/tts/speak")
+async def tts_speak(request: Request) -> dict:
+    """
+    Convert text to speech using Gemini TTS.
+    Returns base64-encoded WAV audio the frontend can play directly.
+
+    Request body:
+        { "text": "...", "voice": "Aoede" }   voice is optional
+
+    Response:
+        { "audio_b64": "...", "mime_type": "audio/wav", "char_count": N }
+    """
+    body = await request.json()
+    raw  = str(body.get("text", "")).strip()
+    if not raw:
+        raise HTTPException(status_code=400, detail="No text provided.")
+    if len(raw) > 5000:
+        raw = raw[:5000]   # Gemini TTS has a practical limit; truncate gracefully
+
+    voice = str(body.get("voice", "Aoede")).strip() or "Aoede"
+    # Clean markdown before sending to TTS
+    from app.formatter import strip_markdown_for_tts as _strip
+    clean = _strip(raw) if hasattr(__import__("app.formatter", fromlist=["strip_markdown_for_tts"]), "strip_markdown_for_tts") else raw
+
+    try:
+        import base64 as _b64
+        wav_bytes = _gemini_tts(clean, voice=voice)
+        return {
+            "audio_b64":  _b64.b64encode(wav_bytes).decode(),
+            "mime_type":  "audio/wav",
+            "char_count": len(clean),
+        }
+    except RuntimeError as exc:
+        if "not set" in str(exc):
+            raise HTTPException(status_code=503, detail="Gemini TTS not configured.")
+        raise HTTPException(status_code=502, detail=f"Gemini TTS error: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"TTS failed: {exc}")
+
+
+@app.post("/voice/chat")
+async def voice_chat(request: Request,
+                     user=Depends(get_current_user)) -> dict:
+    """
+    Full Gemini voice pipeline:
+      1. Receive base64 audio from the student's microphone
+      2. Transcribe with Gemini (STT)
+      3. Run transcript through the chat LLM (Sir. Tega)
+      4. Synthesise LLM response with Gemini TTS
+      5. Return transcript, reply text, and base64 WAV audio
+
+    Request body:
+        {
+          "audio_b64":  "<base64>",          required
+          "mime_type":  "audio/webm",        optional, default audio/webm
+          "learner_id": "...",               optional
+          "level":      "beginner",          optional
+          "voice":      "Aoede",             optional
+        }
+
+    Response:
+        {
+          "transcript":  "What is a list?",
+          "reply_text":  "A list in Python is...",
+          "audio_b64":   "<base64 WAV>",
+          "mime_type":   "audio/wav",
+        }
+    """
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sign in to use voice chat.")
+
+    body       = await request.json()
+    audio_b64  = str(body.get("audio_b64", "")).strip()
+    mime_type  = str(body.get("mime_type", "audio/webm")).strip() or "audio/webm"
+    learner_id = str(body.get("learner_id", user.learner_id)).strip() or user.learner_id
+    level      = str(body.get("level", "beginner")).strip() or "beginner"
+    voice      = str(body.get("voice", "Aoede")).strip() or "Aoede"
+
+    if not audio_b64:
+        raise HTTPException(status_code=400, detail="audio_b64 is required.")
+
+    # ── Step 1: Transcribe ────────────────────────────────────────────────
+    try:
+        transcript = _gemini_stt(audio_b64, mime_type=mime_type)
+    except RuntimeError as exc:
+        if "not set" in str(exc):
+            raise HTTPException(status_code=503, detail="Gemini not configured.")
+        raise HTTPException(status_code=502, detail=f"Transcription failed: {exc}")
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Transcription error: {exc}")
+
+    if not transcript:
+        raise HTTPException(status_code=422,
+                            detail="Could not transcribe audio. Please speak more clearly.")
+
+    # ── Step 2: Chat LLM (Sir. Tega) ─────────────────────────────────────
+    try:
+        from app.prompts   import build_system_prompt
+        from app.llm_client import call_llm
+        system  = build_system_prompt(level, learner_id)
+        reply   = call_llm(
+            system=system,
+            messages=[{"role": "user", "content": transcript}],
+            intent="concept",
+            temp=0.7,
+        )
+    except Exception as exc:
+        logger.error("voice_chat LLM error: %s", exc)
+        reply = "I'm sorry, I couldn't process that right now. Please try again."
+
+    # ── Step 3: Synthesise reply ──────────────────────────────────────────
+    # Strip markdown before TTS — code blocks etc. sound bad spoken
+    import re as _re_vc
+    tts_text = _re_vc.sub(r"```[\s\S]*?```", " code block. ", reply)
+    tts_text = _re_vc.sub(r"`[^`]+`", "", tts_text)
+    tts_text = _re_vc.sub(r"\*+([^*]+)\*+", r"\1", tts_text)
+    tts_text = _re_vc.sub(r"#+\s*", "", tts_text)
+    tts_text = tts_text.strip()[:3000]   # cap TTS length
+
+    try:
+        import base64 as _b64_vc
+        wav_bytes = _gemini_tts(tts_text, voice=voice)
+        audio_out = _b64_vc.b64encode(wav_bytes).decode()
+    except Exception as exc:
+        logger.error("voice_chat TTS error: %s", exc)
+        audio_out = ""   # return text reply even if TTS fails
+
+    log_activity(learner_id, "voice:chat",
+                 f"transcript_len={len(transcript)} reply_len={len(reply)}")
+
+    return {
+        "transcript":  transcript,
+        "reply_text":  reply,
+        "audio_b64":   audio_out,
+        "mime_type":   "audio/wav",
+    }
+
+
+# ---------------------------------------------------------------------------
 # FIX: Render persistent disk — DB_PATH env var documented in render.yaml
 #      (no code change needed — db.py already reads DB_PATH env var)
 # ---------------------------------------------------------------------------

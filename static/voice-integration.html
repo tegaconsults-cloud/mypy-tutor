@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Sir. Tega Voice — Integration Guide</title>
+<title>Sir. Tega Voice — Gemini Integration Guide</title>
 <style>
 :root{--bg:#07090f;--surface:#0d1120;--card:#111827;--accent:#3b82f6;
 --text:#f1f5f9;--muted:#64748b;--sub:#94a3b8;--green:#10b981;
@@ -20,15 +20,21 @@ pre{background:var(--card);border:1px solid rgba(59,130,246,.2);border-radius:10
 padding:18px 20px;overflow-x:auto;margin:10px 0 20px;font-size:.82rem;line-height:1.65}
 code{color:#86efac;font-family:'Fira Code','Cascadia Code',monospace}
 pre code{color:#e2e8f0}
-.tag{display:inline-block;padding:2px 9px;border-radius:12px;font-size:.72rem;
-font-weight:600;letter-spacing:.04em}
+.flow{background:var(--card);border:1px solid rgba(59,130,246,.18);border-radius:12px;
+padding:20px 24px;margin:16px 0;font-size:.88rem}
+.flow-step{display:flex;align-items:flex-start;gap:12px;margin:8px 0;color:var(--sub)}
+.flow-num{background:rgba(59,130,246,.2);color:#93c5fd;border-radius:50%;
+width:24px;height:24px;display:flex;align-items:center;justify-content:center;
+font-size:.72rem;font-weight:700;flex-shrink:0;margin-top:2px}
+.arrow{color:rgba(59,130,246,.4);text-align:center;margin:2px 0 2px 30px;font-size:.9rem}
+.tag{display:inline-block;padding:2px 9px;border-radius:12px;font-size:.72rem;font-weight:600;letter-spacing:.04em}
 .tag-new{background:rgba(16,185,129,.15);color:#6ee7b7;border:1px solid rgba(16,185,129,.3)}
 .tag-req{background:rgba(239,68,68,.12);color:#fca5a5;border:1px solid rgba(239,68,68,.25)}
 .tag-opt{background:rgba(59,130,246,.12);color:#93c5fd;border:1px solid rgba(59,130,246,.25)}
 .api-row{display:flex;gap:10px;align-items:baseline;margin:6px 0}
 .method{font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:6px}
-.get{background:rgba(16,185,129,.15);color:#6ee7b7}
 .post{background:rgba(59,130,246,.15);color:#93c5fd}
+.get{background:rgba(16,185,129,.15);color:#6ee7b7}
 .path{font-family:monospace;font-size:.85rem;color:#e2e8f0}
 .desc{color:var(--sub);font-size:.82rem}
 .note{background:rgba(251,191,36,.07);border-left:3px solid #f59e0b;
@@ -40,241 +46,202 @@ li{color:var(--sub);font-size:.88rem;margin-bottom:4px}
 </head>
 <body>
 
-<h1>🎙 Sir. Tega Voice — Integration Guide</h1>
-<p style="color:#64748b;font-size:.82rem;margin-bottom:24px">
-  How to add TTS (text-to-speech) and STT (speech-to-text) to the MyPy Tutor
-  Vercel frontend using the <code>voice.js</code> module served from the backend.
+<h1>🎙 Sir. Tega Voice — Gemini Integration Guide</h1>
+<p style="color:#64748b;font-size:.82rem;margin-bottom:4px">
+  Powered by <strong style="color:#6ee7b7">Google Gemini</strong> — full end-to-end voice pipeline.
+  No third-party TTS services. No Web Speech API dependency for quality audio.
 </p>
+<p style="font-size:.78rem;color:#4a5568">Updated: October 2026</p>
 
-<!-- ── WHAT'S INCLUDED ─────────────────────────────────────────────────── -->
-<h2>What's included</h2>
-<ul>
-  <li><strong>🔊 Text-to-Speech (TTS)</strong> — Sir. Tega reads AI responses aloud using the browser Web Speech API. Zero external dependencies, zero cost.</li>
-  <li><strong>🎤 Speech-to-Text (STT)</strong> — user speaks questions into the chat input. Defaults to Nigerian English (en-NG).</li>
-  <li><strong>🎙 Voice settings panel</strong> — floating button opens a panel: voice picker, speed, pitch, volume, auto-speak toggle.</li>
-  <li><strong>💾 Persistent prefs</strong> — voice preferences saved to <code>localStorage</code>, survive page reloads.</li>
-  <li><strong>📱 iOS-safe chunked TTS</strong> — long responses split into sentence chunks to avoid the iOS 15 speech cut-off bug.</li>
-</ul>
+<h2>How it works</h2>
+<div class="flow">
+  <div class="flow-step"><div class="flow-num">1</div><span><strong style="color:#e2e8f0">Student taps 🎤</strong> — MediaRecorder captures microphone audio (WebM/Opus)</span></div>
+  <div class="arrow">↓</div>
+  <div class="flow-step"><div class="flow-num">2</div><span>Audio blob → base64 → <code>POST /voice/chat</code> with JWT auth</span></div>
+  <div class="arrow">↓</div>
+  <div class="flow-step"><div class="flow-num">3</div><span><strong style="color:#6ee7b7">Gemini STT</strong> (<code>gemini-2.0-flash</code>) — transcribes speech to text</span></div>
+  <div class="arrow">↓</div>
+  <div class="flow-step"><div class="flow-num">4</div><span><strong style="color:#93c5fd">Sir. Tega LLM</strong> (Groq → Gemini cascade) — generates reply</span></div>
+  <div class="arrow">↓</div>
+  <div class="flow-step"><div class="flow-num">5</div><span><strong style="color:#fcd34d">Gemini TTS</strong> (<code>gemini-2.5-flash-preview-tts</code>) — synthesises natural audio</span></div>
+  <div class="arrow">↓</div>
+  <div class="flow-step"><div class="flow-num">6</div><span>Base64 WAV returned → browser plays audio, transcript + reply shown in chat</span></div>
+</div>
 
-<!-- ── BACKEND ENDPOINTS ───────────────────────────────────────────────── -->
+<div class="note">
+  ⚡ <strong>Fallback:</strong> If Gemini TTS fails (API error / rate limit), the browser's
+  Web Speech API is used for TTS. If Gemini STT fails, the user can still type manually.
+  The voice feature always degrades gracefully.
+</div>
+
 <h2>Backend endpoints</h2>
 <div class="api-row">
   <span class="method post">POST</span>
-  <span class="path">/tts/prepare</span>
-  <span class="desc">— strips markdown, returns clean speakable text</span>
+  <span class="path">/voice/chat</span>
+  <span class="desc">— full pipeline: audio in → transcript + WAV audio out <span class="tag tag-new">NEW</span></span>
 </div>
 <div class="api-row">
-  <span class="method get">GET</span>
-  <span class="path">/tts/voices</span>
-  <span class="desc">— returns priority-ordered voice name list for the picker</span>
+  <span class="method post">POST</span>
+  <span class="path">/tts/speak</span>
+  <span class="desc">— text → Gemini TTS → WAV audio (for 🔊 Listen button) <span class="tag tag-new">NEW</span></span>
 </div>
-<p>Both are served from the same origin as the API. No auth required.</p>
+<div class="api-row">
+  <span class="method post">POST</span>
+  <span class="path">/tts/prepare</span>
+  <span class="desc">— strip markdown, return clean speakable text (browser TTS helper)</span>
+</div>
 
-<h3>/tts/prepare request</h3>
-<pre><code>POST /tts/prepare
+<h3>POST /voice/chat — Request</h3>
+<pre><code>POST /voice/chat
+Authorization: Bearer &lt;jwt&gt;
 Content-Type: application/json
 
-{ "text": "Your **markdown** AI response here..." }
+{
+  "audio_b64":  "&lt;base64-encoded WebM audio&gt;",  // required
+  "mime_type":  "audio/webm",                    // optional, default audio/webm
+  "learner_id": "e_xxxxx",                       // optional
+  "level":      "beginner",                      // optional
+  "voice":      "Aoede"                          // optional Gemini TTS voice
+}
 
 // Response:
-{ "text": "Your markdown AI response here...", "char_count": 43, "truncated": false }</code></pre>
-
-<!-- ── STEP 1: LOAD SCRIPT ─────────────────────────────────────────────── -->
-<h2>Step 1 — Load the script</h2>
-<p>Add this <strong>once</strong> in your HTML, just before <code>&lt;/body&gt;</code>:</p>
-<pre><code>&lt;script src="https://mypytutor.onrender.com/static/voice.js"&gt;&lt;/script&gt;</code></pre>
-<p>Or, if the frontend is served from the same origin as the API (Vercel + CORS configured):</p>
-<pre><code>&lt;script src="/static/voice.js"&gt;&lt;/script&gt;</code></pre>
-
-<!-- ── STEP 2: INIT ────────────────────────────────────────────────────── -->
-<h2>Step 2 — Initialise</h2>
-<p>Call <code>SirTegaVoice.init()</code> once when the page loads:</p>
-<pre><code>SirTegaVoice.init({
-  // Required
-  apiBase:       'https://mypytutor.onrender.com',   // or window.location.origin
-
-  // Optional — defaults shown
-  inputSelector: '#chat-input',    // CSS selector for the chat message input field
-  micBtnId:      'voice-mic-btn',  // id for mic button (auto-created next to input)
-  speakBtnClass: 'sir-tega-speak-btn', // class added to every 🔊 button
-  autoSpeak:     false,            // auto-read every new AI response
-});</code></pre>
-
-<div class="note">
-  ⚡ <strong>inputSelector</strong> must point to your chat text input. The mic button is inserted
-  immediately after it in the DOM. If your input doesn't exist yet (SPA routing), call
-  <code>SirTegaVoice.init()</code> after the chat panel is rendered.
-</div>
-
-<!-- ── STEP 3: WIRE TO CHAT ────────────────────────────────────────────── -->
-<h2>Step 3 — Wire to your chat messages</h2>
-<p>Every time a new AI response arrives, call <code>onNewResponse()</code>:</p>
-<pre><code>// After you render an AI message bubble into the DOM:
-function handleAIResponse(responseText) {
-  // 1. Render the bubble (your existing code)
-  const bubble = document.createElement('div');
-  bubble.className = 'message assistant';
-  bubble.innerHTML = marked.parse(responseText);  // or however you render markdown
-  chatContainer.appendChild(bubble);
-
-  // 2. Wire voice — attaches 🔊 button + auto-speaks if enabled
-  SirTegaVoice.onNewResponse(bubble, responseText);
+{
+  "transcript":  "What is a list in Python?",
+  "reply_text":  "A list in Python is an ordered...",
+  "audio_b64":   "&lt;base64 WAV&gt;",
+  "mime_type":   "audio/wav"
 }</code></pre>
 
-<p>That's it. The 🔊 Listen button appears on the bubble automatically. Users can also
-open Voice Settings via the floating 🎙 button (bottom-right corner).</p>
+<h3>POST /tts/speak — Request</h3>
+<pre><code>POST /tts/speak
+Authorization: Bearer &lt;jwt&gt;
+Content-Type: application/json
 
-<!-- ── STEP 4: WIRE MIC SUBMIT ─────────────────────────────────────────── -->
-<h2>Step 4 — Auto-submit on voice input (optional)</h2>
-<p>If you want voice input to submit the form automatically after the user stops speaking:</p>
-<pre><code>// In your SpeechRecognition onend handler, or listen for the input event:
-document.getElementById('chat-input').addEventListener('input', function (e) {
-  // Only auto-submit if the value was set by voice (not manual typing)
-  if (SirTegaVoice.isMicActive()) return; // still speaking — wait for onend
-  // You can check a flag you set in your own mic flow, or just let the user submit
-});
+{ "text": "A list in Python is...", "voice": "Aoede" }
 
-// Alternatively, pass a submit callback to the voice module's onend:
-// Override the mic button's click to show a "Send?" confirmation toast
-document.getElementById('voice-mic-btn')?.addEventListener('click', () => {
-  if (!SirTegaVoice.isMicActive()) return;
-  // recognition is running — clicking again stops it; onend will fire
+// Response:
+{ "audio_b64": "&lt;base64 WAV&gt;", "mime_type": "audio/wav", "char_count": 42 }</code></pre>
+
+<h3>Available Gemini TTS voices</h3>
+<pre><code>Aoede   — warm, clear female (recommended — default)
+Kore    — expressive female
+Charon  — deep male
+Puck    — energetic male
+Fenrir  — bold male
+Leda    — bright female
+Orus    — neutral male
+Zephyr  — light, airy</code></pre>
+
+<h2>Step 1 — Load the script</h2>
+<pre><code>&lt;script src="https://mypytutor.onrender.com/static/voice.js"&gt;&lt;/script&gt;</code></pre>
+
+<h2>Step 2 — Initialise</h2>
+<pre><code>SirTegaVoice.init({
+  apiBase:    'https://mypytutor.onrender.com',  // required
+  level:      'beginner',   // learner's current course level
+  voice:      'Aoede',      // Gemini TTS voice
+  autoSpeak:  false,        // auto-read every AI response
+
+  // Called when a full voice exchange completes — render reply in UI
+  onReply: function(transcript, replyText) {
+    appendChatBubble('user',      transcript);
+    appendChatBubble('assistant', replyText);
+  },
 });</code></pre>
 
-<!-- ── FULL EXAMPLE ────────────────────────────────────────────────────── -->
-<h2>Minimal full-page example</h2>
-<pre><code>&lt;!DOCTYPE html&gt;
-&lt;html lang="en"&gt;
-&lt;head&gt;
-  &lt;meta charset="UTF-8"/&gt;
-  &lt;title&gt;MyPy Tutor Chat&lt;/title&gt;
-&lt;/head&gt;
-&lt;body&gt;
-  &lt;div id="chat-messages"&gt;&lt;/div&gt;
-  &lt;div id="chat-bar"&gt;
-    &lt;input id="chat-input" type="text" placeholder="Ask Sir. Tega…"/&gt;
-    &lt;!-- mic button auto-inserted next to input by voice.js --&gt;
-    &lt;button onclick="sendMessage()"&gt;Send&lt;/button&gt;
-  &lt;/div&gt;
+<h2>Step 3 — Wire 🔊 buttons to AI message bubbles</h2>
+<pre><code>// After you render an AI response bubble in the DOM:
+const bubble = document.createElement('div');
+bubble.className = 'message assistant';
+bubble.innerHTML = marked.parse(responseText);
+chatContainer.appendChild(bubble);
 
-  &lt;script src="https://mypytutor.onrender.com/static/voice.js"&gt;&lt;/script&gt;
-  &lt;script&gt;
-    const API = 'https://mypytutor.onrender.com';
-    const token = localStorage.getItem('mpt_token') || '';
+// Attach 🔊 Listen button — uses Gemini TTS automatically
+SirTegaVoice.onNewResponse(bubble, responseText);</code></pre>
 
-    // ── Init voice ──────────────────────────────────────────────────────
-    SirTegaVoice.init({
-      apiBase:       API,
-      inputSelector: '#chat-input',
-      autoSpeak:     false,
-    });
-
-    // ── Send message ────────────────────────────────────────────────────
-    async function sendMessage() {
-      const input = document.getElementById('chat-input');
-      const text  = input.value.trim();
-      if (!text) return;
-      input.value = '';
-
-      // Stop any ongoing speech when user sends a new message
-      SirTegaVoice.stop();
-
-      // Append user bubble
-      appendBubble(text, 'user');
-
-      const res  = await fetch(API + '/chat', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json',
-                   'Authorization': 'Bearer ' + token },
-        body: JSON.stringify({ message: text, learner_id: 'demo', level: 'beginner' }),
-      });
-      const data = await res.json();
-
-      // Append AI bubble and wire voice
-      const bubble = appendBubble(data.content || data.error, 'assistant');
-      SirTegaVoice.onNewResponse(bubble, data.content || '');
-    }
-
-    function appendBubble(text, role) {
-      const el = document.createElement('div');
-      el.className = 'message ' + role;
-      el.textContent = text;
-      document.getElementById('chat-messages').appendChild(el);
-      el.scrollIntoView({ behavior: 'smooth' });
-      return el;
-    }
-
-    // Submit on Enter
-    document.getElementById('chat-input').addEventListener('keydown', e => {
-      if (e.key === 'Enter' &amp;&amp; !e.shiftKey) { e.preventDefault(); sendMessage(); }
-    });
-  &lt;/script&gt;
-&lt;/body&gt;
-&lt;/html&gt;</code></pre>
-
-<!-- ── PUBLIC API ──────────────────────────────────────────────────────── -->
-<h2>Full SirTegaVoice API</h2>
+<h2>Full public API</h2>
 <pre><code>// Lifecycle
 SirTegaVoice.init(options)              // initialise (call once)
 
-// TTS
-SirTegaVoice.speak(text)               // speak text (async, handles markdown strip)
-SirTegaVoice.stop()                    // cancel speech immediately
-SirTegaVoice.toggle(text)              // speak if silent, stop if speaking
+// Mic / voice chat
+SirTegaVoice.toggleMic()               // start/stop recording
+SirTegaVoice.isMicActive()             // → true while recording
+SirTegaVoice.isProcessing()            // → true while Gemini is working
+SirTegaVoice.isPlaying()               // → true while audio plays
+SirTegaVoice.stopPlayback()            // stop any current audio
+
+// TTS (for existing text)
+SirTegaVoice.speak(text)               // Gemini TTS (fallback: browser TTS)
+SirTegaVoice.stop()                    // stop speech
+SirTegaVoice.toggle(text)             // speak if silent, stop if speaking
 SirTegaVoice.isSpeaking()             // → boolean
 
-// STT
-SirTegaVoice.toggleMic()              // start/stop microphone
-SirTegaVoice.isMicActive()            // → boolean
-
-// UI
+// Bubble helpers
 SirTegaVoice.onNewResponse(el, text)  // attach 🔊 button + auto-speak
-SirTegaVoice.attachSpeakButton(el, text) // attach 🔊 button only (no auto-speak)
-SirTegaVoice.openSettings()           // open voice settings panel
-SirTegaVoice.closeSettings()          // close voice settings panel
-SirTegaVoice.toggleSettings()         // toggle settings panel
-SirTegaVoice.isSupported()            // → boolean (false = no Web Speech API)</code></pre>
+SirTegaVoice.attachSpeakButton(el, text)  // attach 🔊 only
 
-<!-- ── BROWSER SUPPORT ─────────────────────────────────────────────────── -->
+// Settings panel
+SirTegaVoice.openSettings()
+SirTegaVoice.closeSettings()
+SirTegaVoice.toggleSettings()
+
+// Callback
+SirTegaVoice._onReply = function(transcript, replyText) { ... }
+
+// Feature detection
+SirTegaVoice.isSupported()            // → boolean (needs MediaRecorder)</code></pre>
+
 <h2>Browser support</h2>
 <ul>
-  <li><span class="ok">✓</span> Chrome / Edge / Brave — full TTS + STT</li>
-  <li><span class="ok">✓</span> Safari 14.1+ (iOS + macOS) — TTS works; STT requires user gesture</li>
-  <li><span class="ok">✓</span> Firefox 49+ — TTS works; STT not supported (mic button hidden automatically)</li>
-  <li><span class="ok">✓</span> Android Chrome — full TTS + STT</li>
-  <li>⚠ Firefox Android — TTS only, no STT</li>
+  <li><span class="ok">✓</span> Chrome / Edge / Brave — full Gemini voice pipeline</li>
+  <li><span class="ok">✓</span> Safari 14.1+ (macOS / iOS) — works via MediaRecorder + Gemini</li>
+  <li><span class="ok">✓</span> Android Chrome — full pipeline</li>
+  <li><span class="ok">✓</span> Firefox — MediaRecorder works; Gemini pipeline fully supported</li>
+  <li>⚠ Very old browsers (pre-2020) — mic button hidden automatically</li>
 </ul>
-<p>The module checks <code>'speechSynthesis' in window</code> before any call.
-All voice UI is hidden automatically when not supported — your chat works fine without it.</p>
 
-<!-- ── LIVE DEMO ──────────────────────────────────────────────────────── -->
 <h2>Live demo</h2>
-<p>Click below to hear Sir. Tega introduce himself:</p>
+<p>Click below to hear Sir. Tega introduce himself via Gemini TTS:</p>
 <button onclick="demoSpeak()" id="demo-btn"
   style="background:rgba(59,130,246,.15);color:#93c5fd;border:1px solid rgba(59,130,246,.3);
   border-radius:8px;padding:10px 20px;font-size:.9rem;cursor:pointer;margin-bottom:8px">
-  🔊 Hear Sir. Tega
+  🔊 Hear Sir. Tega (Gemini)
 </button>
+<div id="demo-status" style="font-size:.8rem;color:#64748b;margin-top:6px"></div>
+
 <script src="/static/voice.js"></script>
 <script>
 SirTegaVoice.init({ apiBase: location.origin, autoSpeak: false });
-function demoSpeak() {
+
+async function demoSpeak() {
   const btn = document.getElementById('demo-btn');
+  const status = document.getElementById('demo-status');
+
   if (SirTegaVoice.isSpeaking()) {
     SirTegaVoice.stop();
-    btn.textContent = '🔊 Hear Sir. Tega';
-  } else {
-    const hour = new Date().getHours();
-    const t = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening';
-    SirTegaVoice.speak(
-      `Good ${t}! I am Sir. Tega, your personal Python and AI tutor. ` +
-      `I am here to guide you through every concept, from the basics of Python syntax ` +
-      `all the way to machine learning and automation. Ask me anything, ` +
-      `and let us start learning together!`
-    );
-    btn.textContent = '⏹ Stop';
-    setTimeout(() => { btn.textContent = '🔊 Hear Sir. Tega'; }, 8000);
+    btn.textContent = '🔊 Hear Sir. Tega (Gemini)';
+    status.textContent = '';
+    return;
   }
+
+  const h = new Date().getHours();
+  const t = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
+  const msg = `Good ${t}! I am Sir. Tega, your personal Python and AI tutor, now powered by Google Gemini. ` +
+    `I can hear your voice, understand your questions, and speak back to you in real time. ` +
+    `Ask me anything about Python, data science, or machine learning — let us start learning together!`;
+
+  btn.textContent = '⏹ Stop';
+  status.textContent = 'Generating Gemini audio…';
+
+  SirTegaVoice.speak(msg);
+
+  const check = setInterval(() => {
+    if (!SirTegaVoice.isSpeaking()) {
+      clearInterval(check);
+      btn.textContent = '🔊 Hear Sir. Tega (Gemini)';
+      status.textContent = '';
+    }
+  }, 500);
 }
 </script>
 

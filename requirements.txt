@@ -37,3 +37,8 @@ reportlab==4.2.5
 # ── Templating (course landing pages via Jinja2 SSR) ─────────────────────
 jinja2==3.1.5
 markupsafe==3.0.2
+
+# ── Google GenAI SDK (Gemini TTS + STT voice feature) ────────────────────
+# NOTE: google-generativeai (chat) and google-genai (TTS) are two separate
+# packages. Both are required.
+google-genai==1.16.0
