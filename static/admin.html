@@ -1204,9 +1204,13 @@ async function loadFeedback(){
 // ── Announce ───────────────────────────────────────────────────────────────
 async function loadAnnounce(){
   const r=await api('/admin/announce/history');
-  if(!r.ok) return;
+  const el=document.getElementById('ann-history');
+  if(!r.ok){
+    el.innerHTML='<span style="color:#fca5a5;font-size:.82rem">⚠ Could not load history ('+r.status+')</span>';
+    return;
+  }
   const d=await r.json();
-  document.getElementById('ann-history').innerHTML=(d.announcements||[]).length
+  el.innerHTML=(d.announcements||[]).length
     ? (d.announcements).map(a=>`
         <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.06);font-size:.82rem;gap:10px">
           <div style="flex:1;min-width:0">
@@ -1224,14 +1228,22 @@ async function sendAnnouncement(){
     subject:document.getElementById('ann-subj').value,
     message:document.getElementById('ann-body').value};
   if(!body.subject||!body.message){toast('Subject and message required',false);return;}
+  const btn=document.querySelector('#p-announce .btn');
+  if(btn){btn.disabled=true;btn.textContent='⏳ Sending…';}
   const r=await api('/admin/announce',{method:'POST',body:JSON.stringify(body)});
+  if(btn){btn.disabled=false;btn.textContent='📢 Send Announcement';}
   const d=await r.json();
   if(r.ok){
     const m=document.getElementById('ann-msg');
     m.textContent=`Sent to ${d.sent_to} users`; m.style.display='inline';
-    setTimeout(()=>m.style.display='none',4000);
+    setTimeout(()=>m.style.display='none',5000);
     toast('Announcement sent to '+d.sent_to+' users');
-  } else toast(d.error||'Failed',false);
+    // Clear fields and reload history so admin sees the new record
+    document.getElementById('ann-subj').value='';
+    document.getElementById('ann-body').value='';
+    _loaded.delete('announce');
+    loadAnnounce();
+  } else toast(d.detail||d.error||'Failed to send announcement',false);
 }
 
 // ── Team ───────────────────────────────────────────────────────────────────

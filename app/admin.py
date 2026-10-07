@@ -598,10 +598,15 @@ def get_announcements() -> list[dict]:
         result = []
         for r in rows:
             d = dict(r)
-            try:
-                d["sent_at"] = _dt.datetime.fromtimestamp(float(d["sent_at"])).isoformat()
-            except Exception:
-                pass
+            # sent_at is DOUBLE PRECISION epoch — convert to ISO string for the JS
+            raw_ts = d.get("sent_at")
+            if raw_ts is not None:
+                try:
+                    d["sent_at"] = _dt.datetime.utcfromtimestamp(float(raw_ts)).strftime("%Y-%m-%dT%H:%M:%SZ")
+                except Exception:
+                    d["sent_at"] = str(raw_ts)
+            else:
+                d["sent_at"] = ""
             result.append(d)
         return result
     except Exception as e:
@@ -714,7 +719,8 @@ async def send_announcement(target: str, subject: str, body_text: str) -> int:
             subject=subject,
             body_html=(
                 "<p style='color:#475569;line-height:1.7;white-space:pre-wrap;'>"
-                + body_text
+                + body_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                           .replace("\n", "<br/>")
                 + "</p>"
             ),
             body_text=body_text,
