@@ -491,19 +491,28 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
       <div id="p-announce" class="page">
         <h2>📢 Announcements</h2>
         <div class="sec"><h3>Send to Users</h3>
-          <div class="fr"><label>Target</label><select id="ann-target">
-            <option value="all">All Users</option>
-            <option value="free">Free Plan Only</option>
-            <option value="paid">All Paid Users</option>
-            <option value="tier1">Tier 1 Only</option>
-            <option value="tier2">Tier 2 Only</option>
-            <option value="tier3">Tier 3 Only</option>
-            <option value="tier4">Tier 4 (Premium) Only</option>
-          </select></div>
+          <div class="fr">
+            <label>Target</label>
+            <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+              <select id="ann-target" onchange="updateAnnRecipientCount()">
+                <option value="all">All Users</option>
+                <option value="free">Free Plan Only</option>
+                <option value="paid">All Paid Users</option>
+                <option value="tier1">Tier 1 Only</option>
+                <option value="tier2">Tier 2 Only</option>
+                <option value="tier3">Tier 3 Only</option>
+                <option value="tier4">Tier 4 (Premium) Only</option>
+              </select>
+              <!-- Live recipient count — populated from cached dashboard data -->
+              <div id="ann-recipient-count" style="font-size:.8rem;color:#94a3b8;padding:2px 0">
+                📤 Loading user count…
+              </div>
+            </div>
+          </div>
           <div class="fr"><label>Subject</label><input id="ann-subj" placeholder="e.g. New features now live!"/></div>
           <div class="fr"><label>Message</label><textarea id="ann-body" rows="5" placeholder="Write your announcement..."></textarea></div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <button class="btn" onclick="sendAnnouncement()">📢 Send Announcement</button>
+            <button class="btn" id="ann-send-btn" onclick="sendAnnouncement()">📢 Send Announcement</button>
             <button class="bsm" type="button" onclick="previewAnnounce()" title="Hear the announcement before sending" style="background:rgba(59,130,246,.12);border-color:rgba(59,130,246,.3);color:#93c5fd">🔊 Preview Voice</button>
           </div>
           <span id="ann-msg" style="margin-left:10px;font-size:.8rem;color:#68d391;display:none"></span>
@@ -783,6 +792,10 @@ function showApp(){
 // ── Lazy load tracker ─────────────────────────────────────────────────────
 const _loaded = new Set();
 
+// ── Dashboard data cache — shared across sections ─────────────────────────
+// Populated by loadDashboard(); read by loadAnnounce() for live recipient counts.
+let _dashData = null;
+
 function nav(p){
   document.querySelectorAll('.nb').forEach(b=>b.classList.toggle('active',b.dataset.p===p));
   document.querySelectorAll('.page').forEach(pg=>pg.classList.toggle('active',pg.id==='p-'+p));
@@ -850,6 +863,9 @@ async function loadDashboard(){
       return;
     }
     const d=await r.json();
+    _dashData = d;   // cache for Announcements recipient counts and other sections
+    // If the Announcements page is open, refresh its recipient count live
+    updateAnnRecipientCount();
 
     // Show DB error warning if any query failed server-side
     if(d.db_error){
@@ -1202,7 +1218,52 @@ async function loadFeedback(){
 }
 
 // ── Announce ───────────────────────────────────────────────────────────────
+
+// Compute how many users a target would reach using cached dashboard data
+function _annCountForTarget(target){
+  if(!_dashData) return null;
+  const total  = _dashData.users?.total ?? 0;
+  const t      = _dashData.users_by_tier ?? {};
+  const free   = t.free  ?? 0;
+  const tier1  = t.tier1 ?? 0;
+  const tier2  = t.tier2 ?? 0;
+  const tier3  = t.tier3 ?? 0;
+  const tier4  = t.tier4 ?? 0;
+  const paid   = tier1+tier2+tier3+tier4;
+  switch(target){
+    case 'all':   return total;
+    case 'free':  return free;
+    case 'paid':  return paid;
+    case 'tier1': return tier1;
+    case 'tier2': return tier2;
+    case 'tier3': return tier3;
+    case 'tier4': return tier4;
+    default:      return total;
+  }
+}
+
+// Update the live recipient count pill shown below the target dropdown
+function updateAnnRecipientCount(){
+  const el=document.getElementById('ann-recipient-count');
+  if(!el) return;
+  const target=document.getElementById('ann-target')?.value||'all';
+  const count=_annCountForTarget(target);
+  if(count===null){el.innerHTML='📤 Loading user count…';return;}
+  const labels={all:'all users',free:'free-plan users',paid:'paid users',
+    tier1:'Tier 1 users',tier2:'Tier 2 users',tier3:'Tier 3 users',tier4:'Tier 4 (Premium) users'};
+  const colour=count===0?'#f87171':count<5?'#fcd34d':'#68d391';
+  el.innerHTML=`📤 Will reach <strong style="color:${colour};font-size:.95rem">${count.toLocaleString()}</strong> ${labels[target]||'users'}`;
+}
+
 async function loadAnnounce(){
+  // Show live recipient count immediately from cached dashboard data
+  updateAnnRecipientCount();
+  // If dashboard not loaded yet, fetch it so count populates
+  if(!_dashData){
+    api('/admin/dashboard').then(r=>r.json().catch(()=>null)).then(d=>{
+      if(d){_dashData=d; updateAnnRecipientCount();}
+    });
+  }
   const r=await api('/admin/announce/history');
   const el=document.getElementById('ann-history');
   if(!r.ok){
@@ -1228,17 +1289,18 @@ async function sendAnnouncement(){
     subject:document.getElementById('ann-subj').value,
     message:document.getElementById('ann-body').value};
   if(!body.subject||!body.message){toast('Subject and message required',false);return;}
-  const btn=document.querySelector('#p-announce .btn');
+  const count=_annCountForTarget(body.target);
+  if(count===0){toast('No users match this target — nothing to send',false);return;}
+  const btn=document.getElementById('ann-send-btn');
   if(btn){btn.disabled=true;btn.textContent='⏳ Sending…';}
   const r=await api('/admin/announce',{method:'POST',body:JSON.stringify(body)});
   if(btn){btn.disabled=false;btn.textContent='📢 Send Announcement';}
   const d=await r.json();
   if(r.ok){
     const m=document.getElementById('ann-msg');
-    m.textContent=`Sent to ${d.sent_to} users`; m.style.display='inline';
-    setTimeout(()=>m.style.display='none',5000);
+    m.textContent=`✅ Sent to ${d.sent_to} users`; m.style.display='inline';
+    setTimeout(()=>m.style.display='none',6000);
     toast('Announcement sent to '+d.sent_to+' users');
-    // Clear fields and reload history so admin sees the new record
     document.getElementById('ann-subj').value='';
     document.getElementById('ann-body').value='';
     _loaded.delete('announce');
