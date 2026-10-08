@@ -7595,12 +7595,17 @@ async def tts_speak(request: Request) -> dict:
             "mime_type":  "audio/wav",
             "char_count": len(clean),
         }
-    except RuntimeError as exc:
-        if "not set" in str(exc):
-            raise HTTPException(status_code=503, detail="Gemini TTS not configured.")
-        raise HTTPException(status_code=502, detail=f"Gemini TTS error: {exc}")
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"TTS failed: {exc}")
+        err_msg = str(exc)
+        logger.error("TTS speak failed: %s", err_msg)
+        # Return 200 with empty audio rather than 502 — this lets
+        # the frontend degrade to browser TTS instead of showing an error
+        return {
+            "audio_b64": "",
+            "mime_type":  "audio/wav",
+            "char_count": len(clean),
+            "tts_error":  err_msg[:300],
+        }
 
 
 @app.post("/voice/chat")
