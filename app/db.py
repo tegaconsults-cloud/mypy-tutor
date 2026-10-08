@@ -1095,7 +1095,12 @@ def get_quiz_attempts(learner_id: str, limit: int = 50) -> list[dict]:
     result = []
     for r in rows:
         d = dict(r)
-        d["ts"] = _dt.datetime.fromtimestamp(float(d["ts"])).strftime("%Y-%m-%d %H:%M:%S")
+        raw_ts = d.get("ts")
+        if raw_ts is not None:
+            try:
+                d["ts"] = _dt.datetime.utcfromtimestamp(float(raw_ts)).strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                d["ts"] = str(raw_ts)
         result.append(d)
     return result
 
@@ -1134,7 +1139,7 @@ def review_assignment_db(assignment_id: str, feedback: str, score: int) -> bool:
             cur.execute(
                 "UPDATE assignments SET feedback=%s, score=%s, status='reviewed', reviewed_at=%s "
                 "WHERE id=%s",
-                (feedback[:2000], score, _t.time(), assignment_id)
+                (feedback[:8000], score, _t.time(), assignment_id)   # 8000 chars — enough for rich feedback
             )
             return cur.rowcount > 0
 

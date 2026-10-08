@@ -2349,6 +2349,11 @@ async def evaluate_quiz_answer(request: QuizAnswerRequest,
         # Parse correctness from the first line of LLM response
         first_line = explanation.strip().split('\n')[0].strip()
         correct = bool(re.search(r'\bcorrect\s*:\s*true\b', first_line, re.IGNORECASE))
+
+    # Strip the raw "CORRECT: true/false" prefix — it's machine output, not
+    # meant to be shown directly to the learner.
+    explanation = _clean_quiz_explanation(explanation)
+
     score   = 100 if correct else 0
     xp, _   = record_quiz(request.learner_id, request.topic, score)
     # Persist full quiz attempt record
@@ -2385,22 +2390,95 @@ async def generate_exercise(learner_id: str, topic: str,
 # Helper
 # ---------------------------------------------------------------------------
 
+def _clean_quiz_explanation(raw: str) -> str:
+    """
+    Strip machine-protocol prefixes from LLM quiz evaluation output so only
+    the human-readable explanation is returned to the frontend.
+
+    Removes leading lines like:
+        CORRECT: true
+        CORRECT: false
+        EXPLANATION:
+        ENCOURAGEMENT:
+    and collapses any resulting leading blank lines.
+    """
+    lines = raw.strip().split("\n")
+    cleaned = []
+    for line in lines:
+        stripped = line.strip()
+        # Drop bare protocol markers — keep everything else (including lines
+        # that START with EXPLANATION: but have content we want to keep)
+        if re.match(r"^CORRECT\s*:\s*(true|false)\s*$", stripped, re.IGNORECASE):
+            continue
+        # Strip "EXPLANATION:" and "ENCOURAGEMENT:" prefixes, keep the rest
+        stripped_content = re.sub(r"^(EXPLANATION|ENCOURAGEMENT)\s*:\s*", "", stripped, flags=re.IGNORECASE)
+        cleaned.append(stripped_content if stripped_content != stripped else line)
+
+    # Remove leading blank lines
+    while cleaned and not cleaned[0].strip():
+        cleaned.pop(0)
+
+    return "\n".join(cleaned).strip()
+
+
 def _parse_quiz(raw: str) -> tuple[str, list[str]]:
-    question    = ""
-    options     = []
-    # Allow zero or more blank lines between **Question:** and the first option
-    q_match     = re.search(r"\*\*Question:\*\*\s*(.+?)(?=\n\s*\n?\s*[A-D]\))", raw, re.DOTALL)
+    """
+    Parse LLM quiz output into (question, options).
+
+    Expected format from _QUIZ_PROMPT:
+        **Question:** [text]
+
+        A) [option]
+        B) [option]
+        C) [option]
+        D) [option]
+
+        ANSWER: A
+        EXPLANATION: ...
+
+    Handles LLMs that add code blocks inside option text.
+    """
+    question = ""
+    options  = []
+
+    # Strip entire code-fence blocks from the raw text so they don't
+    # pollute option parsing (e.g. "C) ```python\nfor i in...\n```")
+    raw_clean = re.sub(r"```[\s\S]*?```", "[code]", raw)
+
+    # Extract question text
+    q_match = re.search(
+        r"\*\*Question:\*\*\s*(.+?)(?=\n\s*\n?\s*[A-D]\))", raw_clean, re.DOTALL
+    )
     if q_match:
         question = q_match.group(1).strip()
-    opt_matches = re.findall(r"^([A-D])\)\s*(.+)$", raw, re.MULTILINE)
-    options     = [f"{letter}) {text.strip()}" for letter, text in opt_matches]
+
+    # Extract A)–D) options — capture full text until the next option, ANSWER:, or end
+    # This handles multi-line option text (e.g. code snippets cleaned to [code])
+    opt_matches = re.findall(r"^([A-D])\)\s*(.+?)(?=\n[A-D]\)|\nANSWER:|\Z)",
+                             raw_clean, re.MULTILINE | re.DOTALL)
+    if opt_matches:
+        options = [f"{letter}) {text.strip()}" for letter, text in opt_matches]
+    else:
+        # Fallback: single-line options
+        opt_matches = re.findall(r"^([A-D])\)\s*(.+)$", raw_clean, re.MULTILINE)
+        options = [f"{letter}) {text.strip()}" for letter, text in opt_matches]
+
+    # Keep options to a single line each (remove embedded newlines from code samples)
+    options = [re.sub(r"\s*\n\s*", " ", o).strip() for o in options]
+
+    # Strip inline backtick code markers from options so they display cleanly
+    # e.g. "A) `list(range(1, 11))`" → "A) list(range(1, 11))"
+    options = [re.sub(r"`([^`]+)`", r"\1", o) for o in options]
+
     if not question:
-        # Strip leading markdown bold marker if it ends up on the first line
-        first_line = raw.split("\n")[0].strip()
+        first_line = raw_clean.split("\n")[0].strip()
         question   = re.sub(r"^\*\*Question:\*\*\s*", "", first_line).strip() or first_line
+
+    # Remove ANSWER / EXPLANATION lines that leaked into options
+    options = [o for o in options
+               if not re.match(r"^[A-D]\)\s*(ANSWER|EXPLANATION|CORRECT):", o, re.IGNORECASE)]
+
     if not options or len(options) < 2:
-        # LLM returned a malformed response — surface a clean 422 instead of
-        # sending dummy placeholder options that confuse the frontend.
         raise HTTPException(
             status_code=422,
             detail="Quiz question could not be parsed. Please try again.",
