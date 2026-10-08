@@ -371,20 +371,28 @@ async def chat(request: ChatRequest, req: Request,
 
     content = None
     last_exc: Exception | None = None
-    for _attempt in range(3):  # 3 attempts: full history, trimmed, smart model fallback
+    # 5 attempts with increasing backoff — providers may be briefly rate-limited
+    # on Render cold-starts or high-traffic moments. Retrying here means the
+    # user never sees an error message.
+    _backoffs = [0, 2, 4, 6, 8]   # seconds to sleep before each attempt
+    for _attempt in range(5):
         try:
             if _attempt == 0:
                 msgs_to_send = history_messages
-            elif _attempt == 1:
+            elif _attempt <= 2:
                 msgs_to_send = history_messages[-4:]
             else:
-                # Final fallback: use fast model with minimal history
+                # Final fallbacks: use minimal history
                 msgs_to_send = history_messages[-2:]
+
+            if _backoffs[_attempt] > 0:
+                import asyncio as _aio2
+                await _aio2.sleep(_backoffs[_attempt])
+
             content = get_completion(system_prompt, msgs_to_send, intent=intent)
             break
         except Exception as exc:
             last_exc = exc
-            exc_msg  = str(exc).lower()
 
             if _is_context_overflow(exc) and _attempt == 0:
                 logger.info(
@@ -393,13 +401,8 @@ async def chat(request: ChatRequest, req: Request,
                 )
                 continue
 
-            # All retries and all 3 providers already exhausted inside get_completion.
-            # The exception here means the entire cascade failed — surface 503.
-            logger.warning("LLM cascade failed on attempt %d: %s", _attempt, exc)
-            if _attempt < 2:
-                import asyncio as _aio
-                await _aio.sleep(1.5)
-                continue
+            logger.warning("LLM cascade failed on attempt %d/%d: %s", _attempt + 1, 5, exc)
+            continue   # try next attempt with backoff
 
     if content is None:
         # Context overflow even after history trimming → open a fresh chat
@@ -7441,71 +7444,91 @@ async def tts_voices() -> dict:
 
 def _gemini_tts(text: str, voice: str = "Aoede") -> bytes:
     """
-    Call Gemini 3.8 TTS and return raw WAV bytes.
-    Uses the google-genai SDK (separate from google-generativeai used for chat).
+    Call Gemini TTS via REST API and return raw WAV bytes.
+    Uses httpx directly to avoid google-genai SDK version compatibility issues.
+    Model: gemini-2.5-flash-preview-tts
     Voice options: Aoede, Kore, Charon, Puck, Fenrir, Leda, Orus, Zephyr.
-    Aoede = warm, clear female voice — closest to a tutor.
-    Falls back to empty bytes on any error so callers can degrade gracefully.
     """
     api_key = _os.getenv("GEMINI_API_KEY", "")
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY not set")
+    import httpx, base64 as _b64
+
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        "gemini-2.5-flash-preview-tts:generateContent"
+        f"?key={api_key}"
+    )
+    payload = {
+        "contents": [{"parts": [{"text": text}]}],
+        "generationConfig": {
+            "responseModalities": ["AUDIO"],
+            "speechConfig": {
+                "voiceConfig": {
+                    "prebuiltVoiceConfig": {"voiceName": voice}
+                }
+            }
+        }
+    }
+    resp = httpx.post(url, json=payload, timeout=30)
+    if resp.status_code != 200:
+        raise RuntimeError(f"Gemini TTS HTTP {resp.status_code}: {resp.text[:200]}")
+
+    data = resp.json()
+    # Navigate: candidates[0].content.parts[0].inlineData.data (base64 PCM)
     try:
-        from google import genai as _gai
-        from google.genai import types as _gtypes
-        _gai_client = _gai.Client(api_key=api_key)
-        response = _gai_client.models.generate_content(
-            model="gemini-2.5-flash-preview-tts",
-            contents=text,
-            config=_gtypes.GenerateContentConfig(
-                response_modalities=["AUDIO"],
-                speech_config=_gtypes.SpeechConfig(
-                    voice_config=_gtypes.VoiceConfig(
-                        prebuilt_voice_config=_gtypes.PrebuiltVoiceConfig(
-                            voice_name=voice
-                        )
-                    )
-                ),
-            ),
-        )
-        # Extract PCM audio from response
-        import base64 as _b64
-        audio_data = response.candidates[0].content.parts[0].inline_data.data
-        # audio_data is already bytes (PCM). Wrap in WAV container.
-        return _pcm_to_wav(audio_data, sample_rate=24000, channels=1, sample_width=2)
-    except Exception as _exc:
-        logger.error("Gemini TTS error: %s", _exc)
-        raise
+        b64_audio = (data["candidates"][0]["content"]["parts"][0]
+                     ["inlineData"]["data"])
+    except (KeyError, IndexError) as e:
+        raise RuntimeError(f"Gemini TTS unexpected response shape: {e} — {str(data)[:200]}")
+
+    pcm = _b64.b64decode(b64_audio)
+    return _pcm_to_wav(pcm, sample_rate=24000, channels=1, sample_width=2)
 
 
 def _gemini_stt(audio_b64: str, mime_type: str = "audio/webm") -> str:
     """
-    Transcribe audio using Gemini's audio understanding.
-    Sends base64-encoded audio and asks Gemini to return just the transcript.
+    Transcribe audio using Gemini audio understanding via REST API.
+    Uses httpx directly to avoid google-genai SDK version compatibility issues.
     """
     api_key = _os.getenv("GEMINI_API_KEY", "")
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY not set")
+    import httpx
+
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/models/"
+        f"gemini-2.0-flash:generateContent?key={api_key}"
+    )
+    payload = {
+        "contents": [{
+            "parts": [
+                {
+                    "inlineData": {
+                        "mimeType": mime_type,
+                        "data": audio_b64,
+                    }
+                },
+                {
+                    "text": (
+                        "Transcribe the speech in this audio exactly as spoken. "
+                        "Return ONLY the transcript text, nothing else. "
+                        "If there is no speech or only silence, return an empty string."
+                    )
+                }
+            ]
+        }]
+    }
+    resp = httpx.post(url, json=payload, timeout=30)
+    if resp.status_code != 200:
+        raise RuntimeError(f"Gemini STT HTTP {resp.status_code}: {resp.text[:200]}")
+
+    data = resp.json()
     try:
-        from google import genai as _gai
-        from google.genai import types as _gtypes
-        import base64 as _b64
-        _gai_client = _gai.Client(api_key=api_key)
-        audio_bytes = _b64.b64decode(audio_b64)
-        response = _gai_client.models.generate_content(
-            model="gemini-2.0-flash",
-            contents=[
-                _gtypes.Part(
-                    inline_data=_gtypes.Blob(mime_type=mime_type, data=audio_bytes)
-                ),
-                "Transcribe the speech in this audio exactly as spoken. "
-                "Return ONLY the transcript text, nothing else.",
-            ],
-        )
-        return (response.text or "").strip()
-    except Exception as _exc:
-        logger.error("Gemini STT error: %s", _exc)
-        raise
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+        return (text or "").strip()
+    except (KeyError, IndexError):
+        return ""
 
 
 def _pcm_to_wav(pcm: bytes, sample_rate: int = 24000,
@@ -7556,9 +7579,13 @@ async def tts_speak(request: Request) -> dict:
         raw = raw[:5000]   # Gemini TTS has a practical limit; truncate gracefully
 
     voice = str(body.get("voice", "Aoede")).strip() or "Aoede"
-    # Clean markdown before sending to TTS
-    from app.formatter import strip_markdown_for_tts as _strip
-    clean = _strip(raw) if hasattr(__import__("app.formatter", fromlist=["strip_markdown_for_tts"]), "strip_markdown_for_tts") else raw
+    # Clean markdown inline — no external import needed
+    import re as _re_tts
+    clean = _re_tts.sub(r"```[\s\S]*?```", " code block. ", raw)
+    clean = _re_tts.sub(r"`([^`]+)`", r"\1", clean)
+    clean = _re_tts.sub(r"\*{1,3}([^*]+)\*{1,3}", r"\1", clean)
+    clean = _re_tts.sub(r"#{1,6}\s+", "", clean)
+    clean = _re_tts.sub(r"https?://\S+", "", clean).strip()
 
     try:
         import base64 as _b64
@@ -7633,14 +7660,14 @@ async def voice_chat(request: Request,
 
     # ── Step 2: Chat LLM (Sir. Tega) ─────────────────────────────────────
     try:
-        from app.prompts   import build_system_prompt
-        from app.llm_client import call_llm
-        system  = build_system_prompt(level, learner_id)
-        reply   = call_llm(
-            system=system,
+        from app.prompts    import build_system_prompt
+        from app.llm_client import get_completion
+        system = build_system_prompt(level, learner_id)
+        reply  = get_completion(
+            system_prompt=system,
             messages=[{"role": "user", "content": transcript}],
             intent="concept",
-            temp=0.7,
+            temperature=0.7,
         )
     except Exception as exc:
         logger.error("voice_chat LLM error: %s", exc)
