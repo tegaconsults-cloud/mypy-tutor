@@ -95,13 +95,30 @@
     const el = _statusEl();
     if (!el) return;
     el.textContent = text || '';
-    el.className   = text ? ('stv-status stv-status-' + (type||'info')) : '';
+    // premium.css uses .visible to show/hide; also add type class for colour
+    el.classList.toggle('visible', !!text);
+    el.classList.remove('stv-status-listening','stv-status-processing','stv-status-speaking','stv-status-info');
+    if (text && type) el.classList.add('stv-status-' + type);
   }
 
   function _setBtnState(state) {
-    const btn = _micBtn();
+    const btn     = _micBtn();
+    const trigger = document.getElementById('stv-settings-trigger');
     if (!btn) return;
-    btn.className = 'stv-mic-' + state;
+    // Match class names used in premium.css:
+    //   idle       → no special class
+    //   listening  → 'listening'  (pulsing red ring)
+    //   processing → 'processing' (spinner)
+    //   playing    → 'playing'    (green)
+    btn.classList.remove('listening', 'processing', 'playing');
+    if (state !== 'idle') btn.classList.add(state);
+    // Mirror active state onto the waveform trigger for CSS animations
+    if (trigger) {
+      trigger.classList.remove('stv-active', 'stv-processing', 'stv-playing');
+      if (state === 'listening')  trigger.classList.add('stv-active');
+      if (state === 'processing') trigger.classList.add('stv-processing');
+      if (state === 'playing')    trigger.classList.add('stv-playing');
+    }
     btn.setAttribute('aria-label',
       state === 'idle'       ? 'Start voice chat with Sir. Tega' :
       state === 'listening'  ? 'Recording — tap to stop' :
@@ -518,42 +535,73 @@
     _setBtnState('idle');
   }
 
-  /* ─── DOM injection (mic + settings trigger + status) ───────────────── */
+  /* ─── DOM injection (mic + waveform trigger + status) ───────────────── */
+  /* Screenshot layout inside #message-row:
+   *   [ + ]  [ Write a message… ]  [ 🎤 mic-btn ]  [ ||| ˅ trigger ]  [ send-btn ]
+   */
   function _injectChatControls() {
     const row   = document.getElementById('message-row');
     const input = document.getElementById(INPUT_ID);
     if (!row || !input) return;
 
+    // ── Mic button (🎤) ───────────────────────────────────────────────
     if (!document.getElementById(MIC_BTN_ID)) {
-      const mic = document.createElement('button');
-      mic.id    = MIC_BTN_ID;
-      mic.type  = 'button';
+      const mic    = document.createElement('button');
+      mic.id       = MIC_BTN_ID;
+      mic.type     = 'button';
+      mic.title    = 'Start voice chat with Sir. Tega';
+      mic.setAttribute('aria-label', 'Voice input');
+      // Microphone SVG — matches the screenshot icon
+      mic.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"
+        viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+        <line x1="12" y1="19" x2="12" y2="22"/>
+        <line x1="8"  y1="22" x2="16" y2="22"/>
+      </svg>`;
       const sendBtn = document.getElementById('send-btn');
       sendBtn ? row.insertBefore(mic, sendBtn) : row.appendChild(mic);
     }
 
+    // ── Waveform + chevron trigger ( |||↓ ) ───────────────────────────
+    // This is the second icon in the screenshot — animated bars with a
+    // small chevron — opens voice settings panel
     if (!document.getElementById('stv-settings-trigger')) {
-      const trigger = document.createElement('button');
-      trigger.id        = 'stv-settings-trigger';
-      trigger.type      = 'button';
-      trigger.title     = 'Voice settings';
-      trigger.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18"
-        viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-        stroke-linecap="round" stroke-linejoin="round">
-        <line x1="9" y1="8" x2="9" y2="16"/>
-        <line x1="13" y1="5" x2="13" y2="19"/>
-        <line x1="17" y1="8" x2="17" y2="16"/>
-        <line x1="5" y1="12" x2="5" y2="12"/>
-        <line x1="21" y1="12" x2="21" y2="12"/>
-      </svg>`;
-      trigger.style.cssText = 'background:transparent;border:none;color:var(--text-muted,#475569);cursor:pointer;padding:0 6px;display:flex;align-items:center;flex-shrink:0;transition:color .18s';
+      const trigger    = document.createElement('button');
+      trigger.id       = 'stv-settings-trigger';
+      trigger.type     = 'button';
+      trigger.title    = 'Voice settings';
+      trigger.setAttribute('aria-label', 'Voice settings');
+      // Waveform bars SVG + tiny chevron — exact screenshot match
+      trigger.innerHTML = `
+        <span class="stv-trigger-inner">
+          <svg class="stv-wave-icon" xmlns="http://www.w3.org/2000/svg"
+               width="18" height="18" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2.2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <line x1="4"  y1="12" x2="4"  y2="12"/>
+            <line x1="8"  y1="8"  x2="8"  y2="16"/>
+            <line x1="12" y1="5"  x2="12" y2="19"/>
+            <line x1="16" y1="8"  x2="16" y2="16"/>
+            <line x1="20" y1="12" x2="20" y2="12"/>
+          </svg>
+          <svg class="stv-chevron-icon" xmlns="http://www.w3.org/2000/svg"
+               width="10" height="10" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2.5"
+               stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </span>`;
       trigger.addEventListener('click', toggleSettings);
       const sendBtn = document.getElementById('send-btn');
-      const mic = document.getElementById(MIC_BTN_ID);
-      if (sendBtn) row.insertBefore(trigger, sendBtn);
-      else if (mic && mic.parentNode) mic.parentNode.insertBefore(trigger, mic.nextSibling);
+      const mic     = document.getElementById(MIC_BTN_ID);
+      if (sendBtn)                      row.insertBefore(trigger, sendBtn);
+      else if (mic && mic.parentNode)   mic.parentNode.insertBefore(trigger, mic.nextSibling);
+      else                              row.appendChild(trigger);
     }
 
+    // ── Voice status line (shown below row when mic is active) ─────────
     if (!document.getElementById(VOICE_STATUS_ID)) {
       const status = document.createElement('div');
       status.id = VOICE_STATUS_ID;

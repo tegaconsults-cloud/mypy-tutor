@@ -409,6 +409,103 @@ header{
 }
 @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
 
+/* ── Voice settings trigger ( ||| ˅ ) — waveform bars + chevron ── */
+#stv-settings-trigger{
+  background:var(--bg-elevated);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  height:46px;
+  padding:0 8px;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;
+  flex-shrink:0;
+  color:var(--text-muted);
+  transition:var(--transition);
+  gap:0;
+}
+#stv-settings-trigger:hover{
+  border-color:var(--accent);
+  color:var(--accent);
+  background:rgba(59,130,246,0.08);
+}
+/* Inner wrapper holds the two SVGs side by side */
+.stv-trigger-inner{
+  display:flex;align-items:center;gap:2px;
+}
+/* Waveform bars — animated when mic is active */
+.stv-wave-icon{
+  color:inherit;
+  transition:color var(--transition);
+}
+/* Animate waveform bars when recording or playing */
+#mic-btn.listening ~ #stv-settings-trigger .stv-wave-icon line,
+#mic-btn.playing   ~ #stv-settings-trigger .stv-wave-icon line {
+  animation:stv-bar 0.9s ease-in-out infinite;
+}
+#mic-btn.listening ~ #stv-settings-trigger .stv-wave-icon line:nth-child(1),
+#mic-btn.playing   ~ #stv-settings-trigger .stv-wave-icon line:nth-child(1) { animation-delay:0s; }
+#mic-btn.listening ~ #stv-settings-trigger .stv-wave-icon line:nth-child(2),
+#mic-btn.playing   ~ #stv-settings-trigger .stv-wave-icon line:nth-child(2) { animation-delay:.15s; }
+#mic-btn.listening ~ #stv-settings-trigger .stv-wave-icon line:nth-child(3),
+#mic-btn.playing   ~ #stv-settings-trigger .stv-wave-icon line:nth-child(3) { animation-delay:.3s; }
+#mic-btn.listening ~ #stv-settings-trigger .stv-wave-icon line:nth-child(4),
+#mic-btn.playing   ~ #stv-settings-trigger .stv-wave-icon line:nth-child(4) { animation-delay:.15s; }
+#mic-btn.listening ~ #stv-settings-trigger .stv-wave-icon line:nth-child(5),
+#mic-btn.playing   ~ #stv-settings-trigger .stv-wave-icon line:nth-child(5) { animation-delay:0s; }
+@keyframes stv-bar{
+  0%,100%{transform:scaleY(0.4);opacity:.5}
+  50%    {transform:scaleY(1.0);opacity:1}
+}
+.stv-chevron-icon{
+  color:inherit;
+  opacity:0.65;
+  margin-left:1px;
+  transition:transform .2s,color var(--transition);
+}
+/* Mic state colour overrides on both buttons */
+#mic-btn.processing{
+  border-color:#f59e0b;color:#f59e0b;
+  background:rgba(245,158,11,0.08);
+  animation:mic-spin 1s linear infinite;
+}
+@keyframes mic-spin{to{transform:rotate(360deg)}}
+#mic-btn.playing{
+  border-color:#10b981;color:#10b981;
+  background:rgba(16,185,129,0.08);
+}
+/* Voice status colour overrides */
+#voice-status.stv-status-listening { color:#ef4444; }
+#voice-status.stv-status-processing{ color:#f59e0b; }
+#voice-status.stv-status-speaking  { color:#10b981; }
+#voice-status.stv-status-info      { color:#93c5fd; }
+
+/* Waveform trigger state classes (set by JS via _setBtnState) */
+#stv-settings-trigger.stv-active {
+  border-color:#ef4444;color:#ef4444;background:rgba(239,68,68,0.08);
+}
+#stv-settings-trigger.stv-active .stv-wave-icon line {
+  animation:stv-bar 0.9s ease-in-out infinite;
+}
+#stv-settings-trigger.stv-active .stv-wave-icon line:nth-child(1){ animation-delay:0s; }
+#stv-settings-trigger.stv-active .stv-wave-icon line:nth-child(2){ animation-delay:.15s; }
+#stv-settings-trigger.stv-active .stv-wave-icon line:nth-child(3){ animation-delay:.3s; }
+#stv-settings-trigger.stv-active .stv-wave-icon line:nth-child(4){ animation-delay:.15s; }
+#stv-settings-trigger.stv-active .stv-wave-icon line:nth-child(5){ animation-delay:0s; }
+#stv-settings-trigger.stv-processing{
+  border-color:#f59e0b;color:#f59e0b;background:rgba(245,158,11,0.08);
+}
+#stv-settings-trigger.stv-playing{
+  border-color:#10b981;color:#10b981;background:rgba(16,185,129,0.08);
+}
+#stv-settings-trigger.stv-playing .stv-wave-icon line {
+  animation:stv-bar 0.6s ease-in-out infinite;
+}
+#stv-settings-trigger.stv-playing .stv-wave-icon line:nth-child(1){ animation-delay:0s; }
+#stv-settings-trigger.stv-playing .stv-wave-icon line:nth-child(2){ animation-delay:.1s; }
+#stv-settings-trigger.stv-playing .stv-wave-icon line:nth-child(3){ animation-delay:.2s; }
+#stv-settings-trigger.stv-playing .stv-wave-icon line:nth-child(4){ animation-delay:.1s; }
+#stv-settings-trigger.stv-playing .stv-wave-icon line:nth-child(5){ animation-delay:0s; }
+
 /* ── Bottom nav (mobile) ── */
 #bottom-nav{
   display:none;width:100%;
