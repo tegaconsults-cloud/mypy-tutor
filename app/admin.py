@@ -648,13 +648,17 @@ async def send_announcement(target: str, subject: str, body_text: str) -> int:
     except Exception as exc:
         logger.warning("send_announcement: learner_profiles query failed: %s", exc)
 
-    # ── Source 2: email_accounts — confirmed users, carries proper full name ──────
+    # ── Source 2: email_accounts — all registered users with valid emails ────────
+    # Include both confirmed AND unconfirmed — announcements are platform-wide
+    # admin communications that all registered users have consented to receive.
+    # Using confirmed-only would exclude Google OAuth users and unconfirmed
+    # signups who are still active on the platform.
     try:
         import psycopg2.extras as _pge
         with _gdb() as conn:
             with conn.cursor(cursor_factory=_pge.RealDictCursor) as cur:
                 cur.execute(
-                    "SELECT learner_id, email, name FROM email_accounts WHERE (confirmed = 1 OR confirmed IS TRUE)"
+                    "SELECT learner_id, email, name FROM email_accounts"
                 )
                 rows = cur.fetchall()
         for r in rows:

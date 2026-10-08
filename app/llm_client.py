@@ -308,7 +308,7 @@ def get_completion(
     err = str(last_exc)[:200] if last_exc else "no providers configured"
     logger.error("All LLM providers failed: %s", err)
     raise RuntimeError(
-        "Sir. Tega is temporarily unavailable — please try again in a moment."
+        "Sir. Tega is briefly unavailable — please try again in a moment."
     )
 
 

@@ -402,7 +402,7 @@ async def chat(request: ChatRequest, req: Request,
                 continue
 
     if content is None:
-        # If it was a context overflow even after trimming, tell frontend to open a new chat
+        # Context overflow even after history trimming → open a fresh chat
         if last_exc and _is_context_overflow(last_exc):
             new_conv_id = f"local_{request.learner_id}_{secrets.token_hex(4)}"
             logger.info("Context overflow unrecoverable for %s — signalling new_conversation", request.learner_id)
@@ -413,21 +413,36 @@ async def chat(request: ChatRequest, req: Request,
                     "conversation_id":  new_conv_id,
                     "content": (
                         "📄 **This conversation has reached its context limit.**\n\n"
-                        "Sir. Tega has automatically opened a **new chat** for you so we can keep going. "
-                        "Your progress and XP are saved. Just continue asking your questions here!"
+                        "Sir. Tega has automatically opened a **new chat** for you. "
+                        "Your progress and XP are saved — just keep asking!"
                     ),
-                    "intent": intent,
-                    "topic": topic,
-                    "level": request.level,
-                    "xp_gained": 0,
-                    "badge": None,
-                    "ask_survey": False,
+                    "intent": intent, "topic": topic, "level": request.level,
+                    "xp_gained": 0, "badge": None, "ask_survey": False,
                 }
             )
-        logger.error("LLM error after retries: %s", last_exc)
-        raise HTTPException(
-            status_code=503,
-            detail="Sir. Tega is warming up — please try again in a moment."
+
+        # All 3 providers failed — return a 200 with a friendly inline message
+        # so the frontend shows it as a chat bubble, NOT a red error banner.
+        # The user sees Sir. Tega apologising warmly; the real error is logged.
+        logger.error("LLM error after retries (all providers exhausted): %s", last_exc)
+        return JSONResponse(
+            status_code=200,
+            content={
+                "content": (
+                    "🙏 I'm so sorry — I'm experiencing a very brief connection issue right now. "
+                    "All my AI engines are a little busy at this moment. "
+                    "Please tap **Send** again in a few seconds and I'll be right with you! "
+                    "Your question has not been lost."
+                ),
+                "intent":    intent,
+                "topic":     topic,
+                "level":     request.level,
+                "xp_gained": 0,
+                "badge":     None,
+                "ask_survey": False,
+                # Signal to frontend that this is a retry-able transient error
+                "transient_error": True,
+            }
         )
 
     response_dict  = format_response(content, intent)
@@ -2079,7 +2094,7 @@ async def start_course(learner_id: str, course_name: str,
         logger.error("Course start LLM error after retries: %s", last_exc)
         raise HTTPException(
             status_code=503,
-            detail="Sir. Tega is warming up. Please wait a moment and try again.",
+            detail="Sir. Tega is briefly unavailable. Please try again in a moment.",
         )
 
     xp, badge = record_lesson(learner_id, step.title, step.intent)
@@ -2157,7 +2172,7 @@ async def next_course_step(learner_id: str,
         logger.error("Course next LLM error after retries: %s", last_exc2)
         raise HTTPException(
             status_code=503,
-            detail="Sir. Tega is warming up. Please wait a moment and try again.",
+            detail="Sir. Tega is briefly unavailable. Please try again in a moment.",
         )
 
     # Advance position AFTER successful LLM call — prevents step loss on failure
@@ -2220,7 +2235,7 @@ async def prev_course_step(learner_id: str,
             break
 
     if content is None:
-        raise HTTPException(status_code=503, detail="Sir. Tega is warming up. Please try again.")
+        raise HTTPException(status_code=503, detail="Sir. Tega is briefly unavailable. Please try again in a moment.")
 
     return {
         "completed": False, "course": course.name,
@@ -2932,7 +2947,14 @@ async def bad_gateway_handler(request: Request, exc: Exception) -> JSONResponse:
 
 @app.exception_handler(503)
 async def service_unavailable_handler(request: Request, exc: Exception) -> JSONResponse:
-    return JSONResponse(status_code=503, content={"error": "LLM unavailable, please retry"})
+    """Return a clean JSON error — never expose internal provider names."""
+    return JSONResponse(
+        status_code=503,
+        content={
+            "error":   "Sir. Tega is briefly unavailable. Please try again in a moment.",
+            "retryable": True,
+        }
+    )
 
 # ---------------------------------------------------------------------------
 # Admin Pydantic models
