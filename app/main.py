@@ -7752,28 +7752,24 @@ async def redirect_admin():
     return RedirectResponse(url="/admin.html", status_code=302)
 
 
-@app.get("/terms", response_class=HTMLResponse, include_in_schema=False)
-async def serve_terms() -> HTMLResponse:
-    """Terms of Service — includes referral programme and withdrawal terms."""
-    import os as _os_terms
-    path = _os_terms.path.join("static", "terms.html")
-    if not _os_terms.path.exists(path):
-        raise HTTPException(status_code=404, detail="Terms of Service page not found.")
-    with open(path, "r", encoding="utf-8") as f:
-        content = f.read()
-    return HTMLResponse(content=content)
+@app.get("/terms", include_in_schema=False)
+async def serve_terms(request: Request):
+    """Redirect /terms → Vercel frontend TSX page (same-origin localStorage works there)."""
+    from fastapi.responses import RedirectResponse
+    frontend = _os.getenv("FRONTEND_URL", "https://mypytutor.com.ng")
+    qs = str(request.url.query)
+    dest = frontend.rstrip("/") + "/terms" + (f"?{qs}" if qs else "")
+    return RedirectResponse(url=dest, status_code=302)
 
 
-@app.get("/privacy", response_class=HTMLResponse, include_in_schema=False)
-async def serve_privacy() -> HTMLResponse:
-    """Privacy Policy page."""
-    import os as _os_priv
-    path = _os_priv.path.join("static", "privacy.html")
-    if not _os_priv.path.exists(path):
-        raise HTTPException(status_code=404, detail="Privacy Policy page not found.")
-    with open(path, "r", encoding="utf-8") as f:
-        content = f.read()
-    return HTMLResponse(content=content)
+@app.get("/privacy", include_in_schema=False)
+async def serve_privacy(request: Request):
+    """Redirect /privacy → Vercel frontend TSX page."""
+    from fastapi.responses import RedirectResponse
+    frontend = _os.getenv("FRONTEND_URL", "https://mypytutor.com.ng")
+    qs = str(request.url.query)
+    dest = frontend.rstrip("/") + "/privacy" + (f"?{qs}" if qs else "")
+    return RedirectResponse(url=dest, status_code=302)
 
 
 @app.get("/voice", response_class=HTMLResponse, include_in_schema=False)
@@ -7788,20 +7784,30 @@ async def serve_voice_integration() -> HTMLResponse:
     return HTMLResponse(content=content)
 
 
-@app.get("/payment", response_class=HTMLResponse, include_in_schema=False)
-async def serve_payment_page() -> HTMLResponse:
+@app.get("/payment", include_in_schema=False)
+async def serve_payment_page(request: Request):
     """
-    Universal payment page — shown to users for ALL plan/course purchases.
-    Accepts URL params: ?plan=tier1&name=Beginner+Bundle&amount=30000&tier=tier1&course=python-dsa
-    The page shows Paystack checkout and bank transfer options side by side.
+    Redirect /payment → Vercel frontend TSX PaymentPage.
+    Passes all query params (plan, amount, tier, course, name, desc) through.
+    The TSX page uses useAuth() to read localStorage on the correct origin,
+    solving the cross-origin localStorage token bug.
+    Falls back to the static HTML if FRONTEND_URL is not configured.
     """
+    from fastapi.responses import RedirectResponse
+    frontend = _os.getenv("FRONTEND_URL", "")
+    if frontend:
+        qs = str(request.url.query)
+        dest = frontend.rstrip("/") + "/payment" + (f"?{qs}" if qs else "")
+        return RedirectResponse(url=dest, status_code=302)
+    # Fallback: serve static HTML (works for direct backend visits)
     import os as _os_pay
     path = _os_pay.path.join("static", "payment.html")
     if not _os_pay.path.exists(path):
         raise HTTPException(status_code=404, detail="Payment page not found.")
     with open(path, "r", encoding="utf-8") as f:
         content = f.read()
-    return HTMLResponse(content=content)
+    from fastapi.responses import HTMLResponse as _HR
+    return _HR(content=content)
 
 
 @app.get("/payment/callback", response_class=HTMLResponse, include_in_schema=False)
