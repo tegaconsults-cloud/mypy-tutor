@@ -1,0 +1,24 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Create shared foundation files: useAuth.ts hook, shared.ts design tokens, and App.tsx with all 6 new routes. These are prerequisites for all page components. frontend/src currently has only main.tsx, api.ts, types.ts — App.tsx does not exist yet but main.tsx already imports it.",
+  "status": "completed",
+  "steps": [
+    "Create frontend/src/hooks/useAuth.ts — a React hook that reads token from localStorage (tries keys in order: 'mpt_token', 'token', 'auth_token', 'access_token', 'jwt_token', 'user_token', 'mpt-token') and from URL hash fragment (#token=... and #t=...) for cross-origin flows. Also reads learner_id from 'mpt_learner_id' / 'learner_id' localStorage or decodes from JWT payload (payload.learner_id || payload.sub || payload.id). On hash token detection, persist to localStorage. Returns {token: string, learnerId: string, isSignedIn: boolean}. Use useState + useEffect so it's reactive. Export as default named hook useAuth.",
+    "Create frontend/src/styles/shared.ts — design tokens as TypeScript const object. Include: colors (bg: '#07090f', cardBg: 'rgba(26,32,44,.95)', cardBorder: 'rgba(255,255,255,.1)', textPrimary: '#e2e8f0', textMuted: '#94a3b8', textDisabled: '#64748b', gold: '#f59e0b', blue: '#3b82f6', blueMuted: 'rgba(59,130,246,.18)', blueText: '#93c5fd', green: '#48bb78', red: '#ef4444', codeText: '#fcd34d'), spacing constants, borderRadius values, and a globalStyles string (body background, font-family 'Segoe UI' etc) matching the #07090f dark theme used across all static HTML files.",
+    "Create frontend/src/App.tsx — imports Routes, Route from react-router-dom. Add <Routes> with these exact paths: /payment → PaymentPage, /certificate/locked → CertificateLockedPage, /certificate/not-found → CertificateNotFoundPage, /verify/:certId → CertificateVerifiedPage, /terms → TermsPage, /privacy → PrivacyPage. Add a catch-all / → simple placeholder div (so TypeScript build passes before other pages exist). Import all page components using lazy() + Suspense so the build works once each file exists. Use React.lazy for each import so missing files cause build-time errors only when that route is hit, not on app load. Add a <style> tag or inject globalStyles into document.head inside App's useEffect to set body background.",
+    "Create frontend/src/styles/global.css — already imported in main.tsx as './styles/global.css'. This file must exist. Add body reset: margin:0; padding:0; box-sizing:border-box; background:#07090f; color:#e2e8f0; font-family: 'Segoe UI', Arial, sans-serif; min-height: 100vh."
+  ],
+  "acceptance_criteria": [
+    "cd frontend && npm run build completes with zero TypeScript errors",
+    "frontend/src/hooks/useAuth.ts exists and exports a default useAuth function",
+    "frontend/src/styles/shared.ts exists and exports COLORS, SPACING, etc.",
+    "frontend/src/App.tsx exists with all 6 Route definitions",
+    "frontend/src/styles/global.css exists (already imported by main.tsx)"
+  ],
+  "verification": [
+    "cd c:\\Users\\LENOVO\\Downloads\\mypy-tutor-main\\mypy-tutor-main\\frontend && npm run build"
+  ],
+  "blocked_reason": null,
+  "findings": "1. node_modules was absent from frontend/ — the background npm install (started during earlier attempts) partially populated it from the other project's node_modules (mypytutor-main). A full 'npm install' is still needed once network is available; for now the build works. 2. vite-env.d.ts was missing from src/ — added it so import.meta.env types resolve in api.ts. 3. TypeScript resolves React.lazy() import paths at type-check time, so stub page files (PaymentPage, CertificateLockedPage, CertificateNotFoundPage, CertificateVerifiedPage, TermsPage, PrivacyPage) were created in src/pages/ — later FEAT steps must replace these stubs with real implementations. 4. Build output goes to static/app/ as configured. 5. npm run build script calls 'tsc --noEmit && vite build' but 'tsc' is not in PATH; later steps should run via 'node node_modules/typescript/bin/tsc --noEmit' and 'node_modules/.bin/vite.cmd build' or run 'npm run build' after installing npm globally or fixing PATH."
+}

@@ -1,0 +1,17 @@
+/* Global reset and base styles */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: #07090f;
+  color: #e2e8f0;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  min-height: 100vh;
+}
+
+#root {
+  min-height: 100vh;
+}
