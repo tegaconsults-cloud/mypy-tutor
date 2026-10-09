@@ -7772,13 +7772,12 @@ async def serve_privacy(request: Request):
     return RedirectResponse(url=dest, status_code=302)
 
 
-@app.get("/voice", response_class=HTMLResponse, include_in_schema=False)
-async def serve_voice_integration() -> HTMLResponse:
-    """Serve the voice feature integration guide at /voice"""
-    import os as _os3
-    path = _os3.path.join("static", "voice-integration.html")
-    if not _os3.path.exists(path):
-        raise HTTPException(status_code=404, detail="Voice integration guide not found.")
+@app.get("/voice", include_in_schema=False)
+async def serve_voice_integration(request: Request):
+    """Redirect /voice → Vercel frontend VoiceGuidePage TSX."""
+    from fastapi.responses import RedirectResponse
+    frontend = _os.getenv("FRONTEND_URL", "https://mypytutor.com.ng")
+    return RedirectResponse(url=frontend.rstrip("/") + "/voice", status_code=302)
     with open(path, "r", encoding="utf-8") as f:
         content = f.read()
     return HTMLResponse(content=content)

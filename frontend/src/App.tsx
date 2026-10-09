@@ -16,6 +16,7 @@ const CertificateVerifiedPage = React.lazy(
 );
 const TermsPage = React.lazy(() => import('@/pages/TermsPage'));
 const PrivacyPage = React.lazy(() => import('@/pages/PrivacyPage'));
+const VoiceGuidePage = React.lazy(() => import('@/pages/VoiceGuidePage'));
 
 /** Full-screen centered loading indicator shown while a lazy chunk loads */
 function PageLoader() {
@@ -84,8 +85,9 @@ export default function App() {
           path="/verify/:certId"
           element={<CertificateVerifiedPage />}
         />
-        <Route path="/terms" element={<TermsPage />} />
+        <Route path="/terms"   element={<TermsPage />} />
         <Route path="/privacy" element={<PrivacyPage />} />
+        <Route path="/voice"   element={<VoiceGuidePage />} />
         {/* Catch-all — replaced once a real home/dashboard component exists */}
         <Route path="*" element={<PlaceholderHome />} />
       </Routes>
