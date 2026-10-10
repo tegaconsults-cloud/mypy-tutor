@@ -425,8 +425,9 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
                 <option value="python-databases">Python Databases — ₦8,000</option>
                 <option value="web-apis">Web APIs — ₦8,000</option>
                 <option value="prompt-engineering">Prompt Engineering — ₦8,000</option>
-                <option value="machine-learning">Machine Learning — ₦15,000</option>
-                <option value="ai-prompt-engineering">AI &amp; Prompt Engineering — ₦18,000</option>
+                <option value="machine-learning">Machine Learning — ₦50,000</option>
+                <option value="ai-prompt-engineering">AI &amp; Prompt Engineering — ₦50,000</option>
+                <option value="ai-automation">AI Automation — ₦50,000</option>
               </optgroup>
             </select></div>
             <div class="fr"><label>Method</label><select id="pm"><option value="bank">Bank Transfer</option><option value="paystack">Paystack</option></select></div>
@@ -1026,7 +1027,10 @@ async function loadPayments(){
     const rev = d.summary||{};
     document.getElementById('p-total-rev').textContent = '₦'+(rev.total_revenue||0).toLocaleString();
     document.getElementById('p-confirmed').textContent = rev.confirmed||0;
-    document.getElementById('p-pending').textContent   = rev.pending||0;
+    // Pending = DB summary pending + any live unreviewed bank proofs in this response
+    const livePendingProofs = (d.bank_transfer_proofs||[]).filter(p=>p.status==='pending').length;
+    const totalPending = Math.max(rev.pending||0, livePendingProofs);
+    document.getElementById('p-pending').textContent = totalPending;
 
     // ── Regular payments ──────────────────────────────────────────────────
     document.getElementById('payments-body').innerHTML = (d.payments||[]).map(p=>{

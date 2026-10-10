@@ -316,9 +316,10 @@ def send_certificate_email(name: str, email: str, cert_level: str, cert_id: str,
     # View Certificate: backend route GET /certificate/{level}?learner_id=...&name=...
     # We need the real learner_id, not a slice of cert_id
     _lid         = learner_id or ""
+    import urllib.parse as _up_cert
     cert_url     = (api + "/certificate/" + cert_level
-                    + "?name=" + name.replace(" ", "%20")
-                    + "&learner_id=" + _lid
+                    + "?name=" + _up_cert.quote(name, safe="")
+                    + "&learner_id=" + _up_cert.quote(_lid, safe="")
                     + "&admin_view=false")
     # Verify: also backend route GET /verify/{cert_id}
     verify_url   = api + "/verify/" + cert_id

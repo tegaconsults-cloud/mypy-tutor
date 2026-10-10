@@ -1,4 +1,4 @@
-"""
+﻿"""
 FastAPI application — MyPy Tutor (secured).
 Security layer: rate limiting, input validation, security headers, sanitised errors.
 """
@@ -4588,6 +4588,15 @@ async def admin_approve_bank_transfer(
             notes=f"Proof ID: {proof_id}" + (f" | {admin_notes}" if admin_notes else ""),
         )
         _cfp(_p_course.id)
+        # Auto-generate invoice for every confirmed payment
+        try:
+            import secrets as _sec_inv1
+            _inv1_id = f"INV-{_sec_inv1.token_hex(5).upper()}"
+            create_invoice_db(_inv1_id, _p_course.id, learner_id, proof["email"],
+                              proof["email"].split("@")[0],
+                              proof["plan"], float(proof["amount"]))
+        except Exception as _inv1_exc:
+            logger.warning("Invoice creation (course-slug bank approve) failed (non-fatal): %s", _inv1_exc)
         try:
             from app.services.email_service import send_payment_receipt_email
             send_payment_receipt_email(
@@ -4623,6 +4632,15 @@ async def admin_approve_bank_transfer(
         notes=f"Proof ID: {proof_id}" + (f" | {admin_notes}" if admin_notes else ""),
     )
     _cfp(p.id)
+    # Auto-generate invoice for every confirmed bank transfer payment
+    try:
+        import secrets as _sec_inv2
+        _inv2_id = f"INV-{_sec_inv2.token_hex(5).upper()}"
+        create_invoice_db(_inv2_id, p.id, learner_id, proof["email"],
+                          proof["email"].split("@")[0],
+                          proof["plan"], float(proof["amount"]))
+    except Exception as _inv2_exc:
+        logger.warning("Invoice creation (tier bank approve) failed (non-fatal): %s", _inv2_exc)
 
     log_activity("admin", "payment:bank-transfer-approved",
                  f"proof={proof_id} learner={learner_id} tier={tier}")
@@ -4786,8 +4804,8 @@ async def admin_invite_team(body: _TeamInvite, request: Request) -> dict:
         from app.services.email_service import _dispatch_async, _shell, _cta, _box, PRIMARY, GOLD
         frontend_url = _os.getenv("FRONTEND_URL", "https://mypytutor.com.ng")
         role_label   = body.role.replace("_", " ").title()
-        # Team members should land on the admin dashboard, not the learner homepage
-        admin_url    = frontend_url.rstrip("/") + "/admin.html"
+        # Admin dashboard is served by the BACKEND at /admin.html — not the frontend SPA
+        admin_url    = _os.getenv("APP_URL", "https://mypytutor.onrender.com").rstrip("/") + "/admin.html"
         body_html = (
             f"<p style='color:#1e293b;margin:0 0 12px;'>Hi <strong>{body.name}</strong>,</p>"
             f"<h2 style='color:{PRIMARY};font-size:1.2rem;margin:0 0 12px;'>&#127881; You've been invited to the MyPy Tutor Team!</h2>"
