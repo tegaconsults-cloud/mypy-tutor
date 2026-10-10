@@ -1,7 +1,0 @@
-{
-  "task_id": "task-payment-debug-full",
-  "task_description": "Full payment flow audit and bug fix for mypy-tutor: delete orphan files, fix 6 payment bugs in main.py (email blank, learner_id fallback, missing /payment/callback route, missing /payments/paystack/verify endpoint, missing learner receipt email, course-slug approve routing), and fix 2 static HTML issues (payment success banner, certificate-locked inline script ReferenceError).",
-  "status": "completed",
-  "feature_order": ["FEAT-001", "FEAT-002", "FEAT-003"],
-  "blocked_reason": null
-}
