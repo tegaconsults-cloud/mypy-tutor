@@ -1025,8 +1025,14 @@ async function loadPayments(){
     if(r.status===403){doLogout();return;}
     const d = await r.json();
     const rev = d.summary||{};
-    document.getElementById('p-total-rev').textContent = '₦'+(rev.total_revenue||0).toLocaleString();
-    document.getElementById('p-confirmed').textContent = rev.confirmed||0;
+    // If summary is zero but we have confirmed payments in the list, compute locally
+    const confirmedPayments = (d.payments||[]).filter(p=>p.status==='confirmed');
+    const localRevenue = confirmedPayments.reduce((s,p)=>s+(+(p.amount)||0), 0);
+    const localConfirmed = confirmedPayments.length;
+    const totalRev = (rev.total_revenue||0) || localRevenue;
+    const totalConf = (rev.confirmed||0) || localConfirmed;
+    document.getElementById('p-total-rev').textContent = '₦'+totalRev.toLocaleString();
+    document.getElementById('p-confirmed').textContent = totalConf;
     // Pending = DB summary pending + any live unreviewed bank proofs in this response
     const livePendingProofs = (d.bank_transfer_proofs||[]).filter(p=>p.status==='pending').length;
     const totalPending = Math.max(rev.pending||0, livePendingProofs);
