@@ -137,9 +137,7 @@ def add_payment(user_email: str, user_name: str, amount: float,
                 )
     except Exception as e:
         logger.warning("add_payment DB write failed: %s", e)
-        _payments.append(p)  # fallback to memory only
-    else:
-        _payments.append(p)  # also keep in memory for this session
+        _payments.append(p)  # fallback to memory only when DB is unavailable
     return p
 
 
@@ -307,15 +305,14 @@ def get_revenue_summary() -> dict:
             }
         except Exception as e2:
             logger.warning("get_revenue_summary fallback also failed: %s", e2)
-        # Absolute last resort — in-memory only (may be empty after restart)
-        confirmed_list = [p for p in _payments if p.status == "confirmed"]
-        total = sum(p.amount for p in confirmed_list)
+        # Absolute last resort — both DB paths failed; return zeros rather than stale session data
+        logger.error("get_revenue_summary: both DB paths failed; returning zeros")
         return {
-            "total_revenue": total,
-            "today_revenue": 0,
-            "total_payments": len(_payments),
-            "confirmed": len(confirmed_list),
-            "pending": sum(1 for p in _payments if p.status == "pending"),
+            "total_revenue": 0.0,
+            "today_revenue": 0.0,
+            "total_payments": 0,
+            "confirmed": 0,
+            "pending": 0,
             "by_plan": {},
         }
 

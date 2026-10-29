@@ -15,6 +15,24 @@ import threading
 import time
 import os as _os
 
+# ── Short-lived OAuth code store ──────────────────────────────────────────
+# OAuth callbacks pass a 60-second one-time code instead of embedding the
+# raw JWT + full user JSON in the redirect URL, preventing token leakage
+# via browser history, Referer headers, and server access logs.
+_oauth_codes: dict = {}
+_OAUTH_CODE_TTL = 60  # seconds
+
+def _issue_oauth_code(payload: dict) -> str:
+    """Store payload under a one-time code; return the code (valid 60 s)."""
+    code = secrets.token_urlsafe(32)
+    _oauth_codes[code] = {"payload": payload, "expires_at": time.time() + _OAUTH_CODE_TTL}
+    # Prune expired codes opportunistically
+    now = time.time()
+    for k in list(_oauth_codes):
+        if _oauth_codes[k]["expires_at"] < now:
+            _oauth_codes.pop(k, None)
+    return code
+
 import psycopg2
 import psycopg2.extras as _pge
 
@@ -252,7 +270,10 @@ _allowed_origins = list(filter(None, [
     "http://localhost:5173",
     "http://127.0.0.1:3000",
     "http://127.0.0.1:5173",
-])) or ["*"]
+]))
+# Never fall back to "*" — empty list + allow_origin_regex is safe
+if not _allowed_origins:
+    _allowed_origins = ["https://mypytutor.com.ng"]
 
 app.add_middleware(SecurityMiddleware)
 
@@ -692,16 +713,14 @@ async def auth_google_callback(code: str = None, error: str = None) -> JSONRespo
             args=(user.learner_id, user.email, user.name, is_new),
             daemon=False).start()
 
-        user_data = _up.quote(json.dumps({
-            "token":      token,
-            "learner_id": user.learner_id,
-            "name":       user.name,
-            "email":      user.email,
-            "picture":    user.picture,
-            "greeting":   _wat_greeting(user.name, is_new),
+        _g_code = _issue_oauth_code({
+            "token": token, "learner_id": user.learner_id,
+            "name": user.name, "email": user.email,
+            "picture": user.picture,
+            "greeting": _wat_greeting(user.name, is_new),
             "is_new_user": is_new,
-        }))
-        return RedirectResponse(url=f"{frontend_url}/?auth=google_success&user={user_data}")
+        })
+        return RedirectResponse(url=f"{frontend_url}/?auth=google_success&code={_g_code}")
 
     except Exception as exc:
         logger.error("Google OAuth callback error: %s", exc)
@@ -955,17 +974,14 @@ async def auth_github_callback(code: str = None, error: str = None,
             args=(learner_id, email, name, is_new),
             daemon=False).start()
 
-        user_data = urllib.parse.quote(json.dumps({
-            "token":      token,
-            "learner_id": learner_id,
-            "name":       name,
-            "email":      email,
-            "picture":    picture,
-            "greeting":   _wat_greeting(name, is_new),
+        _gh_code = _issue_oauth_code({
+            "token": token, "learner_id": learner_id,
+            "name": name, "email": email, "picture": picture,
+            "greeting": _wat_greeting(name, is_new),
             "is_new_user": is_new,
-        }))
+        })
         return RedirectResponse(
-            url=f"{frontend_url}/?auth=github_success&user={user_data}"
+            url=f"{frontend_url}/?auth=github_success&code={_gh_code}"
         )
 
     except Exception as exc:
@@ -2462,6 +2478,8 @@ def _parse_quiz(raw: str) -> tuple[str, list[str]]:
     # Strip entire code-fence blocks from the raw text so they don't
     # pollute option parsing (e.g. "C) ```python\nfor i in...\n```")
     raw_clean = re.sub(r"```[\s\S]*?```", "[code]", raw)
+    # Also strip any orphaned opening fence (no closing pair) at start of option
+    raw_clean = re.sub(r"```\w*", "[code]", raw_clean)
 
     # Extract question text
     q_match = re.search(
@@ -3025,6 +3043,8 @@ async def admin_dashboard(request: Request) -> dict:
     _require_admin(request)
 
     import datetime as _dt
+    # today_str is set after wat_date is computed inside the try block below;
+    # initialise to UTC as a safe default that will be overwritten immediately.
     today_str = _dt.date.today().isoformat()
 
     # Helper — run a query safely; returns default on any error
@@ -3068,6 +3088,7 @@ async def admin_dashboard(request: Request) -> dict:
         with _gdb() as _conn:
             with _conn.cursor() as _cur:
                 wat_date = _wat_date_key()
+                today_str = wat_date  # use WAT date for all "today" queries to stay consistent
 
                 # ── Total users: ALL registrations (confirmed or not) ─────
                 # Use the largest of: all email_accounts rows, all non-deleted
@@ -3092,14 +3113,16 @@ async def admin_dashboard(request: Request) -> dict:
                     "AND to_timestamp(created_at) >= NOW() - INTERVAL '24 hours'")
 
                 # ── Tier breakdown ────────────────────────────────────────
+                # Count ALL registered users per tier regardless of email-
+                # confirmation status — OAuth users and unconfirmed signups
+                # are real users and must appear in the breakdown.
                 for _tier in ["free", "tier1", "tier2", "tier3", "tier4"]:
                     tier_counts[_tier] = _q(_cur, 0, """
                         SELECT COUNT(*) FROM (
                             SELECT ea.learner_id
                             FROM email_accounts ea
                             LEFT JOIN learner_profiles lp ON lp.learner_id = ea.learner_id
-                            WHERE (confirmed = 1 OR confirmed IS TRUE)
-                              AND COALESCE(lp.tier, 'free') = %s
+                            WHERE COALESCE(lp.tier, 'free') = %s
                               AND COALESCE(lp.tier, 'free') != 'deleted'
                         ) t""", (_tier,))
 
@@ -7494,11 +7517,18 @@ def _gemini_tts(text: str, voice: str = "Aoede") -> bytes:
 
     data = resp.json()
     # Navigate: candidates[0].content.parts[0].inlineData.data (base64 PCM)
+    # Some models return inline_data instead of inlineData
     try:
-        b64_audio = (data["candidates"][0]["content"]["parts"][0]
-                     ["inlineData"]["data"])
+        part = data["candidates"][0]["content"]["parts"][0]
+        b64_audio = (
+            part.get("inlineData", {}).get("data") or
+            part.get("inline_data", {}).get("data") or
+            ""
+        )
+        if not b64_audio:
+            raise KeyError("inlineData.data not found")
     except (KeyError, IndexError) as e:
-        raise RuntimeError(f"Gemini TTS unexpected response shape: {e} — {str(data)[:200]}")
+        raise RuntimeError(f"Gemini TTS unexpected response shape: {e} — {str(data)[:300]}")
 
     pcm = _b64.b64decode(b64_audio)
     return _pcm_to_wav(pcm, sample_rate=24000, channels=1, sample_width=2)
