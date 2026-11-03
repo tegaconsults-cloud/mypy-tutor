@@ -338,7 +338,9 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
             <button class="bsm" onclick="nav('payments')">💳 Payments</button>
             <button class="bsm" onclick="nav('certificates')">🎓 Certificates</button>
             <button class="bsm" onclick="nav('announce')">📢 Announce</button>
+            <button class="bsm" id="btn-trigger-emails" onclick="triggerAllEmails()" style="background:rgba(16,185,129,.12);border-color:rgba(16,185,129,.3);color:#6ee7b7">📧 Send Automation Emails</button>
           </div>
+          <div id="email-trigger-result" style="margin-top:8px;font-size:.8rem;display:none"></div>
         </div>
       </div>
 
@@ -1320,6 +1322,37 @@ async function loadAnnounce(){
         </div>`)
       .join('')
     : '<span style="color:#4a5568;font-size:.82rem">No announcements sent yet.</span>';
+}
+
+// ── Email Automation Trigger ───────────────────────────────────────────────
+async function triggerAllEmails(){
+  const btn = document.getElementById('btn-trigger-emails');
+  const res = document.getElementById('email-trigger-result');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ Sending…'; }
+  res.style.display='none';
+  try {
+    const r = await api('/admin/email/trigger-all', {method:'POST'});
+    const d = await r.json();
+    if(r.ok){
+      const jobs = d.jobs || {};
+      const rows = Object.entries(jobs).map(([name, jr]) =>
+        `<span style="color:${jr.errors?'#fca5a5':'#6ee7b7'}">${name}: sent=${jr.sent||0} skipped=${jr.skipped||0}</span>`
+      ).join(' &nbsp;·&nbsp; ');
+      res.innerHTML = `✅ <strong>${d.total_sent} emails sent</strong><br/><small style="color:#94a3b8">${rows}</small>`;
+      res.style.color='#6ee7b7';
+      toast(`📧 ${d.total_sent} automation emails dispatched`);
+    } else {
+      res.innerHTML = '❌ ' + (d.detail||d.error||'Failed');
+      res.style.color='#fca5a5';
+      toast('Email trigger failed',false);
+    }
+  } catch(e) {
+    res.innerHTML = '❌ ' + e.message;
+    res.style.color='#fca5a5';
+    toast('Network error',false);
+  }
+  res.style.display='block';
+  if(btn){ btn.disabled=false; btn.textContent='📧 Send Automation Emails'; }
 }
 
 async function sendAnnouncement(){
