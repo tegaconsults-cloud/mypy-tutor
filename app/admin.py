@@ -295,13 +295,22 @@ def get_revenue_summary() -> dict:
                     _fb = _fbc_cur.fetchone()
                     _fbc_cur.execute("SELECT COUNT(*) FROM bank_transfer_proofs WHERE status='pending'")
                     _fbp = _fbc_cur.fetchone()[0]
+                    # Preserve plan breakdown — don't silently drop it on partial error
+                    _fbc_cur.execute("SELECT plan, SUM(amount) FROM payments WHERE status='confirmed' GROUP BY plan")
+                    _fb_plan = {r[0]: float(r[1]) for r in _fbc_cur.fetchall()}
+                    try:
+                        _fbc_cur.execute("SELECT plan, SUM(amount) FROM bank_transfer_proofs WHERE status='approved' GROUP BY plan")
+                        for _r in _fbc_cur.fetchall():
+                            _fb_plan[_r[0]] = _fb_plan.get(_r[0], 0.0) + float(_r[1])
+                    except Exception:
+                        pass
             return {
                 "total_revenue": float(_fr[0] or 0) + float(_fb[0] or 0),
                 "today_revenue": 0,
                 "total_payments": int(_fr[1] or 0) + int(_fb[1] or 0),
                 "confirmed": int(_fr[1] or 0) + int(_fb[1] or 0),
                 "pending": int(_fp or 0) + int(_fbp or 0),
-                "by_plan": {},
+                "by_plan": _fb_plan,
             }
         except Exception as e2:
             logger.warning("get_revenue_summary fallback also failed: %s", e2)
