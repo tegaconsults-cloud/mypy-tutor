@@ -904,13 +904,24 @@ async function loadDashboard(){
         'tier2': 'Pro Plan',
         'tier3': 'Premium Plan',
         'tier4': 'Enterprise Plan',
-        'free': 'Free Plan'
+        'free': 'Free Plan',
+        'prompt-starter': 'Prompt Starter',
+        'prompt-pro': 'Prompt Pro',
+        'prompt-unlimited': 'Prompt Unlimited',
+        'Prompt Starter': 'Prompt Starter',
+        'Prompt Pro': 'Prompt Pro',
+        'Prompt Unlimited': 'Prompt Unlimited',
       };
+      // Humanize fallback: convert raw keys like 'prompt-starter' → 'Prompt Starter'
+      function humanizePlan(key) {
+        if (planLabels[key]) return planLabels[key];
+        return key.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+      }
       const entries = Object.entries(planMap).sort((a,b) => b[1] - a[1]);
       planContainer.innerHTML = entries.length === 0
         ? '<p style="color:var(--muted,#4a5568)">No confirmed payments yet.</p>'
         : entries.map(([plan, amt]) => {
-            const label = planLabels[plan] || plan;
+            const label = humanizePlan(plan);
             return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #2d3748">
               <span style="color:#a0aec0">${label}</span>
               <span style="color:#68d391;font-weight:600">₦${Number(amt).toLocaleString()}</span>

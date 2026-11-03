@@ -3121,15 +3121,21 @@ async def admin_dashboard(request: Request) -> dict:
                 # a profile row but no email_accounts row) are counted.
                 # UNION with email_accounts rows not yet in learner_profiles
                 # so unconfirmed email-only signups are also captured.
+                # No confirmed filter — count ALL registered users by tier.
                 for _tier in ["free", "tier1", "tier2", "tier3", "tier4"]:
                     tier_counts[_tier] = _q(_cur, 0, """
                         SELECT COUNT(*) FROM (
-                            SELECT ea.learner_id
-                            FROM email_accounts ea
-                            LEFT JOIN learner_profiles lp ON lp.learner_id = ea.learner_id
+                            SELECT lp.learner_id
+                            FROM learner_profiles lp
                             WHERE COALESCE(lp.tier, 'free') = %s
                               AND COALESCE(lp.tier, 'free') != 'deleted'
-                        ) t""", (_tier,))
+                            UNION
+                            SELECT ea.learner_id
+                            FROM email_accounts ea
+                            LEFT JOIN learner_profiles lp2 ON lp2.learner_id = ea.learner_id
+                            WHERE lp2.learner_id IS NULL
+                              AND %s = 'free'
+                        ) t""", (_tier, _tier))
 
                 # ── Revenue: Paystack payments + approved bank transfers ──
                 # payments table: Paystack/card payments
@@ -3245,6 +3251,11 @@ async def admin_dashboard(request: Request) -> dict:
         "withdrawals_pending": wd_pending,
         "db_ok":           not bool(_db_error),
         "db_error":        _db_error,
+        # Note: total_users = max(email_accounts, learner_profiles) — OAuth users
+        # land only in learner_profiles; unconfirmed email signups only in email_accounts.
+        # The tier breakdown drives from learner_profiles + email-only UNION so the sum
+        # of tier counts may be slightly less than total_users when the two tables diverge.
+        "db_note":         "tier_sum may be less than total when email-only signups lack a profile row",
     }
 
 
