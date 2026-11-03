@@ -764,6 +764,31 @@ async def auth_google(request: GoogleAuthRequest) -> AuthResponse:
         greeting=_wat_greeting(user.name, is_new), is_new_user=is_new,
     )
 
+
+@app.get("/auth/oauth/exchange")
+async def oauth_exchange_code(code: str) -> dict:
+    """
+    Exchange a short-lived OAuth one-time code (issued by Google/GitHub callback)
+    for the full session payload (token, learner_id, name, email, etc.).
+
+    Security: the code expires after 60 s and is consumed on first use,
+    so the raw JWT never appears in the browser URL / server logs.
+
+    Called by the Vercel frontend immediately after the OAuth redirect:
+      GET /auth/oauth/exchange?code=<code>
+    """
+    import time as _t_ex
+    entry = _oauth_codes.get(code)
+    if not entry:
+        raise HTTPException(status_code=400, detail="Invalid or expired OAuth code.")
+    if _t_ex.time() > entry["expires_at"]:
+        _oauth_codes.pop(code, None)
+        raise HTTPException(status_code=400, detail="OAuth code has expired. Please sign in again.")
+    # Consume code — one-time use only
+    _oauth_codes.pop(code, None)
+    return entry["payload"]
+
+
 @app.get("/auth/me", response_model=AuthResponse)
 async def auth_me(user=Depends(require_user)) -> AuthResponse:
     token = create_session_token(user.learner_id)
@@ -6813,6 +6838,44 @@ async def admin_trigger_weekend(request: Request) -> dict:
                  f"sent={result.get('sent')} errors={result.get('errors')}")
     return {"ok": True, "job": "weekend_motivation",
             "message": f"{result.get('sent')} weekend motivation emails sent.", **result}
+
+
+@app.post("/admin/email/trigger-all")
+async def admin_trigger_all_email_jobs(request: Request) -> dict:
+    """
+    Trigger every email automation job immediately (bypasses all cooldowns and day guards).
+    Useful for confirming the system is working end-to-end.
+    Returns per-job sent/skipped/error counts.
+    """
+    _require_admin(request)
+    loop    = asyncio.get_running_loop()
+    summary = {}
+
+    jobs = [
+        ("reengagement",        _run_reengagement_job),
+        ("course_reminder",     _run_course_reminder_job),
+        ("assignment_reminder", _run_assignment_reminder_job),
+        ("weekend_motivation",  lambda: _run_weekend_job(force=True)),
+        ("new_month",           lambda: _run_new_month_job(force=True)),
+    ]
+
+    total_sent = 0
+    for name, fn in jobs:
+        try:
+            r = await loop.run_in_executor(None, fn)
+            summary[name] = r
+            total_sent += r.get("sent", 0)
+            log_activity("admin", f"email:{name}:manual",
+                         f"sent={r.get('sent')} skipped={r.get('skipped')} errors={r.get('errors')}")
+        except Exception as exc:
+            summary[name] = {"sent": 0, "errors": 1, "error": str(exc)[:120]}
+
+    return {
+        "ok":          True,
+        "total_sent":  total_sent,
+        "jobs":        summary,
+        "message":     f"All email jobs triggered. {total_sent} emails dispatched.",
+    }
 
 
 @app.post("/admin/email/new-month/trigger")
