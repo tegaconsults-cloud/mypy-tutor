@@ -1321,17 +1321,24 @@ def get_referral_bonus_balance(owner_id: str) -> dict:
     computed_total          = sum(float(u.get("referrer_bonus", 0)) for u in uses)
     balance                 = max(stored_balance, computed_total)
     successful_referrals    = int(code_rec.get("successful_referrals") or 0)
-    # Withdrawal unlocks after 10 successful (paid) referrals
-    WITHDRAWAL_LOCK = 10
-    can_withdraw    = successful_referrals >= WITHDRAWAL_LOCK
+    total_uses              = int(code_rec.get("uses") or 0)
+    # Withdrawal unlocks when: 10 total referrals AND at least 5 are paid users
+    TOTAL_LOCK = 10
+    PAID_LOCK  = 5
+    can_withdraw   = (total_uses >= TOTAL_LOCK) and (successful_referrals >= PAID_LOCK)
+    total_needed   = max(0, TOTAL_LOCK - total_uses)
+    paid_needed    = max(0, PAID_LOCK  - successful_referrals)
+    referrals_needed = max(total_needed, paid_needed)
     return {
         "code":                  code,
         "balance":               round(balance, 2),
-        "uses":                  code_rec.get("uses", 0),
+        "uses":                  total_uses,
         "history":               uses[:20],
         "successful_referrals":  successful_referrals,
         "can_withdraw":          can_withdraw,
-        "referrals_needed":      max(0, WITHDRAWAL_LOCK - successful_referrals),
+        "referrals_needed":      referrals_needed,
+        "total_lock":            TOTAL_LOCK,
+        "paid_lock":             PAID_LOCK,
     }
 
 
@@ -1738,17 +1745,33 @@ def create_withdrawal_request(learner_id: str, email: str, amount: float,
             row = cur.fetchone()
             current_balance      = float(row[0]) if row else 0.0
             successful_referrals = int(row[1]) if row and row[1] is not None else 0
+            # Also fetch total uses for the new dual-condition lock
+            cur.execute("SELECT uses FROM referrals WHERE owner_id=%s", (learner_id,))
+            uses_row  = cur.fetchone()
+            total_uses = int(uses_row[0]) if uses_row and uses_row[0] is not None else 0
 
-            # Withdrawal is locked until the learner has 10 successful (paid) referrals
-            WITHDRAWAL_LOCK = 10
-            if successful_referrals < WITHDRAWAL_LOCK:
-                needed = WITHDRAWAL_LOCK - successful_referrals
-                raise ValueError(
-                    f"Withdrawal locked: you need {needed} more successful referral"
-                    f"{'s' if needed != 1 else ''} to unlock withdrawals. "
-                    f"You have {successful_referrals}/{WITHDRAWAL_LOCK} paid referrals. "
-                    f"Your balance (₦{current_balance:,.0f}) is safe and grows with every referral."
-                )
+            # Withdrawal unlocks when: 10 total referrals AND at least 5 paid users
+            TOTAL_LOCK = 10
+            PAID_LOCK  = 5
+            if total_uses < TOTAL_LOCK or successful_referrals < PAID_LOCK:
+                total_needed = max(0, TOTAL_LOCK - total_uses)
+                paid_needed  = max(0, PAID_LOCK  - successful_referrals)
+                if total_needed > 0 and paid_needed > 0:
+                    msg = (f"Withdrawal locked: you need {total_needed} more total referral"
+                           f"{'s' if total_needed != 1 else ''} "
+                           f"and {paid_needed} more paid referral"
+                           f"{'s' if paid_needed != 1 else ''} to unlock. "
+                           f"You have {total_uses}/{TOTAL_LOCK} total and "
+                           f"{successful_referrals}/{PAID_LOCK} paid referrals.")
+                elif total_needed > 0:
+                    msg = (f"Withdrawal locked: you need {total_needed} more total referral"
+                           f"{'s' if total_needed != 1 else ''} ({total_uses}/{TOTAL_LOCK}). "
+                           f"Your balance (₦{current_balance:,.0f}) is safe.")
+                else:
+                    msg = (f"Withdrawal locked: you need {paid_needed} more paid referral"
+                           f"{'s' if paid_needed != 1 else ''} ({successful_referrals}/{PAID_LOCK} paid). "
+                           f"Your balance (₦{current_balance:,.0f}) is safe.")
+                raise ValueError(msg)
 
             if current_balance < amount:
                 raise ValueError(
@@ -1906,7 +1929,9 @@ def mark_email_sent(learner_id: str, email_type: str) -> None:
     """Record the timestamp of the last email of a given type for a learner.
 
     email_type values: 'reengagement', 'course_reminder', 'assignment_reminder',
-                       'weekend', 'new_month'
+                       'weekend', 'new_month', 'top_users'
+
+    For system-level jobs (not per-learner), pass learner_id='__system__'.
     """
     import time as _t
     col_map = {
@@ -1915,6 +1940,7 @@ def mark_email_sent(learner_id: str, email_type: str) -> None:
         "assignment_reminder": "last_assignment_reminder_at",
         "weekend":             "last_weekend_msg_at",
         "new_month":           "last_new_month_msg_at",
+        "top_users":           "last_weekend_msg_at",   # reuse weekend column for system row
     }
     col = col_map.get(email_type)
     if not col:
@@ -1922,8 +1948,8 @@ def mark_email_sent(learner_id: str, email_type: str) -> None:
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(f"""
-                INSERT INTO email_automation (learner_id, updated_at, {col})
-                VALUES (%s, EXTRACT(EPOCH FROM NOW()), %s)
+                INSERT INTO email_automation (learner_id, email, name, updated_at, {col})
+                VALUES (%s, '', '', EXTRACT(EPOCH FROM NOW()), %s)
                 ON CONFLICT (learner_id) DO UPDATE SET
                     {col}      = EXCLUDED.{col},
                     updated_at = EXCLUDED.updated_at
@@ -1984,10 +2010,33 @@ def get_email_automation_candidates(email_type: str, cooldown_days: int) -> list
                        ON ea.learner_id = em.learner_id
                 LEFT JOIN learner_profiles lp
                        ON lp.learner_id = em.learner_id
-                WHERE (em.confirmed = 1 OR em.confirmed IS TRUE)
-                  AND em.email NOT LIKE '%@github.local'
+                WHERE em.email NOT LIKE '%@github.local'
+                  AND em.email NOT LIKE '%@google.local'
+                  AND em.email LIKE '%@%'
                   AND (ea.opted_out IS NULL OR ea.opted_out = 0)
                   AND ({col} IS NULL OR {col} < %s)
-            """, (cutoff,))
+            UNION
+            SELECT
+                    lp2.learner_id,
+                    lp2.email,
+                    lp2.display_name       AS name,
+                    lp2.xp,
+                    lp2.updated_at         AS last_activity_at,
+                    lp2.current_course,
+                    lp2.topics_seen,
+                    lp2.completed_projects,
+                    {col}                  AS last_sent_at
+                FROM learner_profiles lp2
+                LEFT JOIN email_automation ea2
+                       ON ea2.learner_id = lp2.learner_id
+                LEFT JOIN email_accounts em2
+                       ON em2.learner_id = lp2.learner_id
+                WHERE em2.learner_id IS NULL
+                  AND lp2.email LIKE '%@%'
+                  AND lp2.email NOT LIKE '%@github.local'
+                  AND lp2.email NOT LIKE '%@google.local'
+                  AND (ea2.opted_out IS NULL OR ea2.opted_out = 0)
+                  AND ({col} IS NULL OR {col} < %s)
+            """, (cutoff, cutoff))
             rows = cur.fetchall()
     return [dict(r) for r in rows]

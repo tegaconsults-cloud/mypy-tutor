@@ -3438,10 +3438,33 @@ async def admin_top_users(request: Request) -> dict:
         except Exception as _ce:
             logger.warning("top-users congrats email error: %s", _ce)
 
-    # Only send congratulatory emails on weekends (Saturday=5, Sunday=6 in Python)
-    # This prevents spamming users every time an admin loads this page.
+    # Only send congratulatory emails if this is a weekend AND they haven't been
+    # sent yet this weekend. Check via the __system__ sentinel row in email_automation.
+    # This means emails fire at most ONCE per weekend, driven by the hourly scheduler,
+    # NOT on every admin dashboard page load.
     if now_wat.weekday() >= 5:
-        threading.Thread(target=_send_congrats_emails, daemon=False).start()
+        try:
+            import time as _toptime
+            from app.db import get_db as _gdb_top
+            with _gdb_top() as _tc:
+                with _tc.cursor() as _tcur:
+                    _tcur.execute(
+                        "SELECT last_weekend_msg_at FROM email_automation WHERE learner_id='__system__'"
+                    )
+                    _srow = _tcur.fetchone()
+                    _last_top = float(_srow[0]) if _srow and _srow[0] else 0.0
+            # Only fire if not sent in the last 5 days (prevents re-send on same weekend)
+            _five_days = 5 * 86400
+            if _toptime.time() - _last_top > _five_days:
+                from app.db import mark_email_sent as _mets
+                _mets("__system__", "top_users")   # mark before sending (prevents double-send on concurrent loads)
+                threading.Thread(target=_send_congrats_emails, daemon=False).start()
+                logger.info("top-users: congrats emails queued (first time this weekend)")
+            else:
+                logger.info("top-users: congrats emails already sent this weekend, skipping")
+        except Exception as _top_exc:
+            logger.warning("top-users cooldown check failed: %s — sending anyway", _top_exc)
+            threading.Thread(target=_send_congrats_emails, daemon=False).start()
     else:
         logger.info("top-users: skipping congrats emails (not the weekend, weekday=%s)", now_wat.weekday())
 
@@ -5665,8 +5688,13 @@ async def get_my_referral(learner_id: str,
         if unpaid_count < 0:
             unpaid_count = 0
         successful_referrals = int(existing.get("successful_referrals") or 0)
-        WITHDRAWAL_LOCK      = 10
-        can_withdraw         = successful_referrals >= WITHDRAWAL_LOCK
+        total_uses           = int(existing.get("uses") or 0)
+        TOTAL_LOCK = 10
+        PAID_LOCK  = 5
+        can_withdraw         = (total_uses >= TOTAL_LOCK) and (successful_referrals >= PAID_LOCK)
+        total_needed         = max(0, TOTAL_LOCK - total_uses)
+        paid_needed          = max(0, PAID_LOCK  - successful_referrals)
+        referrals_needed     = max(total_needed, paid_needed)
         frontend_url         = _os.getenv("FRONTEND_URL", "https://mypytutor.com.ng")
         code                 = existing["code"]
         share_message = (
@@ -5685,7 +5713,9 @@ async def get_my_referral(learner_id: str,
             "total_referrals":       authoritative_total,
             "successful_referrals":  successful_referrals,
             "can_withdraw":          can_withdraw,
-            "referrals_needed":      max(0, WITHDRAWAL_LOCK - successful_referrals),
+            "referrals_needed":      referrals_needed,
+            "total_lock":            TOTAL_LOCK,
+            "paid_lock":             PAID_LOCK,
             "share_message":         share_message,
             "recent_uses":           uses[:20],
         }
@@ -5882,14 +5912,17 @@ async def use_referral_balance_for_course(request: Request,
     bal_info             = get_referral_bonus_balance(learner_id)
     balance              = bal_info.get("balance", 0.0)
     successful_referrals = bal_info.get("successful_referrals", 0)
-    WITHDRAWAL_LOCK      = 10
+    total_uses           = bal_info.get("uses", 0)
+    TOTAL_LOCK = 10
+    PAID_LOCK  = 5
 
-    if successful_referrals < WITHDRAWAL_LOCK:
-        needed = WITHDRAWAL_LOCK - successful_referrals
+    if total_uses < TOTAL_LOCK or successful_referrals < PAID_LOCK:
+        total_needed = max(0, TOTAL_LOCK - total_uses)
+        paid_needed  = max(0, PAID_LOCK  - successful_referrals)
         raise HTTPException(status_code=403, detail=(
-            f"Balance locked: refer {needed} more paying friend"
-            f"{'s' if needed != 1 else ''} to unlock your balance. "
-            f"You have {successful_referrals}/{WITHDRAWAL_LOCK} paid referrals."
+            f"Balance locked: refer more friends to unlock. "
+            f"You have {total_uses}/{TOTAL_LOCK} total referrals "
+            f"and {successful_referrals}/{PAID_LOCK} paid referrals."
         ))
 
     if amount > balance:
@@ -6654,6 +6687,54 @@ def _run_new_month_job(force: bool = False) -> dict:
 # Unified email automation scheduler — runs hourly, each job self-guards
 # ---------------------------------------------------------------------------
 
+def _run_top_users_congrats_job() -> dict:
+    """
+    Weekend-only job: send congratulatory emails to weekly top learners.
+    Fires on Saturday/Sunday (WAT) but only if not already sent this weekend
+    (5-day cooldown via __system__ sentinel row in email_automation).
+    Never fires from admin page load — only from this scheduler.
+    """
+    import datetime as _dtt2, time as _tt2
+    now_wat2   = _dtt2.datetime.utcnow() + _dtt2.timedelta(hours=1)
+    if now_wat2.weekday() < 5:
+        return {"sent": 0, "skipped": 1, "reason": "not_weekend"}
+
+    # Check cooldown via __system__ sentinel
+    try:
+        from app.db import get_db as _gdb_tuj, mark_email_sent as _mets2
+        with _gdb_tuj() as _tc2:
+            with _tc2.cursor() as _tcur2:
+                _tcur2.execute(
+                    "SELECT last_weekend_msg_at FROM email_automation WHERE learner_id='__system__'"
+                )
+                _srow2 = _tcur2.fetchone()
+                _last2 = float(_srow2[0]) if _srow2 and _srow2[0] else 0.0
+        if _tt2.time() - _last2 <= 5 * 86400:
+            return {"sent": 0, "skipped": 1, "reason": "already_sent_this_weekend"}
+        _mets2("__system__", "top_users")
+    except Exception as _ce2:
+        logger.warning("top-users scheduler cooldown check failed: %s", _ce2)
+
+    # Fetch top users and send emails (reuse admin endpoint logic)
+    try:
+        import httpx as _hx_top
+        app_url = _os.getenv("APP_URL", "https://mypytutor.onrender.com")
+        admin_token = _os.getenv("ADMIN_TOKEN", "")
+        if not admin_token:
+            return {"sent": 0, "errors": 1, "reason": "no_admin_token"}
+        # Call the admin/top-users endpoint internally to trigger email sending
+        _hx_top.get(
+            f"{app_url}/admin/top-users",
+            headers={"X-Admin-Token": admin_token},
+            timeout=30,
+        )
+        logger.info("top-users scheduler: congrats emails triggered")
+        return {"sent": 1, "skipped": 0}
+    except Exception as exc:
+        logger.warning("top-users scheduler: failed to trigger: %s", exc)
+        return {"sent": 0, "errors": 1}
+
+
 def _email_automation_scheduler() -> None:
     """Hourly background thread. Waits 60 s on first boot (lets uvicorn fully
     start), then checks all email jobs every hour. Each job has its own
@@ -6667,6 +6748,7 @@ def _email_automation_scheduler() -> None:
             ("assignment_reminder", _run_assignment_reminder_job),
             ("weekend_motivation",  _run_weekend_job),
             ("new_month",           _run_new_month_job),
+            ("top_users_congrats",  _run_top_users_congrats_job),
         ]:
             try:
                 _r = _jfn()
