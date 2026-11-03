@@ -895,11 +895,28 @@ async function loadDashboard(){
       : '<span style="color:#4a5568">No users yet.</span>';
 
     const plans=Object.entries((d.revenue||{}).by_plan||{});
-    document.getElementById('d-plans').innerHTML=plans.length
-      ? plans.map(([p,v])=>
-          `<div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #2d3748;font-size:.83rem">
-          <span>${p}</span><strong style="color:#68d391">₦${(+v).toLocaleString()}</strong></div>`).join('')
-      : '<span style="color:#4a5568">No payments yet.</span>';
+    // Revenue by Plan — render ALL plans from backend dynamically
+    const planContainer = document.getElementById('d-plans');
+    if (planContainer) {
+      const planMap = (d.revenue||{}).by_plan||{};
+      const planLabels = {
+        'tier1': 'Basic Plan',
+        'tier2': 'Pro Plan',
+        'tier3': 'Premium Plan',
+        'tier4': 'Enterprise Plan',
+        'free': 'Free Plan'
+      };
+      const entries = Object.entries(planMap).sort((a,b) => b[1] - a[1]);
+      planContainer.innerHTML = entries.length === 0
+        ? '<p style="color:var(--muted,#4a5568)">No confirmed payments yet.</p>'
+        : entries.map(([plan, amt]) => {
+            const label = planLabels[plan] || plan;
+            return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #2d3748">
+              <span style="color:#a0aec0">${label}</span>
+              <span style="color:#68d391;font-weight:600">₦${Number(amt).toLocaleString()}</span>
+            </div>`;
+          }).join('');
+    }
 
   } catch(e) {
     console.error('Dashboard load error:', e);

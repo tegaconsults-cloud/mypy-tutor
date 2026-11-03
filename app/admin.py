@@ -289,10 +289,14 @@ def get_revenue_summary() -> dict:
                 with _fbc.cursor() as _fbc_cur:
                     _fbc_cur.execute("SELECT COALESCE(SUM(amount),0),COUNT(*) FROM payments WHERE status='confirmed'")
                     _fr = _fbc_cur.fetchone()
+                    _fbc_cur.execute("SELECT COUNT(*) FROM payments")
+                    _ft = _fbc_cur.fetchone()[0]
                     _fbc_cur.execute("SELECT COUNT(*) FROM payments WHERE status='pending'")
                     _fp = _fbc_cur.fetchone()[0]
                     _fbc_cur.execute("SELECT COALESCE(SUM(amount),0),COUNT(*) FROM bank_transfer_proofs WHERE status='approved'")
                     _fb = _fbc_cur.fetchone()
+                    _fbc_cur.execute("SELECT COUNT(*) FROM bank_transfer_proofs")
+                    _fbt = _fbc_cur.fetchone()[0]
                     _fbc_cur.execute("SELECT COUNT(*) FROM bank_transfer_proofs WHERE status='pending'")
                     _fbp = _fbc_cur.fetchone()[0]
                     # Preserve plan breakdown — don't silently drop it on partial error
@@ -307,7 +311,7 @@ def get_revenue_summary() -> dict:
             return {
                 "total_revenue": float(_fr[0] or 0) + float(_fb[0] or 0),
                 "today_revenue": 0,
-                "total_payments": int(_fr[1] or 0) + int(_fb[1] or 0),
+                "total_payments": int(_ft or 0) + int(_fbt or 0),
                 "confirmed": int(_fr[1] or 0) + int(_fb[1] or 0),
                 "pending": int(_fp or 0) + int(_fbp or 0),
                 "by_plan": _fb_plan,

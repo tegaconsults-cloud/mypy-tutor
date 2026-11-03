@@ -3106,7 +3106,7 @@ async def admin_dashboard(request: Request) -> dict:
                 # would silently exclude paid subscribers.
                 active_today     = _q(_cur, 0,
                     "SELECT COUNT(DISTINCT learner_id) FROM activity_log "
-                    "WHERE DATE(to_timestamp(ts)) = %s::date",
+                    "WHERE DATE(to_timestamp(ts) AT TIME ZONE 'Africa/Lagos') = %s::date",
                     (wat_date,))
 
                 # ── New users 24h — all signups, not just confirmed ───────
@@ -3124,18 +3124,12 @@ async def admin_dashboard(request: Request) -> dict:
                 for _tier in ["free", "tier1", "tier2", "tier3", "tier4"]:
                     tier_counts[_tier] = _q(_cur, 0, """
                         SELECT COUNT(*) FROM (
-                            SELECT lp.learner_id
-                            FROM learner_profiles lp
-                            WHERE COALESCE(lp.tier, 'free') = %s
-                              AND lp.tier != 'deleted'
-                            UNION
                             SELECT ea.learner_id
                             FROM email_accounts ea
-                            LEFT JOIN learner_profiles lp2
-                                   ON lp2.learner_id = ea.learner_id
-                            WHERE lp2.learner_id IS NULL
-                              AND %s = 'free'
-                        ) t""", (_tier, _tier))
+                            LEFT JOIN learner_profiles lp ON lp.learner_id = ea.learner_id
+                            WHERE COALESCE(lp.tier, 'free') = %s
+                              AND COALESCE(lp.tier, 'free') != 'deleted'
+                        ) t""", (_tier,))
 
                 # ── Revenue: Paystack payments + approved bank transfers ──
                 # payments table: Paystack/card payments
