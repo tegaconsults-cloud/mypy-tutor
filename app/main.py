@@ -503,6 +503,18 @@ async def chat(request: ChatRequest, req: Request,
             }
         )
 
+    # -- Extract [[SUGGEST_UPGRADE]] and [[TOPICS:...]] tags from the AI response --
+    # Sir Tega embeds these markers to signal the frontend to pop the plans
+    # modal and render suggested topic chips. Strip them before showing content.
+    suggest_upgrade = "[[SUGGEST_UPGRADE]]" in content
+    content = content.replace("[[SUGGEST_UPGRADE]]", "").strip()
+
+    suggested_topics: list[str] = []
+    _topics_match = re.search(r"\[\[TOPICS:\s*([^\]]+)\]\]", content)
+    if _topics_match:
+        suggested_topics = [t.strip() for t in _topics_match.group(1).split(",") if t.strip()]
+        content = re.sub(r"\[\[TOPICS:[^\]]*\]\]", "", content).strip()
+
     response_dict  = format_response(content, intent)
     detected_topic = response_dict.get("topic") or topic
     xp, badge      = record_lesson(request.learner_id, detected_topic or "", intent)
@@ -528,14 +540,16 @@ async def chat(request: ChatRequest, req: Request,
     ask_survey = increment_interaction(request.learner_id)
 
     return JSONResponse(content={
-        "intent":          response_dict["intent"],
-        "content":         response_dict["content"],
-        "topic":           response_dict["topic"],
-        "level":           profile.level,
-        "xp_gained":       xp,
-        "badge":           badge,
-        "ask_survey":      ask_survey,
-        "conversation_id": conv_id,
+        "intent":           response_dict["intent"],
+        "content":          response_dict["content"],
+        "topic":            response_dict["topic"],
+        "level":            profile.level,
+        "xp_gained":        xp,
+        "badge":            badge,
+        "ask_survey":       ask_survey,
+        "conversation_id":  conv_id,
+        "suggest_upgrade":  suggest_upgrade,
+        "suggested_topics": suggested_topics,
     })
 
 # ---------------------------------------------------------------------------
