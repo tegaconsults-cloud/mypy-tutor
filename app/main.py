@@ -245,6 +245,25 @@ try:
 except Exception:
     pass
 
+# ---------------------------------------------------------------------------
+# Keepalive — prevent Render free-tier sleep
+# ---------------------------------------------------------------------------
+
+def _start_keepalive():
+    """Background thread that pings /health every 10 min to prevent Render sleep."""
+    import urllib.request as _urlreq
+    port = _os.environ.get("PORT", "8000")
+    url  = f"http://localhost:{port}/health"
+    def _ping():
+        while True:
+            time.sleep(600)
+            try:
+                _urlreq.urlopen(url, timeout=10)
+            except Exception:
+                pass
+    t = threading.Thread(target=_ping, daemon=True)
+    t.start()
+
 app = FastAPI(
     title="MyPy Tutor",
     version="2.0.0",
@@ -291,6 +310,21 @@ app.add_middleware(
     allow_credentials=False,
     max_age=86400,
 )
+
+# ---------------------------------------------------------------------------
+# Catalog cache (Fix 2) — module-level TTL for /courses/catalog
+# ---------------------------------------------------------------------------
+import time as _time
+_catalog_cache: dict = {"data": None, "ts": 0.0}
+_CATALOG_TTL = 600  # 10 minutes (also backed by the general _cache infrastructure)
+
+# ---------------------------------------------------------------------------
+# Startup event
+# ---------------------------------------------------------------------------
+
+@app.on_event("startup")
+async def _on_startup():
+    _start_keepalive()
 
 # ---------------------------------------------------------------------------
 # /chat
@@ -7672,7 +7706,7 @@ def _gemini_tts(text: str, voice: str = "Aoede") -> bytes:
             }
         }
     }
-    resp = httpx.post(url, json=payload, timeout=30)
+    resp = httpx.post(url, json=payload, timeout=10)
     if resp.status_code != 200:
         raise RuntimeError(f"Gemini TTS HTTP {resp.status_code}: {resp.text[:200]}")
 
@@ -7728,7 +7762,7 @@ def _gemini_stt(audio_b64: str, mime_type: str = "audio/webm") -> str:
             ]
         }]
     }
-    resp = httpx.post(url, json=payload, timeout=30)
+    resp = httpx.post(url, json=payload, timeout=10)
     if resp.status_code != 200:
         raise RuntimeError(f"Gemini STT HTTP {resp.status_code}: {resp.text[:200]}")
 

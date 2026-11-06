@@ -113,29 +113,10 @@ def get_db():
 
     if pool:
         try:
-            import threading as _pt
-            _conn_holder: list = [None]
-            _conn_exc:    list = [None]
-
-            def _fetch():
-                try:
-                    _conn_holder[0] = pool.getconn()
-                except Exception as e:
-                    _conn_exc[0] = e
-
-            _t = _pt.Thread(target=_fetch, daemon=True)
-            _t.start()
-            _t.join(timeout=8)
-
-            if _conn_holder[0] is not None:
-                conn      = _conn_holder[0]
-                from_pool = True
-            elif _conn_exc[0] is not None:
-                logger.warning("Pool.getconn() error (%s) — direct connect fallback", _conn_exc[0])
-            else:
-                logger.warning("Pool.getconn() timed out — direct connect fallback")
+            conn = pool.getconn()
+            from_pool = True
         except Exception as exc:
-            logger.warning("Pool.getconn() failed (%s) — direct connect fallback", exc)
+            logger.warning("Pool.getconn() error (%s) — direct connect fallback", exc)
 
     if conn is None:
         # Try multiple SSL modes for direct connection
@@ -589,6 +570,10 @@ def init_db() -> None:
                 "CREATE INDEX IF NOT EXISTS idx_payments_created ON payments (created_at DESC)",
                 # Certificate verification
                 "CREATE INDEX IF NOT EXISTS idx_certificates_learner ON certificates (learner_id)",
+                # Performance fixes: prompt_history by learner+ts, referral lookups
+                "CREATE INDEX IF NOT EXISTS idx_prompt_history_learner_ts ON prompt_history (learner_id, ts DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_referrals_owner ON referrals (owner_id)",
+                "CREATE INDEX IF NOT EXISTS idx_referral_uses_learner ON referral_uses (used_by_id)",
             ]:
                 try:
                     cur.execute(sql)

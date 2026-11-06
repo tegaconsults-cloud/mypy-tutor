@@ -118,12 +118,12 @@ def _call_groq(system: str, messages: list[dict], intent: str, temp: float) -> s
                 if _is_model_gone(exc):
                     break   # skip remaining retries for this model
                 if _is_rate_limit(exc) and attempt < retries - 1:
-                    wait = 2 ** attempt * 2   # 2s, 4s
+                    wait = [1, 2][min(attempt, 1)]
                     logger.info("Groq rate-limited — waiting %ds", wait)
                     time.sleep(wait)
                     continue
                 if _is_transient(exc) and attempt < retries - 1:
-                    time.sleep(1.5)
+                    time.sleep(0.5)
                     continue
                 break   # non-retryable error — try next model
 
@@ -189,11 +189,9 @@ def _call_gemini(system: str, messages: list[dict], intent: str, temp: float) ->
             except Exception as exc:
                 logger.warning("Gemini model=%s attempt=%d: %s", model_name, attempt+1, str(exc)[:100])
                 if _is_rate_limit(exc) and attempt < retries - 1:
-                    time.sleep(3)
+                    time.sleep(1)
                     continue
                 break
-
-    raise RuntimeError("Gemini: all models exhausted")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -237,7 +235,7 @@ def _call_openrouter(system: str, messages: list[dict], intent: str, temp: float
                 )
                 if r.status_code == 429:
                     if attempt < retries - 1:
-                        time.sleep(3)
+                        time.sleep(1)
                         continue
                     break
                 if r.status_code >= 400:
@@ -252,7 +250,7 @@ def _call_openrouter(system: str, messages: list[dict], intent: str, temp: float
             except Exception as exc:
                 logger.warning("OpenRouter model=%s attempt=%d: %s", model, attempt+1, str(exc)[:100])
                 if _is_rate_limit(exc) and attempt < retries - 1:
-                    time.sleep(3)
+                    time.sleep(1)
                     continue
                 break
 
