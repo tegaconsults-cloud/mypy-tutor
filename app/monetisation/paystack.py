@@ -97,7 +97,7 @@ def initialize_transaction(
     with httpx.Client(timeout=15) as client:
         r = client.post(f"{_base()}/transaction/initialize", headers=_headers(), json=payload)
 
-    if r.status_code != 200:
+    if r.status_code >= 400:
         raise PaystackError(
             f"initialize_transaction HTTP {r.status_code}: {r.text}",
             status_code=r.status_code,
@@ -144,7 +144,7 @@ def verify_transaction(reference: str) -> dict:
     if r.status_code == 404:
         raise PaystackError(f"Transaction '{reference}' not found.", status_code=404)
 
-    if r.status_code != 200:
+    if r.status_code >= 400:
         raise PaystackError(
             f"verify_transaction HTTP {r.status_code}: {r.text}",
             status_code=r.status_code,
@@ -198,7 +198,6 @@ def create_customer(
             f"create_customer HTTP {r.status_code}: {r.text}",
             status_code=r.status_code,
         )
-
     body = r.json()
     if not body.get("status"):
         raise PaystackError(
@@ -230,7 +229,7 @@ def get_customer(email_or_code: str) -> dict | None:
     if r.status_code == 404:
         return None
 
-    if r.status_code != 200:
+    if r.status_code >= 400:
         raise PaystackError(
             f"get_customer HTTP {r.status_code}: {r.text}",
             status_code=r.status_code,
@@ -267,7 +266,7 @@ def cancel_subscription(subscription_code: str, email_token: str) -> bool:
     with httpx.Client(timeout=15) as client:
         r = client.post(f"{_base()}/subscription/disable", headers=_headers(), json=payload)
 
-    if r.status_code != 200:
+    if r.status_code >= 400:
         raise PaystackError(
             f"cancel_subscription HTTP {r.status_code}: {r.text}",
             status_code=r.status_code,
@@ -302,7 +301,7 @@ def get_subscription(subscription_code: str) -> dict:
             status_code=404,
         )
 
-    if r.status_code != 200:
+    if r.status_code >= 400:
         raise PaystackError(
             f"get_subscription HTTP {r.status_code}: {r.text}",
             status_code=r.status_code,

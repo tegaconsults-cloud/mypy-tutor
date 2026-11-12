@@ -438,8 +438,8 @@ async def chat(request: ChatRequest, req: Request,
     # 5 attempts with increasing backoff — providers may be briefly rate-limited
     # on Render cold-starts or high-traffic moments. Retrying here means the
     # user never sees an error message.
-    _backoffs = [0, 2, 4, 6, 8]   # seconds to sleep before each attempt
-    for _attempt in range(5):
+    _backoffs = [0, 1, 2]   # seconds to sleep before each attempt
+    for _attempt in range(3):
         try:
             if _attempt == 0:
                 msgs_to_send = history_messages
@@ -465,7 +465,7 @@ async def chat(request: ChatRequest, req: Request,
                 )
                 continue
 
-            logger.warning("LLM cascade failed on attempt %d/%d: %s", _attempt + 1, 5, exc)
+            logger.warning("LLM cascade failed on attempt %d/%d: %s", _attempt + 1, 3, exc)
             continue   # try next attempt with backoff
 
     if content is None:
@@ -643,6 +643,9 @@ async def wake() -> dict:
         # GROQ_API_KEY not set or client error — return 200 anyway so frontend
         # doesn't treat this as a failure.  Real failure shows up on /chat.
         return {"ok": True, "warm": False, "detail": str(exc)[:80]}
+
+
+@app.get("/favicon.ico", include_in_schema=False)
 async def favicon() -> HTMLResponse:
     """Serve favicon.ico with no-cache headers to force browsers to pick up logo changes."""
     import os as _os2

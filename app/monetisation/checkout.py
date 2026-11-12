@@ -90,7 +90,7 @@ def fulfill_order(order_id: str, payment_reference: str) -> dict:
 
     if txn['status'] != 'success':
         raise ValueError(f'Transaction not successful: {txn["status"]}')
-    if txn['amount'] != order['total_kobo']:
+    if int(txn['amount']) != int(order['total_kobo']):
         raise ValueError('Amount mismatch')
     if txn['currency'] != 'NGN':
         raise ValueError('Currency mismatch')
@@ -261,7 +261,6 @@ def process_webhook_event(event_type: str, payload: dict) -> None:
                 else ''
             )
             if sub_code:
-                mdb.update_subscription  # find sub and update status
                 with __import__('app.db', fromlist=['get_db']).get_db() as conn:
                     with conn.cursor() as cur:
                         cur.execute(
