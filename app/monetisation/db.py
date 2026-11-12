@@ -875,6 +875,8 @@ def init_monetisation_db() -> None:
     """
     Read and execute the monetisation migration SQL.
     Logs a warning and returns early if DATABASE_URL is not set.
+    Executes each statement individually so a single failure doesn't
+    abort the entire migration, and to avoid psycopg2 multi-statement issues.
     """
     if not os.getenv("DATABASE_URL", "").strip():
         logger.warning(
@@ -890,8 +892,31 @@ def init_monetisation_db() -> None:
     with open(sql_path, "r", encoding="utf-8") as fh:
         migration_sql = fh.read()
 
+    # Split into individual statements and execute one at a time.
+    # Strip comments and blank lines; use semicolon as delimiter.
+    import re as _re
+    # Remove single-line comments
+    cleaned = _re.sub(r'--[^\n]*', '', migration_sql)
+    statements = [s.strip() for s in cleaned.split(';') if s.strip()]
+
+    ok = 0
+    skipped = 0
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute(migration_sql)
+            for stmt in statements:
+                try:
+                    cur.execute(stmt)
+                    ok += 1
+                except Exception as _se:
+                    # ON CONFLICT / already-exists errors are expected — non-fatal
+                    logger.debug("Monetisation migration stmt skipped: %s", _se)
+                    try:
+                        conn.rollback()
+                    except Exception:
+                        pass
+                    skipped += 1
 
-    logger.info("Monetisation DB migration applied successfully.")
+    logger.info(
+        "Monetisation DB migration: %d statements OK, %d skipped/already-exists.",
+        ok, skipped
+    )

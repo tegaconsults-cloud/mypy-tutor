@@ -328,12 +328,17 @@ app.include_router(_monetisation_router)
 @app.on_event("startup")
 async def _on_startup():
     _start_keepalive()
-    try:
-        from app.monetisation.db import init_monetisation_db as _init_monetisation_db
-        _init_monetisation_db()
-        logger.info('Monetisation DB initialised')
-    except Exception as _mon_exc:
-        logger.warning('Monetisation DB init failed (non-fatal): %s', _mon_exc)
+    # Run monetisation DB init in a background thread — the migration SQL is
+    # large (440 lines, seed data) and blocks the event loop if run inline,
+    # causing Render's health-check timeout.
+    def _init_mon():
+        try:
+            from app.monetisation.db import init_monetisation_db as _init_monetisation_db
+            _init_monetisation_db()
+            logger.info('Monetisation DB initialised')
+        except Exception as _mon_exc:
+            logger.warning('Monetisation DB init failed (non-fatal): %s', _mon_exc)
+    threading.Thread(target=_init_mon, daemon=True, name="monetisation-db-init").start()
 
 # ---------------------------------------------------------------------------
 # /chat
