@@ -3228,15 +3228,21 @@ async def admin_dashboard(request: Request) -> dict:
                 wat_date = _wat_date_key()
                 today_str = wat_date  # use WAT date for all "today" queries to stay consistent
 
-                # ── Total users: ALL registrations (confirmed or not) ─────
-                # Use the largest of: all email_accounts rows, all non-deleted
-                # learner profiles. Unconfirmed signups are real registered users.
-                all_email_count  = _q(_cur, 0, "SELECT COUNT(*) FROM email_accounts")
-                conf_email_count = _q(_cur, 0,
-                    "SELECT COUNT(*) FROM email_accounts WHERE (confirmed = 1 OR confirmed IS TRUE)")
-                profile_count    = _q(_cur, 0,
-                    "SELECT COUNT(*) FROM learner_profiles WHERE tier != 'deleted'")
-                total_users      = max(all_email_count, conf_email_count, profile_count)
+                # ── Total users: TRUE UNION across ALL sources ───────────
+                # learner_profiles holds ALL users (email + OAuth/Google/GitHub).
+                # email_accounts holds email-registered users (confirmed & pending).
+                # Some email_accounts rows may not yet have a learner_profiles row
+                # (unconfirmed signups who haven't completed the flow).
+                # UNION deduplicates by learner_id so no user is double-counted.
+                total_users = _q(_cur, 0, """
+                    SELECT COUNT(*) FROM (
+                        SELECT learner_id FROM learner_profiles
+                        WHERE COALESCE(tier, 'free') != 'deleted'
+                        UNION
+                        SELECT learner_id FROM email_accounts
+                        WHERE learner_id IS NOT NULL AND learner_id != ''
+                    ) AS all_users
+                """)
 
                 # ── Active today ─────────────────────────────────────────
                 # Drive from activity_log (covers ALL tiers — free and paid).
@@ -3247,12 +3253,22 @@ async def admin_dashboard(request: Request) -> dict:
                     "WHERE DATE(to_timestamp(ts) AT TIME ZONE 'Africa/Lagos') = %s::date",
                     (wat_date,))
 
-                # ── New users 24h — all signups, not just confirmed ───────
-                # Confirmed filter excluded: new users rarely confirm within minutes.
-                new_users_24h    = _q(_cur, 0,
-                    "SELECT COUNT(*) FROM email_accounts "
-                    "WHERE created_at IS NOT NULL "
-                    "AND to_timestamp(created_at) >= NOW() - INTERVAL '24 hours'")
+                # ── New users 24h — ALL signups across both tables ───────
+                # email_accounts.created_at and learner_profiles.updated_at
+                # are both Unix epoch (DOUBLE PRECISION). UNION to cover
+                # OAuth users (learner_profiles only) + email signups.
+                new_users_24h    = _q(_cur, 0, """
+                    SELECT COUNT(*) FROM (
+                        SELECT learner_id FROM email_accounts
+                        WHERE created_at IS NOT NULL
+                          AND to_timestamp(created_at) >= NOW() - INTERVAL '24 hours'
+                        UNION
+                        SELECT learner_id FROM learner_profiles
+                        WHERE updated_at IS NOT NULL
+                          AND to_timestamp(updated_at) >= NOW() - INTERVAL '24 hours'
+                          AND COALESCE(tier, 'free') != 'deleted'
+                    ) AS new_all
+                """)
 
                 # ── Tier breakdown ────────────────────────────────────────
                 # Drive from learner_profiles so Google OAuth users (who have
