@@ -143,6 +143,7 @@ from app.supabase_client import (
     sb_load_all_email_accounts,
 )
 from app.courses_landing import render_course_landing as _render_course_landing
+from app.monetisation.routes import router as _monetisation_router
 
 logger = logging.getLogger(__name__)
 
@@ -318,6 +319,8 @@ import time as _time
 _catalog_cache: dict = {"data": None, "ts": 0.0}
 _CATALOG_TTL = 600  # 10 minutes (also backed by the general _cache infrastructure)
 
+app.include_router(_monetisation_router)
+
 # ---------------------------------------------------------------------------
 # Startup event
 # ---------------------------------------------------------------------------
@@ -325,6 +328,12 @@ _CATALOG_TTL = 600  # 10 minutes (also backed by the general _cache infrastructu
 @app.on_event("startup")
 async def _on_startup():
     _start_keepalive()
+    try:
+        from app.monetisation.db import init_monetisation_db as _init_monetisation_db
+        _init_monetisation_db()
+        logger.info('Monetisation DB initialised')
+    except Exception as _mon_exc:
+        logger.warning('Monetisation DB init failed (non-fatal): %s', _mon_exc)
 
 # ---------------------------------------------------------------------------
 # /chat
@@ -1239,6 +1248,35 @@ async def auth_signup(request: EmailSignUpWithCode) -> dict:
                 _urc(access_code, email_lower, learner_id, discount_pct=5, payment_amount=0)
             except Exception as exc:
                 logger.warning("Direct referral record failed: %s", exc)
+            # Fire referral emails (auto-confirmed path)
+            try:
+                _ref_owner_email = referral_rec.get("owner_email", "") if referral_rec else ""
+                _ref_owner_id    = referral_rec.get("owner_id", "") if referral_rec else ""
+                if not _ref_owner_email and _ref_owner_id:
+                    try:
+                        _ref_ea = get_email_user_by_id(_ref_owner_id)
+                        if _ref_ea:
+                            _ref_owner_email = _ref_ea.get("email", "")
+                    except Exception:
+                        pass
+                if _ref_owner_email:
+                    def _fire_referral_emails_auto(_re, _rfe, _rne=''):
+                        try:
+                            from app.services.email_service import (
+                                send_referral_signup_to_referrer,
+                                send_referral_welcome_to_referred,
+                            )
+                            send_referral_signup_to_referrer(_re, referred_email=_rfe, referrer_name=_rne)
+                            send_referral_welcome_to_referred(_rfe, referrer_name=_rne, referrer_email=_re)
+                        except Exception:
+                            pass
+                    threading.Thread(
+                        target=_fire_referral_emails_auto,
+                        args=(_ref_owner_email, email_lower),
+                        daemon=False,
+                    ).start()
+            except Exception:
+                pass
     elif access_code and code_type == "coupon" and coupon_rec:
         # Store the coupon code so it survives to checkout — applied at payment time
         if email_lower in _pending:
@@ -1361,8 +1399,10 @@ async def auth_confirm(token: str) -> JSONResponse:
                 _confirmed_lid  = _entry.get("learner_id", "")
             if _confirmed_name:
                 greeting = _up.quote(_wat_greeting(_confirmed_name, is_new=True))
+                # Capture referral_code from confirmed entry before the thread starts
+                _confirm_referral_code = _entry.get("referral_code", "") if _confirmed_email else ""
                 # Fire greeting + welcome emails non-blocking
-                def _send_confirm_emails(_n, _e, _lid):
+                def _send_confirm_emails(_n, _e, _lid, _rcode=_confirm_referral_code):
                     try:
                         from app.services.email_service import (
                             send_welcome_email, send_signin_greeting_email)
@@ -1374,6 +1414,28 @@ async def auth_confirm(token: str) -> JSONResponse:
                             is_new_user=True,
                         )
                         upsert_email_automation(_lid, _e, _n)
+                        # Fire referral emails if user joined through a referral link
+                        if _rcode:
+                            try:
+                                from app.db import get_referral_code as _grc
+                                from app.services.email_service import (
+                                    send_referral_signup_to_referrer,
+                                    send_referral_welcome_to_referred,
+                                )
+                                _rref = _grc(_rcode)
+                                _ref_owner_email = _rref.get("owner_email", "") if _rref else ""
+                                if _rref and not _ref_owner_email:
+                                    from app.email_auth import get_email_user_by_id as _geubi
+                                    _ref_ea = _geubi(_rref.get("owner_id", ""))
+                                    if _ref_ea:
+                                        _ref_owner_email = _ref_ea.get("email", "")
+                                if _ref_owner_email:
+                                    send_referral_signup_to_referrer(
+                                        _ref_owner_email, referred_email=_e, referrer_name='')
+                                    send_referral_welcome_to_referred(
+                                        _e, referrer_name='', referrer_email=_ref_owner_email)
+                            except Exception:
+                                pass
                         # Auto-provision Paystack DVA so user can pay immediately
                         try:
                             from app.paystack import get_or_create_dva as _dva_prov
@@ -5153,6 +5215,27 @@ async def admin_announce(request: Request) -> dict:
         raise HTTPException(status_code=400, detail="Subject and message required.")
     from app.admin import send_announcement
     sent = await send_announcement(target, subject, message)
+
+    # Auto-fire platform update email to all confirmed users (non-blocking)
+    def _auto_platform_update(_title, _body_text):
+        try:
+            from app.db import get_all_confirmed_emails as _gace
+            from app.services.email_service import send_platform_update as _spu
+            _all_emails = _gace()
+            for _eu in _all_emails:
+                try:
+                    _spu(_eu.get('email', ''), _title, _body_text,
+                         user_name=_eu.get('name', ''))
+                except Exception:
+                    pass
+        except Exception as _ann_exc:
+            logger.warning('Auto platform update emails failed: %s', _ann_exc)
+    threading.Thread(
+        target=_auto_platform_update,
+        args=(subject, message),
+        daemon=False,
+    ).start()
+
     return {"ok": True, "sent_to": sent, "message": f"Announcement sent to {sent} users"}
 
 

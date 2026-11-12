@@ -15,6 +15,7 @@ Env vars:
 """
 from __future__ import annotations
 import os, time, logging, threading
+from typing import Optional
 logger = logging.getLogger(__name__)
 
 # ── config helpers ─────────────────────────────────────────────────────────
@@ -1106,3 +1107,168 @@ def send_task_assigned_email(assigned_to: str, title: str, description: str,
         + f"\nView: {platform_url}\n\n-- MyPy Tutor Team"
     )
     _dispatch_async(assigned_to, f"Task assigned: {title}", html, text, "task_assigned")
+
+
+# ── 21. Referral signup — notify referrer ────────────────────────────────────
+def send_referral_signup_to_referrer(referrer_email: str, referred_email: str,
+                                      referrer_name: str = '') -> None:
+    """Notify the referrer that someone just signed up using their referral link."""
+    first    = referrer_name.split()[0] if referrer_name else "Friend"
+    site     = _frontend_url()
+    subject  = "Someone just joined MyPyTutor using your referral link! \U0001f389"
+    preview  = "Your referral " + referred_email + " just joined MyPy Tutor!"
+    details  = (
+        "&#127881;&nbsp;<strong>" + referred_email + "</strong> just signed up using your referral link.<br/><br/>"
+        "Keep sharing — you earn a <strong style='color:" + GOLD + ";'>15% reward</strong> "
+        "when they make their first purchase!"
+    )
+    body = (
+        "<p style='color:#1e293b;margin:0 0 12px;'>Hi <strong>" + first + "</strong>,</p>"
+        "<h2 style='color:" + PRIMARY + ";font-size:1.25rem;margin:0 0 12px;'>"
+        "&#127881; Your referral just joined!</h2>"
+        + _box(details, bg="#f0fdf4", border="#16A34A")
+        + _cta("View My Referrals", site + "/?panel=referrals", color=PRIMARY)
+        + "<p style='color:#64748b;font-size:0.85rem;'>"
+          "Keep sharing your link to earn more rewards!<br/>"
+          "<strong style='color:" + PRIMARY + ";'>The MyPy Tutor Team</strong></p>"
+    )
+    html = _shell(body, preview)
+    text = (
+        "Hi " + first + ",\n\n"
+        + referred_email + " just signed up using your referral link!\n\n"
+        "You earn a 15% reward when they make their first purchase.\n\n"
+        "View your referrals: " + site + "/?panel=referrals\n\n-- The MyPy Tutor Team"
+    )
+    _dispatch_async(referrer_email, subject, html, text, "referral_signup_referrer")
+
+
+# ── 22. Referral welcome — notify referred user ───────────────────────────────
+def send_referral_welcome_to_referred(referred_email: str, referrer_name: str = '',
+                                       referrer_email: str = '') -> None:
+    """Welcome a user who joined through a referral link."""
+    site     = _frontend_url()
+    referrer = referrer_name if referrer_name else referrer_email if referrer_email else "a friend"
+    subject  = "Welcome to MyPyTutor! You joined through a referral link \U0001f389"
+    details  = (
+        "&#127881;&nbsp;Welcome to <strong>MyPy Tutor</strong>!<br/><br/>"
+        "You joined through <strong>" + referrer + "</strong>'s referral link. "
+        "Your learning journey starts now."
+    )
+    body = (
+        "<h2 style='color:" + PRIMARY + ";font-size:1.25rem;margin:0 0 12px;'>"
+        "&#127881; Welcome to MyPy Tutor!</h2>"
+        + _box(details, bg="#f0f7ff", border=PRIMARY)
+        + _cta("Start Learning", site + "/?panel=chat", color=PRIMARY)
+        + "<p style='color:#64748b;font-size:0.85rem;'>"
+          "Sir. Tega is your personal Python and AI tutor — ask anything!<br/>"
+          "<strong style='color:" + PRIMARY + ";'>The MyPy Tutor Team</strong></p>"
+    )
+    html = _shell(body, "Welcome to MyPy Tutor! Your learning journey starts now.")
+    text = (
+        "Welcome to MyPy Tutor!\n\n"
+        "You joined through " + referrer + "'s referral link.\n"
+        "Your learning journey starts now.\n\n"
+        "Start learning: " + site + "/?panel=chat\n\n-- The MyPy Tutor Team"
+    )
+    _dispatch_async(referred_email, subject, html, text, "referral_welcome_referred")
+
+
+# ── 23. Subscription activated ───────────────────────────────────────────────
+def send_subscription_activated(user_email: str, plan_name: str,
+                                  user_name: str = '', ai_limit: int = 300) -> None:
+    """Notify a user that their subscription is now active."""
+    first = user_name.split()[0] if user_name else "Learner"
+    site  = _frontend_url()
+    subject = "Your " + plan_name + " subscription is active! \U0001f680"
+    details = (
+        "&#9989;&nbsp;Plan: <strong style='color:" + PRIMARY + ";'>" + plan_name + "</strong> is now <strong>active</strong><br/>"
+        "&#129302;&nbsp;AI tutor prompts: <strong style='color:" + GOLD + ";'>"
+        + str(ai_limit) + " per day</strong><br/>"
+        "&#128640;&nbsp;Head to your dashboard to start learning"
+    )
+    body = (
+        "<p style='color:#1e293b;margin:0 0 12px;'>Hi <strong>" + first + "</strong>,</p>"
+        "<h2 style='color:" + PRIMARY + ";font-size:1.25rem;margin:0 0 12px;'>"
+        "&#128640; Your subscription is live!</h2>"
+        "<p style='color:#475569;line-height:1.7;margin:0 0 16px;'>"
+        "Great news — your <strong>" + plan_name + "</strong> access is now active. "
+        "Here is what you have unlocked:</p>"
+        + _box(details, bg="#f0f7ff", border=PRIMARY)
+        + _cta("Go to Dashboard", site + "/?panel=chat", color=PRIMARY)
+        + "<p style='color:#64748b;font-size:0.85rem;'>"
+          "Welcome aboard — Sir. Tega is ready for you!<br/>"
+          "<strong style='color:" + PRIMARY + ";'>The MyPy Tutor Team</strong></p>"
+    )
+    html = _shell(body, "Your " + plan_name + " subscription is now active on MyPy Tutor!")
+    text = (
+        "Hi " + first + ",\n\n"
+        "Your " + plan_name + " subscription is now active!\n\n"
+        "AI tutor prompts: " + str(ai_limit) + " per day\n\n"
+        "Go to your dashboard: " + site + "/?panel=chat\n\n-- The MyPy Tutor Team"
+    )
+    _dispatch_async(user_email, subject, html, text, "subscription_activated")
+
+
+# ── 24. Referral reward credited ─────────────────────────────────────────────
+def send_referral_reward_credited(referrer_email: str, referred_email: str,
+                                   plan_name: str, reward_naira: int,
+                                   referrer_name: str = '') -> None:
+    """Notify the referrer that their referral reward has been credited."""
+    first   = referrer_name.split()[0] if referrer_name else "Friend"
+    site    = _frontend_url()
+    subject = "You've earned a referral reward! \U0001f4b0"
+    details = (
+        "&#129395;&nbsp;Your referral <strong>" + referred_email + "</strong> "
+        "just subscribed to <strong>" + plan_name + "</strong>.<br/><br/>"
+        "&#128176;&nbsp;Your <strong style='color:" + GOLD + ";'>&#8358;"
+        + "{:,}".format(reward_naira) + " reward</strong> has been credited.<br/><br/>"
+        "Keep sharing to earn more!"
+    )
+    body = (
+        "<p style='color:#1e293b;margin:0 0 12px;'>Hi <strong>" + first + "</strong>,</p>"
+        "<h2 style='color:" + GOLD + ";font-size:1.25rem;margin:0 0 12px;'>"
+        "&#128176; Referral reward credited!</h2>"
+        + _box(details, bg="#fffbeb", border=GOLD)
+        + _cta("View Referral Balance", site + "/?panel=referrals", color=PRIMARY)
+        + "<p style='color:#64748b;font-size:0.85rem;'>"
+          "Thank you for sharing MyPy Tutor!<br/>"
+          "<strong style='color:" + PRIMARY + ";'>The MyPy Tutor Team</strong></p>"
+    )
+    html = _shell(body, "Your referral reward of \u20a6" + "{:,}".format(reward_naira) + " has been credited!")
+    text = (
+        "Hi " + first + ",\n\n"
+        "Your referral " + referred_email + " just subscribed to " + plan_name + ".\n"
+        "Your \u20a6" + "{:,}".format(reward_naira) + " reward has been credited.\n\n"
+        "View your balance: " + site + "/?panel=referrals\n\n-- The MyPy Tutor Team"
+    )
+    _dispatch_async(referrer_email, subject, html, text, "referral_reward_credited")
+
+
+# ── 25. Platform update broadcast ────────────────────────────────────────────
+def send_platform_update(user_email: str, update_title: str, update_body: str,
+                          user_name: str = '',
+                          platform_url: str = 'https://www.mypytutor.com.ng') -> None:
+    """Notify a user about a new platform feature or update."""
+    first   = user_name.split()[0] if user_name else "Learner"
+    subject = "New on MyPyTutor: " + update_title + " \U0001f195"
+    content = (
+        "<p style='color:#1e293b;margin:0 0 12px;'>Hi <strong>" + first + "</strong>,</p>"
+        "<h2 style='color:" + PRIMARY + ";font-size:1.25rem;margin:0 0 12px;'>"
+        "&#128640; " + update_title + "</h2>"
+        "<p style='color:#475569;line-height:1.7;margin:0 0 16px;'>"
+        + update_body + "</p>"
+        + _cta("Explore Now", platform_url, color=PRIMARY)
+        + "<p style='color:#64748b;font-size:0.85rem;'>"
+          "We build MyPy Tutor for you — your feedback matters!<br/>"
+          "<strong style='color:" + PRIMARY + ";'>The MyPy Tutor Team</strong></p>"
+        + "<p style='color:#94a3b8;font-size:0.7rem;margin-top:16px;'>"
+          "To stop receiving updates, reply to this email with 'unsubscribe'.</p>"
+    )
+    html = _shell(content, "New on MyPy Tutor: " + update_title)
+    text = (
+        "Hi " + first + ",\n\n"
+        "New on MyPyTutor: " + update_title + "\n\n"
+        + update_body + "\n\n"
+        "Explore now: " + platform_url + "\n\n-- The MyPy Tutor Team"
+    )
+    _dispatch_async(user_email, subject, html, text, "platform_update")
