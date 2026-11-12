@@ -150,8 +150,8 @@ def fulfill_order(order_id: str, payment_reference: str) -> dict:
             except Exception:
                 pass
 
-        # 3. Send subscription activated email
-        if _user_email:
+        # 3. Send subscription activated email (only for actual subscription orders)
+        if _user_email and order.get("order_type") == "subscription":
             from app.services.email_service import send_subscription_activated as _ssa
             _ssa(_user_email, _plan_name, user_name=_user_name, ai_limit=_ai_limit)
 
