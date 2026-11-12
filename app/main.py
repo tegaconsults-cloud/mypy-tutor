@@ -3423,7 +3423,10 @@ async def admin_top_users(request: Request) -> dict:
     """
     Return top 3 users this week across 4 categories:
     quiz attempts, AI chat (prompts), courses completed, paid plans.
-    Sends congratulatory emails to each winner automatically.
+
+    READ-ONLY — does NOT send any emails.
+    Congratulatory emails are sent exclusively by the weekly scheduler
+    (_run_top_users_congrats_job) every Saturday at 09:00 WAT.
     """
     _require_admin(request)
     import datetime as _dt2
@@ -3540,92 +3543,6 @@ async def admin_top_users(request: Request) -> dict:
 
     except Exception as exc:
         logger.error("admin_top_users error: %s", exc)
-
-    # Send congratulatory emails (non-blocking, fire and forget)
-    def _send_congrats_emails():
-        try:
-            from app.services.email_service import _dispatch_async
-            sent_emails: set = set()
-            category_labels = {
-                "quiz":    "Top Quiz Champion 🏆",
-                "chat":    "Top AI Learning Champion 🤖",
-                "courses": "Top Course Achiever 📚",
-                "paid":    "Top Supporter 💎",
-            }
-            for cat, users in categories.items():
-                for rank, user in enumerate(users[:3], 1):
-                    email = user.get("email","")
-                    name  = (user.get("name","") or "Learner").split()[0]
-                    if not email or email in sent_emails:
-                        continue
-                    sent_emails.add(email)
-                    medal  = ["🥇","🥈","🥉"][rank-1]
-                    label  = category_labels.get(cat, cat.title())
-                    achievement = user.get("label","")
-                    subject = f"{medal} Congratulations {name}! You're a MyPy Tutor Top Learner This Week!"
-                    html = f"""
-                    <div style="font-family:Inter,Arial,sans-serif;max-width:600px;margin:0 auto;background:#0d1120;color:#f1f5f9;border-radius:16px;overflow:hidden">
-                      <div style="background:linear-gradient(135deg,#1a3a8a,#2563eb);padding:32px 40px;text-align:center">
-                        <div style="font-size:3rem;margin-bottom:8px">{medal}</div>
-                        <h1 style="color:#fff;font-size:1.4rem;margin:0">Congratulations, {name}!</h1>
-                        <p style="color:rgba(255,255,255,0.8);margin:8px 0 0">Weekly Leaderboard — MyPy Tutor</p>
-                      </div>
-                      <div style="padding:32px 40px">
-                        <p style="font-size:1rem;line-height:1.7;margin:0 0 16px">
-                          You have earned the <strong style="color:#f59e0b">{label}</strong> award on MyPy Tutor this week!
-                        </p>
-                        <div style="background:rgba(37,99,235,0.1);border:1px solid rgba(37,99,235,0.3);border-radius:10px;padding:16px 20px;margin:20px 0;text-align:center">
-                          <div style="font-size:1.3rem;font-weight:700;color:#60a5fa">{achievement}</div>
-                          <div style="font-size:0.82rem;color:#94a3b8;margin-top:4px">This week's achievement</div>
-                        </div>
-                        <p style="color:#94a3b8;font-size:0.88rem;line-height:1.7">
-                          Keep up the amazing work! Your dedication to learning Python and AI is truly inspiring.
-                          Sir. Tega and the entire MyPy Tutor team are proud of you. 🐍
-                        </p>
-                        <div style="text-align:center;margin:24px 0">
-                          <a href="https://mypytutor.com.ng" style="background:linear-gradient(135deg,#2563eb,#7c3aed);color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:700;font-size:0.9rem">
-                            Keep Learning →
-                          </a>
-                        </div>
-                        <p style="color:#475569;font-size:0.78rem;text-align:center">
-                          Teamsamikoko Global Academy · MyPy Tutor · mypytutor.com.ng
-                        </p>
-                      </div>
-                    </div>"""
-                    text = f"Congratulations {name}! You earned the {label} award this week on MyPy Tutor. Achievement: {achievement}. Keep learning at mypytutor.com.ng"
-                    _dispatch_async(email, subject, html, text, email_type="top_learner")
-        except Exception as _ce:
-            logger.warning("top-users congrats email error: %s", _ce)
-
-    # Only send congratulatory emails if this is a weekend AND they haven't been
-    # sent yet this weekend. Check via the __system__ sentinel row in email_automation.
-    # This means emails fire at most ONCE per weekend, driven by the hourly scheduler,
-    # NOT on every admin dashboard page load.
-    if now_wat.weekday() >= 5:
-        try:
-            import time as _toptime
-            from app.db import get_db as _gdb_top
-            with _gdb_top() as _tc:
-                with _tc.cursor() as _tcur:
-                    _tcur.execute(
-                        "SELECT last_weekend_msg_at FROM email_automation WHERE learner_id='__system__'"
-                    )
-                    _srow = _tcur.fetchone()
-                    _last_top = float(_srow[0]) if _srow and _srow[0] else 0.0
-            # Only fire if not sent in the last 5 days (prevents re-send on same weekend)
-            _five_days = 5 * 86400
-            if _toptime.time() - _last_top > _five_days:
-                from app.db import mark_email_sent as _mets
-                _mets("__system__", "top_users")   # mark before sending (prevents double-send on concurrent loads)
-                threading.Thread(target=_send_congrats_emails, daemon=False).start()
-                logger.info("top-users: congrats emails queued (first time this weekend)")
-            else:
-                logger.info("top-users: congrats emails already sent this weekend, skipping")
-        except Exception as _top_exc:
-            logger.warning("top-users cooldown check failed: %s — sending anyway", _top_exc)
-            threading.Thread(target=_send_congrats_emails, daemon=False).start()
-    else:
-        logger.info("top-users: skipping congrats emails (not the weekend, weekday=%s)", now_wat.weekday())
 
     return {
         "week_start": week_start_iso,
@@ -6872,10 +6789,12 @@ def _run_top_users_congrats_job() -> dict:
     Weekend-only job: send congratulatory emails to weekly top learners.
     Fires on Saturday/Sunday (WAT) but only if not already sent this weekend
     (5-day cooldown via __system__ sentinel row in email_automation).
-    Never fires from admin page load — only from this scheduler.
+    Self-contained — queries DB and sends emails directly.
+    Never triggered by admin page load — only by the hourly scheduler.
     """
     import datetime as _dtt2, time as _tt2
-    now_wat2   = _dtt2.datetime.utcnow() + _dtt2.timedelta(hours=1)
+    import psycopg2.extras as _pge_top
+    now_wat2 = _dtt2.datetime.utcnow() + _dtt2.timedelta(hours=1)
     if now_wat2.weekday() < 5:
         return {"sent": 0, "skipped": 1, "reason": "not_weekend"}
 
@@ -6891,28 +6810,145 @@ def _run_top_users_congrats_job() -> dict:
                 _last2 = float(_srow2[0]) if _srow2 and _srow2[0] else 0.0
         if _tt2.time() - _last2 <= 5 * 86400:
             return {"sent": 0, "skipped": 1, "reason": "already_sent_this_weekend"}
-        _mets2("__system__", "top_users")
+        _mets2("__system__", "top_users")  # mark BEFORE sending — prevents double-fire
     except Exception as _ce2:
         logger.warning("top-users scheduler cooldown check failed: %s", _ce2)
 
-    # Fetch top users and send emails (reuse admin endpoint logic)
+    # Week start = last Monday 00:00 WAT
+    week_start = now_wat2 - _dtt2.timedelta(
+        days=now_wat2.weekday(), hours=now_wat2.hour,
+        minutes=now_wat2.minute, seconds=now_wat2.second)
+    week_start_iso = week_start.strftime("%Y-%m-%d")
+
+    categories = {"quiz": [], "chat": [], "courses": [], "paid": []}
     try:
-        import httpx as _hx_top
-        app_url = _os.getenv("APP_URL", "https://mypytutor.onrender.com")
-        admin_token = _os.getenv("ADMIN_TOKEN", "")
-        if not admin_token:
-            return {"sent": 0, "errors": 1, "reason": "no_admin_token"}
-        # Call the admin/top-users endpoint internally to trigger email sending
-        _hx_top.get(
-            f"{app_url}/admin/top-users",
-            headers={"X-Admin-Token": admin_token},
-            timeout=30,
-        )
-        logger.info("top-users scheduler: congrats emails triggered")
-        return {"sent": 1, "skipped": 0}
-    except Exception as exc:
-        logger.warning("top-users scheduler: failed to trigger: %s", exc)
+        from app.db import get_db as _gdb_top2
+        with _gdb_top2() as _conn_top:
+            with _conn_top.cursor(cursor_factory=_pge_top.RealDictCursor) as _cur_top:
+
+                def _name_email(lid):
+                    _cur_top.execute(
+                        "SELECT email, name FROM email_accounts WHERE learner_id=%s LIMIT 1", (lid,))
+                    row = _cur_top.fetchone()
+                    if row:
+                        return row["email"] or "", row["name"] or ""
+                    _cur_top.execute(
+                        "SELECT email, display_name FROM learner_profiles WHERE learner_id=%s LIMIT 1", (lid,))
+                    row = _cur_top.fetchone()
+                    return (row["email"] or "", row["display_name"] or "") if row else ("", "")
+
+                # Quiz
+                try:
+                    _cur_top.execute("""
+                        SELECT learner_id, COUNT(*) as cnt FROM quiz_attempts
+                        WHERE ts >= EXTRACT(EPOCH FROM %s::timestamptz)
+                        GROUP BY learner_id ORDER BY cnt DESC LIMIT 3""", (week_start_iso,))
+                    for r in _cur_top.fetchall():
+                        em, nm = _name_email(r["learner_id"])
+                        categories["quiz"].append({"email": em, "name": nm,
+                            "label": f"{int(r['cnt'])} quizzes this week"})
+                except Exception: pass
+
+                # Chat
+                try:
+                    _cur_top.execute("""
+                        SELECT learner_id, COUNT(*) as cnt FROM prompt_history
+                        WHERE role='user' AND ts >= EXTRACT(EPOCH FROM %s::timestamptz)
+                        GROUP BY learner_id ORDER BY cnt DESC LIMIT 3""", (week_start_iso,))
+                    for r in _cur_top.fetchall():
+                        em, nm = _name_email(r["learner_id"])
+                        categories["chat"].append({"email": em, "name": nm,
+                            "label": f"{int(r['cnt'])} AI chats this week"})
+                except Exception: pass
+
+                # Courses
+                try:
+                    _cur_top.execute("""
+                        SELECT learner_id, COUNT(*) as cnt FROM course_progress
+                        WHERE completed = TRUE AND updated_at >= EXTRACT(EPOCH FROM %s::timestamptz)
+                        GROUP BY learner_id ORDER BY cnt DESC LIMIT 3""", (week_start_iso,))
+                    for r in _cur_top.fetchall():
+                        em, nm = _name_email(r["learner_id"])
+                        categories["courses"].append({"email": em, "name": nm,
+                            "label": f"{int(r['cnt'])} courses completed this week"})
+                except Exception: pass
+
+                # Paid supporters
+                try:
+                    _cur_top.execute("""
+                        SELECT lp.learner_id FROM learner_profiles lp
+                        WHERE lp.tier NOT IN ('free','deleted')
+                        ORDER BY lp.updated_at DESC LIMIT 3""")
+                    for r in _cur_top.fetchall():
+                        em, nm = _name_email(r["learner_id"])
+                        categories["paid"].append({"email": em, "name": nm,
+                            "label": "Active paid subscriber"})
+                except Exception: pass
+
+    except Exception as _db_exc:
+        logger.warning("top-users scheduler: DB query failed: %s", _db_exc)
         return {"sent": 0, "errors": 1}
+
+    # Send emails
+    sent = 0
+    seen: set = set()
+    category_labels = {
+        "quiz":    "Top Quiz Champion 🏆",
+        "chat":    "Top AI Learning Champion 🤖",
+        "courses": "Top Course Achiever 📚",
+        "paid":    "Top Supporter 💎",
+    }
+    medals = ["🥇", "🥈", "🥉"]
+    try:
+        from app.services.email_service import _dispatch_async as _dax
+        for cat, users in categories.items():
+            for rank, user in enumerate(users[:3], 1):
+                email = user.get("email", "")
+                if not email or email in seen:
+                    continue
+                seen.add(email)
+                name        = (user.get("name", "") or "Learner").split()[0]
+                medal       = medals[rank - 1]
+                label       = category_labels.get(cat, cat.title())
+                achievement = user.get("label", "")
+                subject = f"{medal} Congratulations {name}! You're a MyPy Tutor Top Learner This Week!"
+                html = f"""
+                <div style="font-family:Inter,Arial,sans-serif;max-width:600px;margin:0 auto;background:#0d1120;color:#f1f5f9;border-radius:16px;overflow:hidden">
+                  <div style="background:linear-gradient(135deg,#1a3a8a,#2563eb);padding:32px 40px;text-align:center">
+                    <div style="font-size:3rem;margin-bottom:8px">{medal}</div>
+                    <h1 style="color:#fff;font-size:1.4rem;margin:0">Congratulations, {name}!</h1>
+                    <p style="color:rgba(255,255,255,0.8);margin:8px 0 0">Weekly Leaderboard — MyPy Tutor</p>
+                  </div>
+                  <div style="padding:32px 40px">
+                    <p style="font-size:1rem;line-height:1.7;margin:0 0 16px">
+                      You have earned the <strong style="color:#f59e0b">{label}</strong> award on MyPy Tutor this week!
+                    </p>
+                    <div style="background:rgba(37,99,235,0.1);border:1px solid rgba(37,99,235,0.3);border-radius:10px;padding:16px 20px;margin:20px 0;text-align:center">
+                      <div style="font-size:1.3rem;font-weight:700;color:#60a5fa">{achievement}</div>
+                      <div style="font-size:0.82rem;color:#94a3b8;margin-top:4px">This week's achievement</div>
+                    </div>
+                    <p style="color:#94a3b8;font-size:0.88rem;line-height:1.7">
+                      Keep up the amazing work! Your dedication to learning Python and AI is truly inspiring.
+                      Sir. Tega and the entire MyPy Tutor team are proud of you. 🐍
+                    </p>
+                    <div style="text-align:center;margin:24px 0">
+                      <a href="https://mypytutor.com.ng" style="background:linear-gradient(135deg,#2563eb,#7c3aed);color:#fff;text-decoration:none;padding:12px 28px;border-radius:8px;font-weight:700;font-size:0.9rem">
+                        Keep Learning →
+                      </a>
+                    </div>
+                    <p style="color:#475569;font-size:0.78rem;text-align:center">
+                      Teamsamikoko Global Academy · MyPy Tutor · mypytutor.com.ng
+                    </p>
+                  </div>
+                </div>"""
+                text = f"Congratulations {name}! You earned the {label} award this week. Achievement: {achievement}. Keep learning at mypytutor.com.ng"
+                _dax(email, subject, html, text, email_type="top_learner")
+                sent += 1
+    except Exception as _se:
+        logger.warning("top-users scheduler: email send error: %s", _se)
+
+    logger.info("top-users scheduler: sent %d congratulatory emails", sent)
+    return {"sent": sent, "skipped": 0}
 
 
 def _email_automation_scheduler() -> None:

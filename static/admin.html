@@ -584,7 +584,7 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
       <div id="p-topusers" class="page">
         <h2>&#127942; Top Users This Week</h2>
         <p style="color:#718096;font-size:.83rem;margin-bottom:18px">
-          Top 3 learners this week by category. Congratulatory emails are sent automatically when this page loads.
+          Top 3 learners this week by category. Congratulatory emails are sent <strong style="color:#68d391">automatically every weekend</strong> by the scheduler — no action needed here.
         </p>
         <div class="g2" id="topusers-grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">
           <div class="sec" id="tu-quiz">
@@ -606,7 +606,7 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
         </div>
         <div style="margin-top:14px">
           <button class="btn" onclick="loadTopUsers()" style="background:rgba(37,99,235,.15);color:#93c5fd;border:1px solid rgba(37,99,235,.3)">
-            &#128260; Refresh &amp; Resend Congratulatory Emails
+            &#128260; Refresh Leaderboard
           </button>
           <span id="tu-status" style="margin-left:12px;font-size:.8rem;color:#68d391;display:none"></span>
         </div>
@@ -1623,7 +1623,7 @@ async function loadTopUsers(){
   renderCategory(cats.paid,    'tu-paid-body');
 
   if(statusEl&&d.total_winners>0){
-    statusEl.textContent = `&#10003; ${d.total_winners} winner${d.total_winners>1?'s':''} found — congratulatory emails sent!`;
+    statusEl.textContent = `&#10003; ${d.total_winners} winner${d.total_winners>1?'s':''} found — emails go out automatically this weekend.`;
     statusEl.style.display='inline';
     setTimeout(()=>statusEl.style.display='none', 5000);
   } else if(statusEl){
