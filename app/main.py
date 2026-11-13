@@ -313,6 +313,57 @@ app.add_middleware(
 )
 
 # ---------------------------------------------------------------------------
+# Global exception handlers — inject CORS headers so browser can read errors
+# ---------------------------------------------------------------------------
+# Starlette's BaseHTTPMiddleware has a known limitation: unhandled exceptions
+# inside call_next can bypass middleware response processing, so CORS headers
+# are missing on 400/422/500 responses. These handlers ensure CORS headers are
+# always present regardless of error type.
+
+_CORS_HEADERS = {
+    "Access-Control-Allow-Origin":  "*",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+}
+
+@app.exception_handler(HTTPException)
+async def _http_exc_handler(request: Request, exc: HTTPException):
+    origin = request.headers.get("origin", "")
+    hdrs = dict(_CORS_HEADERS)
+    if origin:
+        hdrs["Access-Control-Allow-Origin"] = origin
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers=hdrs,
+    )
+
+@app.exception_handler(RequestValidationError)
+async def _validation_exc_handler(request: Request, exc: RequestValidationError):
+    origin = request.headers.get("origin", "")
+    hdrs = dict(_CORS_HEADERS)
+    if origin:
+        hdrs["Access-Control-Allow-Origin"] = origin
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()},
+        headers=hdrs,
+    )
+
+@app.exception_handler(Exception)
+async def _generic_exc_handler(request: Request, exc: Exception):
+    origin = request.headers.get("origin", "")
+    hdrs = dict(_CORS_HEADERS)
+    if origin:
+        hdrs["Access-Control-Allow-Origin"] = origin
+    logger.error("Unhandled exception on %s: %s", request.url.path, exc)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+        headers=hdrs,
+    )
+
+# ---------------------------------------------------------------------------
 # Catalog cache (Fix 2) — module-level TTL for /courses/catalog
 # ---------------------------------------------------------------------------
 import time as _time
