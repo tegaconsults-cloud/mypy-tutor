@@ -67,10 +67,12 @@
 
   /* ─── Token helpers ──────────────────────────────────────────────────── */
   function _getToken() {
-    return localStorage.getItem('mpt_token')
+    return localStorage.getItem('mypy_tutor_session')
+        || localStorage.getItem('mpt_token')
         || localStorage.getItem('token')
         || localStorage.getItem('auth_token')
         || sessionStorage.getItem('mpt_token')
+        || sessionStorage.getItem('mypy_tutor_session')
         || _token || '';
   }
   function _getLearnerID() {

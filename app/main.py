@@ -8037,7 +8037,7 @@ def _gemini_stt(audio_b64: str, mime_type: str = "audio/webm") -> str:
             "parts": [
                 {
                     "inlineData": {
-                        "mimeType": mime_type,
+                        "mimeType": mime_type.split(";", 1)[0].strip() or "audio/webm",
                         "data": audio_b64,
                     }
                 },
@@ -8199,7 +8199,7 @@ async def voice_chat(request: Request,
     try:
         from app.prompts    import build_system_prompt
         from app.llm_client import get_completion
-        system = build_system_prompt(level, learner_id)
+        system = build_system_prompt(intent="concept", level=level)
         reply  = get_completion(
             system_prompt=system,
             messages=[{"role": "user", "content": transcript}],
