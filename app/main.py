@@ -7366,6 +7366,37 @@ def _backfill_email_automation() -> None:
 threading.Thread(target=_backfill_email_automation, daemon=True, name="email-automation-backfill").start()
 
 
+def _backfill_profile_emails() -> None:
+    """
+    Startup backfill: copy emails from email_accounts → learner_profiles
+    for any profile row where email is blank.
+    This fixes OAuth/Google/GitHub users whose profile row has an empty email
+    field, ensuring they appear in announcement sends and scheduled emails.
+    Idempotent — only updates rows that need it.
+    """
+    try:
+        from app.db import get_db as _bgdb2
+        with _bgdb2() as _bc2:
+            with _bc2.cursor() as _bcur2:
+                _bcur2.execute("""
+                    UPDATE learner_profiles lp
+                    SET email = ea.email
+                    FROM email_accounts ea
+                    WHERE ea.learner_id = lp.learner_id
+                      AND ea.email IS NOT NULL
+                      AND ea.email LIKE '%@%'
+                      AND (lp.email IS NULL OR lp.email = '' OR lp.email NOT LIKE '%@%')
+                      AND COALESCE(lp.tier,'free') != 'deleted'
+                """)
+                updated = _bcur2.rowcount
+        if updated:
+            logger.info("Profile email backfill: updated %d learner_profiles with emails from email_accounts", updated)
+    except Exception as exc:
+        logger.debug("Profile email backfill failed (non-fatal): %s", exc)
+
+threading.Thread(target=_backfill_profile_emails, daemon=True, name="profile-email-backfill").start()
+
+
 # ---------------------------------------------------------------------------
 # STARTUP MIGRATION — credit ₦5,000 welcome bonus to ALL existing users
 # Runs once on deploy, idempotent: tracked in migration_log table so it

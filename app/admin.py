@@ -663,14 +663,24 @@ async def send_announcement(target: str, subject: str, body_text: str) -> int:
     # { learner_id: (email, name, tier) }
     user_map: dict[str, tuple[str, str, str]] = {}
 
-    # ── Source 1: learner_profiles — all users, carries email + tier ─────────────
+    # ── Source 1: learner_profiles LEFT JOIN email_accounts ──────────────────────
+    # Covers ALL user types: email registrations, Google OAuth, GitHub OAuth.
+    # For OAuth users whose learner_profiles.email is blank, the JOIN retrieves
+    # the email from email_accounts so they are not silently excluded.
     try:
         import psycopg2.extras as _pge
         with _gdb() as conn:
             with conn.cursor(cursor_factory=_pge.RealDictCursor) as cur:
-                cur.execute(
-                    "SELECT learner_id, email, display_name, tier FROM learner_profiles"
-                )
+                cur.execute("""
+                    SELECT
+                        lp.learner_id,
+                        COALESCE(NULLIF(lp.email,''), ea.email, '')  AS email,
+                        COALESCE(NULLIF(lp.display_name,''), ea.name, '') AS display_name,
+                        COALESCE(lp.tier, 'free') AS tier
+                    FROM learner_profiles lp
+                    LEFT JOIN email_accounts ea ON ea.learner_id = lp.learner_id
+                    WHERE COALESCE(lp.tier,'free') != 'deleted'
+                """)
                 rows = cur.fetchall()
         for r in rows:
             lid   = (r["learner_id"] or "").strip()
