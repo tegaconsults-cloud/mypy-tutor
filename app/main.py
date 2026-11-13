@@ -6600,14 +6600,14 @@ async def supabase_status(request: Request) -> dict:
 # running the scheduler every hour never causes duplicate sends.
 # ---------------------------------------------------------------------------
 
-def _run_reengagement_job() -> dict:
+def _run_reengagement_job(force: bool = False) -> dict:
     """Inactive 7+ days: personalised re-engagement email. Cooldown: 6 days."""
     import time as _t, json as _json
     from app.db import get_email_automation_candidates, mark_email_sent, upsert_email_automation
     from app.services.email_service import send_reengagement_email as _re_email
 
     INACTIVITY_DAYS = 7
-    COOLDOWN_DAYS   = 6
+    COOLDOWN_DAYS   = 6 if not force else 0
 
     sent = skipped = errors = 0
     try:
@@ -6626,8 +6626,8 @@ def _run_reengagement_job() -> dict:
 
             last_activity = row.get("last_activity_at")
             if last_activity is None:
-                days_inactive = 999   # never logged in — treat as very inactive
-            elif float(last_activity) >= cutoff:
+                days_inactive = 999
+            elif not force and float(last_activity) >= cutoff:
                 skipped += 1; continue
             else:
                 days_inactive = max(1, int((_t.time() - float(last_activity)) / 86400))
@@ -6654,7 +6654,7 @@ def _run_reengagement_job() -> dict:
     return {"sent": sent, "skipped": skipped, "errors": errors, "candidates": len(candidates)}
 
 
-def _run_course_reminder_job() -> dict:
+def _run_course_reminder_job(force: bool = False) -> dict:
     """Incomplete course + idle 3+ days: course progress nudge. Cooldown: 4 days."""
     import time as _t
     from app.db import get_email_automation_candidates, mark_email_sent, upsert_email_automation
@@ -6662,7 +6662,7 @@ def _run_course_reminder_job() -> dict:
     from app.progress import get_profile as _gp
     from app.courses import get_course as _gc
 
-    IDLE_DAYS = 3; COOLDOWN_DAYS = 4
+    IDLE_DAYS = 3; COOLDOWN_DAYS = 4 if not force else 0
     sent = skipped = errors = 0
     cutoff = _t.time() - (IDLE_DAYS * 86400)
 
@@ -6681,8 +6681,8 @@ def _run_course_reminder_job() -> dict:
 
             last_activity = row.get("last_activity_at")
             if last_activity is None:
-                days_since = IDLE_DAYS   # no profile update = idle
-            elif float(last_activity) >= cutoff:
+                days_since = IDLE_DAYS
+            elif not force and float(last_activity) >= cutoff:
                 skipped += 1; continue
             else:
                 days_since = max(1, int((_t.time() - float(last_activity)) / 86400))
@@ -6715,14 +6715,14 @@ def _run_course_reminder_job() -> dict:
     return {"sent": sent, "skipped": skipped, "errors": errors, "candidates": len(candidates)}
 
 
-def _run_assignment_reminder_job() -> dict:
+def _run_assignment_reminder_job(force: bool = False) -> dict:
     """Pending unsubmitted assignments: reminder email. Cooldown: 3 days."""
     import time as _t
     from app.db import (get_email_automation_candidates, mark_email_sent,
                         upsert_email_automation, get_assignments_db)
     from app.services.email_service import send_assignment_reminder_email as _ar_email
 
-    COOLDOWN_DAYS = 3
+    COOLDOWN_DAYS = 3 if not force else 0
     sent = skipped = errors = 0
     try:
         candidates = get_email_automation_candidates("assignment_reminder", COOLDOWN_DAYS)
@@ -7144,9 +7144,9 @@ async def admin_trigger_all_email_jobs(request: Request) -> dict:
     summary = {}
 
     jobs = [
-        ("reengagement",        _run_reengagement_job),
-        ("course_reminder",     _run_course_reminder_job),
-        ("assignment_reminder", _run_assignment_reminder_job),
+        ("reengagement",        lambda: _run_reengagement_job(force=True)),
+        ("course_reminder",     lambda: _run_course_reminder_job(force=True)),
+        ("assignment_reminder", lambda: _run_assignment_reminder_job(force=True)),
         ("weekend_motivation",  lambda: _run_weekend_job(force=True)),
         ("new_month",           lambda: _run_new_month_job(force=True)),
     ]
