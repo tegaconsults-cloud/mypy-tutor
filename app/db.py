@@ -533,6 +533,17 @@ def init_db() -> None:
                 updated_at               DOUBLE PRECISION DEFAULT EXTRACT(EPOCH FROM NOW())
             )""")
 
+            cur.execute("""
+            CREATE TABLE IF NOT EXISTS product_updates (
+                id          SERIAL PRIMARY KEY,
+                title       TEXT NOT NULL,
+                body        TEXT NOT NULL,
+                published_by TEXT DEFAULT 'admin',
+                notified_count INT DEFAULT 0,
+                notified_at DOUBLE PRECISION,
+                created_at  DOUBLE PRECISION DEFAULT EXTRACT(EPOCH FROM NOW())
+            )""")
+
             # ── Indexes ──────────────────────────────────────────────────────
             # ── Migrations: add columns to existing tables safely ─────────────
             for migration_sql in [

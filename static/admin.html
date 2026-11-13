@@ -494,6 +494,7 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
       <div id="p-announce" class="page">
         <h2>📢 Announcements</h2>
         <div class="sec"><h3>Send to Users</h3>
+          <p style="font-size:0.82rem;color:var(--muted);margin:0 0 12px;">Announcements sent to All Users are automatically emailed to every registered learner. No separate email trigger needed.</p>
           <div class="fr">
             <label>Target</label>
             <div style="flex:1;display:flex;flex-direction:column;gap:6px">
@@ -521,6 +522,17 @@ label{font-size:.72rem;color:var(--muted);display:block;margin-bottom:4px;font-w
           <span id="ann-msg" style="margin-left:10px;font-size:.8rem;color:#68d391;display:none"></span>
         </div>
         <div class="sec"><h3>Sent History</h3><div id="ann-history">Loading…</div></div>
+        <div class="sec">
+          <!-- Recent Product Updates Sent -->
+          <div style="margin-top:28px;">
+            <h3 style="font-size:1rem;font-weight:700;color:var(--text);margin:0 0 12px;display:flex;align-items:center;gap:8px;">
+              <span style="font-size:1.1rem;">📦</span> Recent Product Updates Sent
+              <span style="font-size:0.72rem;font-weight:500;color:var(--muted);background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.2);border-radius:6px;padding:2px 8px;">Auto-emailed to all users</span>
+            </h3>
+            <p style="font-size:0.82rem;color:var(--muted);margin:0 0 12px;">Every announcement sent to &ldquo;All Users&rdquo; automatically emails all registered learners.</p>
+            <div id="product-updates-list" style="font-size:0.85rem;"></div>
+          </div>
+        </div>
       </div>
 
       <!-- TEAM -->
@@ -1322,6 +1334,42 @@ async function loadAnnounce(){
         </div>`)
       .join('')
     : '<span style="color:#4a5568;font-size:.82rem">No announcements sent yet.</span>';
+  loadProductUpdates();
+}
+
+async function loadProductUpdates() {
+  const el = document.getElementById('product-updates-list');
+  if (!el) return;
+  try {
+    const r = await fetch('/admin/product-updates', {
+      headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('adminToken') || '') }
+    });
+    if (!r.ok) { el.innerHTML = '<p style="color:var(--muted);font-size:0.82rem;">Could not load product updates.</p>'; return; }
+    const data = await r.json();
+    if (!data.updates || data.updates.length === 0) {
+      el.innerHTML = '<p style="color:var(--muted);font-size:0.82rem;">No product updates sent yet.</p>';
+      return;
+    }
+    let html = '<table style="width:100%;border-collapse:collapse;font-size:0.82rem;">';
+    html += '<thead><tr>';
+    html += '<th style="text-align:left;padding:8px 10px;color:var(--muted);border-bottom:1px solid var(--border);font-weight:600;">Title</th>';
+    html += '<th style="text-align:left;padding:8px 10px;color:var(--muted);border-bottom:1px solid var(--border);font-weight:600;">Date Sent</th>';
+    html += '<th style="text-align:right;padding:8px 10px;color:var(--muted);border-bottom:1px solid var(--border);font-weight:600;">Users Notified</th>';
+    html += '</tr></thead><tbody>';
+    for (const u of data.updates) {
+      const dateStr = u.created_at ? new Date(u.created_at * 1000).toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'}) : '—';
+      const notified = u.notified_count != null ? u.notified_count : '(pending)';
+      html += `<tr style="border-bottom:1px solid var(--border);">`;
+      html += `<td style="padding:8px 10px;color:var(--text);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${u.title||''}">${u.title||'—'}</td>`;
+      html += `<td style="padding:8px 10px;color:var(--sub);">${dateStr}</td>`;
+      html += `<td style="padding:8px 10px;text-align:right;color:var(--accent);">👥 ${notified}</td>`;
+      html += '</tr>';
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
+  } catch(e) {
+    el.innerHTML = '<p style="color:var(--muted);font-size:0.82rem;">Could not load product updates.</p>';
+  }
 }
 
 // ── Email Automation Trigger ───────────────────────────────────────────────

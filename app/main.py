@@ -5165,27 +5165,84 @@ async def admin_announce(request: Request) -> dict:
     from app.admin import send_announcement
     sent = await send_announcement(target, subject, message)
 
-    # Auto-fire platform update email to all confirmed users (non-blocking)
-    def _auto_platform_update(_title, _body_text):
+    # Auto-fire platform update email to ALL users — only when target == "all"
+    _product_update_id = None
+    if target == "all":
+        # Insert a product_updates record so the admin can track this blast
         try:
-            from app.db import get_all_confirmed_emails as _gace
-            from app.services.email_service import send_platform_update as _spu
-            _all_emails = _gace()
-            for _eu in _all_emails:
-                try:
-                    _spu(_eu.get('email', ''), _title, _body_text,
-                         user_name=_eu.get('name', ''))
-                except Exception:
-                    pass
-        except Exception as _ann_exc:
-            logger.warning('Auto platform update emails failed: %s', _ann_exc)
-    threading.Thread(
-        target=_auto_platform_update,
-        args=(subject, message),
-        daemon=False,
-    ).start()
+            from app.db import get_db as _gdb_pu
+            with _gdb_pu() as _pu_conn:
+                with _pu_conn.cursor() as _pu_cur:
+                    _pu_cur.execute(
+                        "INSERT INTO product_updates (title, body, published_by) "
+                        "VALUES (%s, %s, %s) RETURNING id",
+                        (subject, message, body.get("admin_email", "admin"))
+                    )
+                    _product_update_id = _pu_cur.fetchone()[0]
+        except Exception as _pu_exc:
+            logger.warning("product_updates insert failed (non-fatal): %s", _pu_exc)
 
-    return {"ok": True, "sent_to": sent, "message": f"Announcement sent to {sent} users"}
+        def _auto_platform_update(_title, _body_text, _pu_id):
+            try:
+                from app.db import get_all_confirmed_emails as _gace, get_db as _gdb_upd
+                from app.services.email_service import send_platform_update as _spu
+                _all_emails = _gace()
+                _n = 0
+                for _eu in _all_emails:
+                    try:
+                        _spu(_eu.get('email', ''), _title, _body_text,
+                             user_name=_eu.get('name', ''))
+                        _n += 1
+                    except Exception:
+                        pass
+                # Update notified_count and notified_at after blast completes
+                if _pu_id:
+                    try:
+                        import time as _t_pu
+                        with _gdb_upd() as _uc:
+                            with _uc.cursor() as _ucur:
+                                _ucur.execute(
+                                    "UPDATE product_updates SET notified_count=%s, notified_at=%s WHERE id=%s",
+                                    (_n, _t_pu.time(), _pu_id)
+                                )
+                    except Exception as _upd_exc:
+                        logger.warning("product_updates update failed (non-fatal): %s", _upd_exc)
+            except Exception as _ann_exc:
+                logger.warning('Auto platform update emails failed: %s', _ann_exc)
+        threading.Thread(
+            target=_auto_platform_update,
+            args=(subject, message, _product_update_id),
+            daemon=False,
+        ).start()
+
+    return {
+        "ok": True,
+        "sent_to": sent,
+        "message": f"Announcement sent to {sent} users",
+        "product_update_id": _product_update_id,
+        "email_blast_queued": target == "all",
+    }
+
+
+@app.get("/admin/product-updates")
+async def admin_product_updates(request: Request) -> dict:
+    """Return history of all product updates with notification counts."""
+    _require_admin(request)
+    try:
+        import psycopg2.extras as _pge_pu
+        from app.db import get_db as _gdb_pu
+        with _gdb_pu() as _conn_pu:
+            with _conn_pu.cursor(cursor_factory=_pge_pu.RealDictCursor) as _cur_pu:
+                _cur_pu.execute(
+                    "SELECT id, title, body, published_by, notified_count, "
+                    "notified_at, created_at FROM product_updates ORDER BY id DESC LIMIT 100"
+                )
+                rows = _cur_pu.fetchall()
+        updates = [dict(r) for r in rows]
+    except Exception as _pu_exc:
+        logger.warning("admin_product_updates DB query failed: %s", _pu_exc)
+        updates = []
+    return {"updates": updates, "total": len(updates)}
 
 
 @app.get("/admin/announce/history")
