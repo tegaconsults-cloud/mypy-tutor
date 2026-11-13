@@ -29,7 +29,7 @@ RATE_LIMIT_REQUESTS = 30          # max calls
 RATE_LIMIT_WINDOW   = 60          # per 60 seconds
 
 # Strict limits for expensive LLM endpoints
-LLM_RATE_LIMIT_REQUESTS = 10      # max LLM calls
+LLM_RATE_LIMIT_REQUESTS = 30      # max LLM calls per minute per IP
 LLM_RATE_LIMIT_WINDOW   = 60      # per 60 seconds
 
 LLM_ENDPOINTS = {"/chat", "/quiz/generate", "/quiz/answer",
@@ -253,44 +253,42 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
             return response
 
+        # Helper — build a rate-limit error response with CORS headers so the
+        # browser sees the actual 429 status instead of a CORS failure.
+        origin = request.headers.get("origin", "")
+        def _cors_error(status: int, msg: str, retry_after: int = 60) -> JSONResponse:
+            resp = JSONResponse(
+                status_code=status,
+                content={"error": msg},
+                headers={"Retry-After": str(retry_after)},
+            )
+            # Allow the requesting origin so the browser can read the error body
+            resp.headers["Access-Control-Allow-Origin"]  = origin or "*"
+            resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+            return resp
+
         # 1. General rate limit
         if not _check_rate(_general_store, ip, RATE_LIMIT_REQUESTS, RATE_LIMIT_WINDOW):
             logger.warning("General rate limit hit: %s", ip)
-            return JSONResponse(
-                status_code=429,
-                content={"error": "Too many requests. Please slow down."},
-                headers={"Retry-After": str(RATE_LIMIT_WINDOW)},
-            )
+            return _cors_error(429, "Too many requests. Please slow down.", RATE_LIMIT_WINDOW)
 
         # 2. Auth endpoint brute-force protection
         if request.url.path in AUTH_ENDPOINTS:
             if not _check_rate(_auth_store, ip, AUTH_RATE_LIMIT_REQUESTS, AUTH_RATE_LIMIT_WINDOW):
                 logger.warning("Auth brute-force blocked: %s %s", ip, request.url.path)
-                return JSONResponse(
-                    status_code=429,
-                    content={"error": "Too many login attempts. Please wait 5 minutes."},
-                    headers={"Retry-After": str(AUTH_RATE_LIMIT_WINDOW)},
-                )
+                return _cors_error(429, "Too many login attempts. Please wait 5 minutes.", AUTH_RATE_LIMIT_WINDOW)
 
         # 3. LLM-endpoint rate limit
         if request.url.path in LLM_ENDPOINTS:
             if not _check_rate(_llm_store, ip, LLM_RATE_LIMIT_REQUESTS, LLM_RATE_LIMIT_WINDOW):
                 logger.warning("LLM rate limit hit: %s %s", ip, request.url.path)
-                return JSONResponse(
-                    status_code=429,
-                    content={"error": "Too many AI requests. Wait a moment before trying again."},
-                    headers={"Retry-After": str(LLM_RATE_LIMIT_WINDOW)},
-                )
+                return _cors_error(429, "Too many AI requests. Wait a moment before trying again.", LLM_RATE_LIMIT_WINDOW)
 
         # 4. Enquiry spam protection
         if request.url.path in ENQUIRY_ENDPOINTS:
             if not _check_rate(_enquiry_store, ip, ENQUIRY_RATE_LIMIT_REQUESTS, ENQUIRY_RATE_LIMIT_WINDOW):
                 logger.warning("Enquiry spam blocked: %s", ip)
-                return JSONResponse(
-                    status_code=429,
-                    content={"error": "Too many enquiries. Please wait before sending another."},
-                    headers={"Retry-After": str(ENQUIRY_RATE_LIMIT_WINDOW)},
-                )
+                return _cors_error(429, "Too many enquiries. Please wait before sending another.", ENQUIRY_RATE_LIMIT_WINDOW)
 
         response = await call_next(request)
 
