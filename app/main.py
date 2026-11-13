@@ -764,7 +764,8 @@ async def auth_google_callback(code: str = None, error: str = None) -> JSONRespo
             try:
                 from app.services.email_service import send_signin_greeting_email
                 from app.db import upsert_email_automation
-                upsert_email_automation(_lid, _em, _nm)
+                if _em:
+                    upsert_email_automation(_lid, _em, _nm)
                 if _new:
                     from app.services.email_service import send_welcome_email
                     send_welcome_email(_nm, _em)
@@ -809,7 +810,8 @@ async def auth_google(request: GoogleAuthRequest) -> AuthResponse:
         try:
             from app.services.email_service import send_signin_greeting_email
             from app.db import upsert_email_automation
-            upsert_email_automation(_lid, _email, _name)
+            if _email:
+                upsert_email_automation(_lid, _email, _name)
             if _new:
                 from app.services.email_service import send_welcome_email
                 send_welcome_email(_name, _email)
@@ -1050,7 +1052,8 @@ async def auth_github_callback(code: str = None, error: str = None,
             try:
                 from app.services.email_service import send_signin_greeting_email
                 from app.db import upsert_email_automation
-                upsert_email_automation(_lid, _em, _nm)
+                if _em:
+                    upsert_email_automation(_lid, _em, _nm)
                 if _new:
                     from app.services.email_service import send_welcome_email
                     send_welcome_email(_nm, _em)
@@ -1442,6 +1445,11 @@ async def auth_confirm(token: str) -> JSONResponse:
                                         _ref_owner_email, referred_email=_e, referrer_name='')
                                     send_referral_welcome_to_referred(
                                         _e, referrer_name='', referrer_email=_ref_owner_email)
+                                    try:
+                                        from app.services.email_service import send_referral_bonus_credited_to_referee as _srbr
+                                        _srbr(_e, bonus=5000, user_name=_n)
+                                    except Exception:
+                                        pass
                             except Exception:
                                 pass
                         # Auto-provision Paystack DVA so user can pay immediately
@@ -6864,13 +6872,14 @@ def _run_top_users_congrats_job() -> dict:
                 # Courses
                 try:
                     _cur_top.execute("""
-                        SELECT learner_id, COUNT(*) as cnt FROM course_progress
-                        WHERE completed = TRUE AND updated_at >= EXTRACT(EPOCH FROM %s::timestamptz)
-                        GROUP BY learner_id ORDER BY cnt DESC LIMIT 3""", (week_start_iso,))
+                        SELECT learner_id, xp FROM learner_profiles
+                        WHERE xp > 0 AND COALESCE(tier,'free') != 'deleted'
+                          AND email IS NOT NULL AND email != ''
+                        ORDER BY xp DESC LIMIT 3""")
                     for r in _cur_top.fetchall():
                         em, nm = _name_email(r["learner_id"])
                         categories["courses"].append({"email": em, "name": nm,
-                            "label": f"{int(r['cnt'])} courses completed this week"})
+                            "label": f"Top learner by XP this week ({r['xp']} XP)"})
                 except Exception: pass
 
                 # Paid supporters
@@ -6951,6 +6960,40 @@ def _run_top_users_congrats_job() -> dict:
     return {"sent": sent, "skipped": 0}
 
 
+def _run_daily_reminder_job() -> dict:
+    """Send learning reminders to users idle for 48+ hours. 2-day cooldown."""
+    import time as _tt_dr
+    try:
+        from app.db import get_email_automation_candidates as _gc_dr, mark_email_sent as _mdr
+        from app.services.email_service import send_learning_reminder as _slr
+        candidates = _gc_dr("daily_reminder", cooldown_days=2)
+        sent = 0
+        skipped = 0
+        cutoff_48h = _tt_dr.time() - 48 * 3600
+        for c in candidates:
+            email = (c.get("email") or "").strip()
+            name  = (c.get("name") or "").strip()
+            last_activity = float(c.get("last_activity_at") or 0)
+            if not email or "@" not in email:
+                skipped += 1
+                continue
+            if last_activity > 0 and last_activity > cutoff_48h:
+                skipped += 1
+                continue
+            try:
+                _slr(name or "Learner", email, streak_days=0,
+                     suggested_topic=c.get("current_course") or "")
+                _mdr(c["learner_id"], "daily_reminder")
+                sent += 1
+            except Exception as _dr_ex:
+                logger.warning("Daily reminder send failed for %s: %s", email, _dr_ex)
+        logger.info("daily-reminder job: sent=%d skipped=%d", sent, skipped)
+        return {"sent": sent, "skipped": skipped}
+    except Exception as _dr_top:
+        logger.warning("daily-reminder job error: %s", _dr_top)
+        return {"sent": 0, "errors": 1}
+
+
 def _email_automation_scheduler() -> None:
     """Hourly background thread. Waits 60 s on first boot (lets uvicorn fully
     start), then checks all email jobs every hour. Each job has its own
@@ -6965,6 +7008,7 @@ def _email_automation_scheduler() -> None:
             ("weekend_motivation",  _run_weekend_job),
             ("new_month",           _run_new_month_job),
             ("top_users_congrats",  _run_top_users_congrats_job),
+            ("daily_reminder",      _run_daily_reminder_job),
         ]:
             try:
                 _r = _jfn()
@@ -6977,7 +7021,7 @@ def _email_automation_scheduler() -> None:
 
 threading.Thread(
     target=_email_automation_scheduler,
-    daemon=True,
+    daemon=False,
     name="email-automation-scheduler",
 ).start()
 

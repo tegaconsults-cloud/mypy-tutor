@@ -537,6 +537,7 @@ def init_db() -> None:
             # ── Migrations: add columns to existing tables safely ─────────────
             for migration_sql in [
                 "ALTER TABLE certificates ADD COLUMN IF NOT EXISTS programme TEXT DEFAULT ''",
+                "ALTER TABLE email_automation ADD COLUMN IF NOT EXISTS last_lesson_reminder_at DOUBLE PRECISION DEFAULT 0",
             ]:
                 try:
                     cur.execute(migration_sql)
@@ -1926,6 +1927,7 @@ def mark_email_sent(learner_id: str, email_type: str) -> None:
         "weekend":             "last_weekend_msg_at",
         "new_month":           "last_new_month_msg_at",
         "top_users":           "last_weekend_msg_at",   # reuse weekend column for system row
+        "daily_reminder":      "last_lesson_reminder_at",
     }
     col = col_map.get(email_type)
     if not col:
@@ -1973,6 +1975,7 @@ def get_email_automation_candidates(email_type: str, cooldown_days: int) -> list
         "assignment_reminder": "ea.last_assignment_reminder_at",
         "weekend":             "ea.last_weekend_msg_at",
         "new_month":           "ea.last_new_month_msg_at",
+        "daily_reminder":      "ea.last_lesson_reminder_at",
     }
     col = col_map.get(email_type, "ea.last_reengagement_at")
     cutoff = _t.time() - (cooldown_days * 86400)
@@ -2017,6 +2020,7 @@ def get_email_automation_candidates(email_type: str, cooldown_days: int) -> list
                 LEFT JOIN email_accounts em2
                        ON em2.learner_id = lp2.learner_id
                 WHERE em2.learner_id IS NULL
+                  AND lp2.email IS NOT NULL AND lp2.email != ''
                   AND lp2.email LIKE '%@%'
                   AND lp2.email NOT LIKE '%@github.local'
                   AND lp2.email NOT LIKE '%@google.local'

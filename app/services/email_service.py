@@ -1272,3 +1272,34 @@ def send_platform_update(user_email: str, update_title: str, update_body: str,
         "Explore now: " + platform_url + "\n\n-- The MyPy Tutor Team"
     )
     _dispatch_async(user_email, subject, html, text, "platform_update")
+
+
+# ── 26. Referral bonus credited to referee ───────────────────────────────────
+def send_referral_bonus_credited_to_referee(user_email: str, bonus: int = 5000,
+                                             user_name: str = '') -> None:
+    """Tell the new user their referral welcome bonus has been credited."""
+    first   = user_name.split()[0] if user_name else "Learner"
+    site    = _frontend_url()
+    subject = "\U0001f381 Your \u20a65,000 referral bonus has been credited!"
+    details = (
+        "&#127873;&nbsp;Your <strong style='color:" + GOLD + ";'>&#8358;"
+        + "{:,}".format(bonus) + " welcome bonus</strong> has been credited to your account!<br/><br/>"
+        "Use it on your next purchase at MyPy Tutor."
+    )
+    body = (
+        "<p style='color:#1e293b;margin:0 0 12px;'>Hi <strong>" + first + "</strong>,</p>"
+        "<h2 style='color:" + GOLD + ";font-size:1.25rem;margin:0 0 12px;'>"
+        "&#127873; Welcome bonus credited!</h2>"
+        + _box(details, bg="#fffbeb", border=GOLD)
+        + _cta("Explore MyPy Tutor", site + "/?panel=chat", color=PRIMARY)
+        + "<p style='color:#64748b;font-size:0.85rem;'>"
+          "Thank you for joining through a referral link!<br/>"
+          "<strong style='color:" + PRIMARY + ";'>The MyPy Tutor Team</strong></p>"
+    )
+    html = _shell(body, "\U0001f381 Your \u20a6" + "{:,}".format(bonus) + " referral bonus is waiting!")
+    text = (
+        "Hi " + first + ",\n\n"
+        "\U0001f381 Your \u20a6" + "{:,}".format(bonus) + " referral welcome bonus has been credited!\n"
+        "Use it on your next purchase at mypytutor.com.ng\n\n-- The MyPy Tutor Team"
+    )
+    _dispatch_async(user_email, subject, html, text, "referral_bonus_referee")

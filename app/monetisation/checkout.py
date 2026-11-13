@@ -111,80 +111,79 @@ def fulfill_order(order_id: str, payment_reference: str) -> dict:
     entitlements = _grant_access(mdb.get_order(order_id))
 
     # ── Post-fulfillment emails (subscription activated + referral reward) ──
-    try:
-        import psycopg2.extras as _pex
-        from app.db import get_db as _get_db
+    import psycopg2.extras as _pex
+    from app.db import get_db as _get_db
 
-        # 1. Look up user email and name
-        _user_email = ""
-        _user_name  = ""
-        try:
-            with _get_db() as _conn:
-                with _conn.cursor(cursor_factory=_pex.RealDictCursor) as _cur:
+    # 1. Look up user email and name
+    _user_email = ""
+    _user_name  = ""
+    try:
+        with _get_db() as _conn:
+            with _conn.cursor(cursor_factory=_pex.RealDictCursor) as _cur:
+                _cur.execute(
+                    "SELECT email, name FROM email_accounts WHERE learner_id = %s",
+                    (order['user_id'],),
+                )
+                _row = _cur.fetchone()
+                if not _row:
                     _cur.execute(
-                        "SELECT email, name FROM email_accounts WHERE learner_id = %s",
+                        "SELECT email, display_name AS name FROM user_profiles WHERE learner_id = %s",
                         (order['user_id'],),
                     )
                     _row = _cur.fetchone()
-                    if not _row:
-                        _cur.execute(
-                            "SELECT email, display_name AS name FROM user_profiles WHERE learner_id = %s",
-                            (order['user_id'],),
-                        )
-                        _row = _cur.fetchone()
-                    if _row:
-                        _user_email = _row.get("email", "") or ""
-                        _user_name  = _row.get("name", "") or ""
-        except Exception as _ue:
-            logger.debug("Post-fulfillment user lookup failed: %s", _ue)
+                if _row:
+                    _user_email = _row.get("email", "") or ""
+                    _user_name  = _row.get("name", "") or ""
+    except Exception as _ue:
+        logger.debug("Post-fulfillment user lookup failed: %s", _ue)
 
-        # 2. Look up plan name and AI quota
-        _plan_name  = order.get("item_id", "")
-        _ai_limit   = 300
-        if order.get("order_type") == "subscription":
-            try:
-                _plan = mdb.get_plan_by_slug(order["item_id"])
-                if _plan:
-                    _plan_name = _plan.get("name", order["item_id"])
-                    _ai_limit  = int(_plan.get("ai_quota_per_day", 300))
-            except Exception:
-                pass
+    # 2. Look up plan name and AI quota
+    _plan_name  = order.get("item_id", "")
+    _ai_limit   = 300
+    if order.get("order_type") == "subscription":
+        try:
+            _plan = mdb.get_plan_by_slug(order["item_id"])
+            if _plan:
+                _plan_name = _plan.get("name", order["item_id"])
+                _ai_limit  = int(_plan.get("ai_quota_per_day", 300))
+        except Exception:
+            pass
 
-        # 3. Send subscription activated email (only for actual subscription orders)
+    # 3. Send subscription activated email (only for actual subscription orders)
+    try:
         if _user_email and order.get("order_type") == "subscription":
             from app.services.email_service import send_subscription_activated as _ssa
             _ssa(_user_email, _plan_name, user_name=_user_name, ai_limit=_ai_limit)
+    except Exception as _sub_ex:
+        logger.warning("Subscription activated email failed: %s", _sub_ex)
 
-        # 4. Referral reward email
-        if order.get("referral_id") and _user_email:
-            try:
-                _referrer_email = ""
-                _referrer_name  = ""
-                with _get_db() as _conn2:
-                    with _conn2.cursor(cursor_factory=_pex.RealDictCursor) as _cur2:
-                        _cur2.execute(
-                            "SELECT email, name FROM email_accounts WHERE learner_id = %s",
-                            (order["referral_id"],),
-                        )
-                        _rrow = _cur2.fetchone()
-                        if _rrow:
-                            _referrer_email = _rrow.get("email", "") or ""
-                            _referrer_name  = _rrow.get("name", "") or ""
-                if _referrer_email:
-                    _reward_naira = int(order["total_kobo"] * 0.15) // 100
-                    from app.services.email_service import send_referral_reward_credited as _srrc
-                    _srrc(
-                        _referrer_email,
-                        referred_email=_user_email,
-                        plan_name=_plan_name,
-                        reward_naira=_reward_naira,
-                        referrer_name=_referrer_name,
+    # 4. Referral reward email
+    if order.get("referral_id") and _user_email:
+        try:
+            _referrer_email = ""
+            _referrer_name  = ""
+            with _get_db() as _conn2:
+                with _conn2.cursor(cursor_factory=_pex.RealDictCursor) as _cur2:
+                    _cur2.execute(
+                        "SELECT email, name FROM email_accounts WHERE learner_id = %s",
+                        (order["referral_id"],),
                     )
-            except Exception as _rre:
-                logger.debug("Referral reward email failed (non-fatal): %s", _rre)
-
-    except Exception as _email_exc:
-        logger.warning("Post-fulfillment email failed: %s", _email_exc)
+                    _rrow = _cur2.fetchone()
+                    if _rrow:
+                        _referrer_email = _rrow.get("email", "") or ""
+                        _referrer_name  = _rrow.get("name", "") or ""
+            if _referrer_email:
+                _reward_naira = int(order["total_kobo"] * 0.15) // 100
+                from app.services.email_service import send_referral_reward_credited as _srrc
+                _srrc(
+                    _referrer_email,
+                    referred_email=_user_email,
+                    plan_name=_plan_name,
+                    reward_naira=_reward_naira,
+                    referrer_name=_referrer_name,
+                )
+        except Exception as _rre:
+            logger.debug("Referral reward email failed (non-fatal): %s", _rre)
 
     if order.get('referral_id'):
         try:

@@ -36,11 +36,15 @@ services:
         sync: false
       - key: EMAIL_FROM
         sync: false
+      - key: SUPPORT_EMAIL
+        sync: false
       - key: APP_URL
         value: https://mypytutor.onrender.com
       - key: FRONTEND_URL
         value: https://mypytutor.com.ng
       - key: PAYSTACK_SECRET_KEY
+        sync: false
+      - key: PAYSTACK_WEBHOOK_SECRET
         sync: false
       - key: PAYSTACK_CALLBACK_URL
         value: https://mypytutor.com.ng/payment/callback
