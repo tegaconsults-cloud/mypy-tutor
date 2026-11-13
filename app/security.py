@@ -247,24 +247,53 @@ class SecurityMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         ip = _get_ip(request)
-
-        # Skip rate limiting for CORS preflight requests
-        if request.method == "OPTIONS":
-            response = await call_next(request)
-            return response
-
-        # Helper — build a rate-limit error response with CORS headers so the
-        # browser sees the actual 429 status instead of a CORS failure.
         origin = request.headers.get("origin", "")
+
+        # CORS allowed origins — kept in sync with main.py _allowed_origins.
+        # Applying CORS here (innermost middleware) ensures every response —
+        # including rate-limit errors, validation errors and 500s — carries the
+        # correct CORS headers. Without this, BaseHTTPMiddleware swallows
+        # exceptions and re-raises them before the outer CORSMiddleware can act.
+        _cors_origins = {
+            "https://mypytutor.com.ng",
+            "https://www.mypytutor.com.ng",
+        }
+        import re as _re
+        _cors_regex = _re.compile(
+            r"^https://(.*\.)?(onrender\.com|vercel\.app|mypytutor\.com\.ng)$"
+        )
+        cors_origin = (
+            origin if (origin in _cors_origins or _cors_regex.match(origin))
+            else ""
+        )
+
+        def _add_cors(resp):
+            if cors_origin:
+                resp.headers["Access-Control-Allow-Origin"]  = cors_origin
+                resp.headers["Access-Control-Allow-Headers"] = (
+                    "Content-Type, Authorization, X-Requested-With, Accept"
+                )
+                resp.headers["Access-Control-Allow-Methods"] = (
+                    "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+                )
+                resp.headers["Vary"] = "Origin"
+            return resp
+
+        # Handle CORS preflight immediately — no rate limiting needed
+        if request.method == "OPTIONS":
+            from starlette.responses import Response as _Resp
+            preflight = _Resp(status_code=204)
+            _add_cors(preflight)
+            return preflight
+
+        # Helper — build a rate-limit error response with CORS headers.
         def _cors_error(status: int, msg: str, retry_after: int = 60) -> JSONResponse:
             resp = JSONResponse(
                 status_code=status,
                 content={"error": msg},
                 headers={"Retry-After": str(retry_after)},
             )
-            # Allow the requesting origin so the browser can read the error body
-            resp.headers["Access-Control-Allow-Origin"]  = origin or "*"
-            resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+            _add_cors(resp)
             return resp
 
         # 1. General rate limit
@@ -290,7 +319,16 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                 logger.warning("Enquiry spam blocked: %s", ip)
                 return _cors_error(429, "Too many enquiries. Please wait before sending another.", ENQUIRY_RATE_LIMIT_WINDOW)
 
-        response = await call_next(request)
+        # Call the actual route handler — wrap in try/except so that
+        # BaseHTTPMiddleware exceptions still get CORS headers attached.
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            logger.error("Unhandled exception in route %s: %s", request.url.path, exc)
+            response = JSONResponse(
+                status_code=500,
+                content={"detail": "Internal server error"},
+            )
 
         # 5. Security headers on every response
         response.headers["X-Content-Type-Options"]  = "nosniff"
@@ -343,6 +381,10 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             del response.headers["server"]
         if "x-powered-by" in response.headers:
             del response.headers["x-powered-by"]
+
+        # Add CORS headers to every response (innermost middleware guarantees
+        # these are present regardless of which layer generated the response)
+        _add_cors(response)
 
         return response
 
