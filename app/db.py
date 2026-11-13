@@ -549,6 +549,17 @@ def init_db() -> None:
             for migration_sql in [
                 "ALTER TABLE certificates ADD COLUMN IF NOT EXISTS programme TEXT DEFAULT ''",
                 "ALTER TABLE email_automation ADD COLUMN IF NOT EXISTS last_lesson_reminder_at DOUBLE PRECISION DEFAULT 0",
+                # Add created_at to learner_profiles — used for NEW (24H) dashboard count.
+                # updated_at changes on every activity; created_at is set once at registration.
+                # DEFAULT to updated_at so existing rows get a reasonable approximation.
+                "ALTER TABLE learner_profiles ADD COLUMN IF NOT EXISTS created_at DOUBLE PRECISION DEFAULT EXTRACT(EPOCH FROM NOW())",
+                # Back-fill created_at from email_accounts for existing email-registered users
+                """UPDATE learner_profiles lp
+                   SET created_at = ea.created_at
+                   FROM email_accounts ea
+                   WHERE ea.learner_id = lp.learner_id
+                     AND (lp.created_at IS NULL OR lp.created_at = 0)
+                     AND ea.created_at IS NOT NULL AND ea.created_at > 0""",
             ]:
                 try:
                     cur.execute(migration_sql)
@@ -667,8 +678,10 @@ def save_profile_db(learner_id: str, profile_dict: dict) -> None:
             INSERT INTO learner_profiles
               (learner_id,tier,level,xp,badges,topics_seen,topic_progress,
                current_course,course_step,completed_projects,
-               daily_prompts_used,last_prompt_date,email,display_name,prompt_plan,updated_at)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,EXTRACT(EPOCH FROM NOW()))
+               daily_prompts_used,last_prompt_date,email,display_name,prompt_plan,
+               created_at,updated_at)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+                    EXTRACT(EPOCH FROM NOW()),EXTRACT(EPOCH FROM NOW()))
             ON CONFLICT(learner_id) DO UPDATE SET
               tier=EXCLUDED.tier,
               level=EXCLUDED.level,

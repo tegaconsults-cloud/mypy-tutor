@@ -3274,11 +3274,13 @@ async def admin_dashboard(request: Request) -> dict:
                     SELECT COUNT(*) FROM (
                         SELECT learner_id FROM email_accounts
                         WHERE created_at IS NOT NULL
+                          AND created_at > 0
                           AND to_timestamp(created_at) >= NOW() - INTERVAL '24 hours'
                         UNION
                         SELECT learner_id FROM learner_profiles
-                        WHERE updated_at IS NOT NULL
-                          AND to_timestamp(updated_at) >= NOW() - INTERVAL '24 hours'
+                        WHERE created_at IS NOT NULL
+                          AND created_at > 0
+                          AND to_timestamp(created_at) >= NOW() - INTERVAL '24 hours'
                           AND COALESCE(tier, 'free') != 'deleted'
                     ) AS new_all
                 """)
