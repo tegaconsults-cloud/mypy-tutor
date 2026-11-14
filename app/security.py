@@ -324,10 +324,12 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         try:
             response = await call_next(request)
         except Exception as exc:
-            logger.error("Unhandled exception in route %s: %s", request.url.path, exc)
+            import traceback as _tb2
+            logger.error("Unhandled exception in route %s: %s\n%s",
+                         request.url.path, exc, _tb2.format_exc())
             response = JSONResponse(
                 status_code=500,
-                content={"detail": "Internal server error"},
+                content={"detail": str(exc), "type": type(exc).__name__},
             )
 
         # 5. Security headers on every response
