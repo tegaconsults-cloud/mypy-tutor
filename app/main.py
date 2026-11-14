@@ -8028,43 +8028,63 @@ def _gemini_tts(text: str, voice: str = "Aoede") -> bytes:
         raise RuntimeError("GEMINI_API_KEY not set")
     import httpx, base64 as _b64
 
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        "gemini-2.5-flash-preview-tts:generateContent"
-        f"?key={api_key}"
-    )
-    payload = {
-        "contents": [{"parts": [{"text": text}]}],
-        "generationConfig": {
-            "responseModalities": ["AUDIO"],
-            "speechConfig": {
-                "voiceConfig": {
-                    "prebuiltVoiceConfig": {"voiceName": voice}
+    # Try TTS models in order — fall back when quota is exceeded (429)
+    # or model is unavailable (404).
+    _tts_models = [
+        "gemini-2.5-flash-preview-tts",
+        "gemini-2.0-flash-exp",        # supports AUDIO responseModality
+        "gemini-1.5-flash",            # older fallback
+    ]
+
+    last_error = None
+    for _model in _tts_models:
+        url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{_model}:generateContent?key={api_key}"
+        )
+        payload = {
+            "contents": [{"parts": [{"text": text}]}],
+            "generationConfig": {
+                "responseModalities": ["AUDIO"],
+                "speechConfig": {
+                    "voiceConfig": {
+                        "prebuiltVoiceConfig": {"voiceName": voice}
+                    }
                 }
             }
         }
-    }
-    resp = httpx.post(url, json=payload, timeout=10)
-    if resp.status_code != 200:
-        raise RuntimeError(f"Gemini TTS HTTP {resp.status_code}: {resp.text[:200]}")
+        resp = httpx.post(url, json=payload, timeout=20)
+        if resp.status_code == 429:
+            last_error = f"Gemini TTS HTTP 429 (quota exceeded) on {_model}"
+            logger.warning("TTS quota exceeded on %s — trying next model", _model)
+            continue
+        if resp.status_code == 404:
+            last_error = f"Gemini TTS model {_model} not found"
+            logger.warning("TTS model %s not available — trying next", _model)
+            continue
+        if resp.status_code != 200:
+            raise RuntimeError(f"Gemini TTS HTTP {resp.status_code}: {resp.text[:200]}")
 
-    data = resp.json()
-    # Navigate: candidates[0].content.parts[0].inlineData.data (base64 PCM)
-    # Some models return inline_data instead of inlineData
-    try:
-        part = data["candidates"][0]["content"]["parts"][0]
-        b64_audio = (
-            part.get("inlineData", {}).get("data") or
-            part.get("inline_data", {}).get("data") or
-            ""
-        )
-        if not b64_audio:
-            raise KeyError("inlineData.data not found")
-    except (KeyError, IndexError) as e:
-        raise RuntimeError(f"Gemini TTS unexpected response shape: {e} — {str(data)[:300]}")
+        data = resp.json()
+        # Navigate: candidates[0].content.parts[0].inlineData.data (base64 PCM)
+        # Some models return inline_data instead of inlineData
+        try:
+            part = data["candidates"][0]["content"]["parts"][0]
+            b64_audio = (
+                part.get("inlineData", {}).get("data") or
+                part.get("inline_data", {}).get("data") or
+                ""
+            )
+            if not b64_audio:
+                raise KeyError("inlineData.data not found")
+        except (KeyError, IndexError) as e:
+            raise RuntimeError(f"Gemini TTS unexpected response shape: {e} — {str(data)[:300]}")
 
-    pcm = _b64.b64decode(b64_audio)
-    return _pcm_to_wav(pcm, sample_rate=24000, channels=1, sample_width=2)
+        pcm = _b64.b64decode(b64_audio)
+        return _pcm_to_wav(pcm, sample_rate=24000, channels=1, sample_width=2)
+
+    # All models failed — raise the last quota error
+    raise RuntimeError(last_error or "All Gemini TTS models failed")
 
 
 def _gemini_stt(audio_b64: str, mime_type: str = "audio/webm") -> str:
@@ -8077,39 +8097,53 @@ def _gemini_stt(audio_b64: str, mime_type: str = "audio/webm") -> str:
         raise RuntimeError("GEMINI_API_KEY not set")
     import httpx
 
-    url = (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        f"gemini-2.0-flash:generateContent?key={api_key}"
-    )
-    payload = {
-        "contents": [{
-            "parts": [
-                {
-                    "inlineData": {
-                        "mimeType": mime_type.split(";", 1)[0].strip() or "audio/webm",
-                        "data": audio_b64,
-                    }
-                },
-                {
-                    "text": (
-                        "Transcribe the speech in this audio exactly as spoken. "
-                        "Return ONLY the transcript text, nothing else. "
-                        "If there is no speech or only silence, return an empty string."
-                    )
-                }
-            ]
-        }]
-    }
-    resp = httpx.post(url, json=payload, timeout=10)
-    if resp.status_code != 200:
-        raise RuntimeError(f"Gemini STT HTTP {resp.status_code}: {resp.text[:200]}")
+    # Try STT-capable models in order — fall back on 429 quota errors
+    _stt_models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]
 
-    data = resp.json()
-    try:
-        text = data["candidates"][0]["content"]["parts"][0]["text"]
-        return (text or "").strip()
-    except (KeyError, IndexError):
-        return ""
+    clean_mime = mime_type.split(";", 1)[0].strip() or "audio/webm"
+
+    for _model in _stt_models:
+        url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{_model}:generateContent?key={api_key}"
+        )
+        payload = {
+            "contents": [{
+                "parts": [
+                    {
+                        "inlineData": {
+                            "mimeType": clean_mime,
+                            "data": audio_b64,
+                        }
+                    },
+                    {
+                        "text": (
+                            "Transcribe the speech in this audio exactly as spoken. "
+                            "Return ONLY the transcript text, nothing else. "
+                            "If there is no speech or only silence, return an empty string."
+                        )
+                    }
+                ]
+            }]
+        }
+        resp = httpx.post(url, json=payload, timeout=20)
+        if resp.status_code == 429:
+            logger.warning("STT quota exceeded on %s — trying next model", _model)
+            continue
+        if resp.status_code == 404:
+            logger.warning("STT model %s not available — trying next", _model)
+            continue
+        if resp.status_code != 200:
+            raise RuntimeError(f"Gemini STT HTTP {resp.status_code}: {resp.text[:200]}")
+
+        data = resp.json()
+        try:
+            text = data["candidates"][0]["content"]["parts"][0]["text"]
+            return (text or "").strip()
+        except (KeyError, IndexError):
+            return ""
+
+    return ""  # all models quota-exceeded — return empty transcript
 
 
 def _pcm_to_wav(pcm: bytes, sample_rate: int = 24000,
