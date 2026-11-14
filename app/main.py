@@ -352,14 +352,16 @@ async def _validation_exc_handler(request: Request, exc: RequestValidationError)
 
 @app.exception_handler(Exception)
 async def _generic_exc_handler(request: Request, exc: Exception):
+    import traceback as _tb
     origin = request.headers.get("origin", "")
     hdrs = dict(_CORS_HEADERS)
     if origin:
         hdrs["Access-Control-Allow-Origin"] = origin
-    logger.error("Unhandled exception on %s: %s", request.url.path, exc)
+    tb = _tb.format_exc()
+    logger.error("Unhandled exception on %s: %s\n%s", request.url.path, exc, tb)
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal server error"},
+        content={"detail": str(exc), "type": type(exc).__name__},
         headers=hdrs,
     )
 

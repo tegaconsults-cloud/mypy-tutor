@@ -98,7 +98,7 @@ class ChatRequest(BaseModel):
                                           pattern=r"^[a-zA-Z0-9_\-]+$")
     level:           Literal["beginner", "intermediate", "advanced"] = "beginner"
     # conversation_id validated to prevent oversized injection via this field
-    conversation_id: str | None   = Field(default=None, max_length=64)
+    conversation_id: str | None   = Field(default=None, max_length=200)
 
 
 class ChatResponse(BaseModel):
