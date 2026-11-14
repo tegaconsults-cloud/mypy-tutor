@@ -679,9 +679,9 @@ def save_profile_db(learner_id: str, profile_dict: dict) -> None:
               (learner_id,tier,level,xp,badges,topics_seen,topic_progress,
                current_course,course_step,completed_projects,
                daily_prompts_used,last_prompt_date,email,display_name,prompt_plan,
-               created_at,updated_at)
+               updated_at)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-                    EXTRACT(EPOCH FROM NOW()),EXTRACT(EPOCH FROM NOW()))
+                    EXTRACT(EPOCH FROM NOW()))
             ON CONFLICT(learner_id) DO UPDATE SET
               tier=EXCLUDED.tier,
               level=EXCLUDED.level,

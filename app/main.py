@@ -3329,12 +3329,6 @@ async def admin_dashboard(request: Request) -> dict:
                         WHERE created_at IS NOT NULL
                           AND created_at > 0
                           AND to_timestamp(created_at) >= NOW() - INTERVAL '24 hours'
-                        UNION
-                        SELECT learner_id FROM learner_profiles
-                        WHERE created_at IS NOT NULL
-                          AND created_at > 0
-                          AND to_timestamp(created_at) >= NOW() - INTERVAL '24 hours'
-                          AND COALESCE(tier, 'free') != 'deleted'
                     ) AS new_all
                 """)
 
